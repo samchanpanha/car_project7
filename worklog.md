@@ -90,3 +90,19 @@ Stage Summary:
 - KhLan MVP is fully functional and browser-verified end-to-end.
 - Key files: src/app/page.tsx, src/app/layout.tsx, src/components/marketplace/**, src/lib/{types,i18n,format,store,client-hooks}.ts.
 - Demo persona: buyer "Dara" (usr_demo_buyer); seeded inventory 14 vehicles, 2 dealers, 2 reports.
+
+---
+Task ID: fix-hydration-001
+Agent: Z.ai Code (main)
+Task: Fix Next.js hydration mismatch error on <body> element
+
+Work Log:
+- Diagnosed error: Grammarly browser extension injected data-new-gr-c-s-check-loaded / data-gr-ext-installed attributes onto <body> before React hydration (not a code bug)
+- Added suppressHydrationWarning to <body> in src/app/layout.tsx (html already had it), with explanatory comment
+- Ran bun run lint — clean
+- Verified via agent-browser: page loads, zero console errors, zero hydration warnings, content renders with live API data
+- Verified mobile viewport 390x844: footer behaves correctly (pushed down naturally on long page, no gap/overlap)
+
+Stage Summary:
+- Hydration false-positives from browser extensions are now suppressed at <body> level only (does not mask real hydration errors deeper in the tree)
+- No changes to app logic; layout.tsx is the only file touched

@@ -30,7 +30,13 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en" suppressHydrationWarning>
-      <body className={`${inter.variable} ${kantumruyPro.variable} antialiased bg-background text-foreground font-sans`}>
+      {/* suppressHydrationWarning on <body> prevents false-positive hydration
+          errors caused by browser extensions (e.g. Grammarly) injecting
+          attributes like data-gr-ext-installed before React hydrates. */}
+      <body
+        suppressHydrationWarning
+        className={`${inter.variable} ${kantumruyPro.variable} antialiased bg-background text-foreground font-sans`}
+      >
         {children}
         <Toaster position="top-center" richColors />
       </body>
