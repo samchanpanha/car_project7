@@ -2,6 +2,7 @@
 
 import { create } from "zustand";
 import type { SortOption } from "./types";
+import type { SessionDTO } from "./dashboard-types";
 
 export type View =
   | { name: "home" }
@@ -12,7 +13,8 @@ export type View =
   | { name: "messages"; conversationId?: string }
   | { name: "favorites" }
   | { name: "seller"; userId: string }
-  | { name: "compare" };
+  | { name: "compare" }
+  | { name: "dashboard"; tab?: string };
 
 interface AppState {
   locale: "en" | "km";
@@ -26,6 +28,9 @@ interface AppState {
   favorites: string[];
   setFavorites: (ids: string[]) => void;
   toggleFavoriteLocal: (id: string) => void;
+  /** current demo session (persona) — null until /api/session resolves */
+  me: SessionDTO | null;
+  setMe: (s: SessionDTO | null) => void;
 }
 
 export const useAppStore = create<AppState>((set, get) => ({
@@ -54,4 +59,6 @@ export const useAppStore = create<AppState>((set, get) => ({
     const cur = get().favorites;
     set({ favorites: cur.includes(id) ? cur.filter((f) => f !== id) : [...cur, id] });
   },
+  me: null,
+  setMe: (me) => set({ me }),
 }));

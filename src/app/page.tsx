@@ -3,6 +3,7 @@
 import { useAppStore } from "@/lib/store";
 import { useT } from "@/hooks/use-t";
 import { useFetch } from "@/lib/client-hooks";
+import type { SessionDTO } from "@/lib/dashboard-types";
 import { Header } from "@/components/marketplace/header";
 import { Footer } from "@/components/marketplace/footer";
 import { MobileNav } from "@/components/marketplace/mobile-nav";
@@ -15,8 +16,10 @@ import { MessagesView } from "@/components/marketplace/views/messages-view";
 import { FavoritesView } from "@/components/marketplace/views/favorites-view";
 import { SellerView } from "@/components/marketplace/views/seller-view";
 import { CompareView } from "@/components/marketplace/views/compare-view";
+import { DashboardView } from "@/components/marketplace/dashboard/dashboard-view";
 import { cn } from "@/lib/utils";
 import { useEffect } from "react";
+import { toast } from "sonner";
 
 /** Boots favorites into the global store on first load. */
 function FavoritesBoot() {
@@ -26,6 +29,30 @@ function FavoritesBoot() {
     if (data?.vehicleIds) setFavorites(data.vehicleIds);
      
   }, [data?.vehicleIds.join(",")]);
+  return null;
+}
+
+/** Boots the demo session (persona) into the global store once per page load.
+ *  After a persona switch the page reloads, so this refetches automatically. */
+function SessionBoot() {
+  const t = useT();
+  const setMe = useAppStore((s) => s.setMe);
+  const { data } = useFetch<SessionDTO>("/api/session");
+  useEffect(() => {
+    if (!data) return;
+    setMe(data);
+    // Persona-switch toast: the switch itself reloads the page, so the toast
+    // is parked in sessionStorage and replayed here after the reload.
+    try {
+      const switched = sessionStorage.getItem("khlan_switched");
+      if (switched) {
+        sessionStorage.removeItem("khlan_switched");
+        toast.success(t("toastSwitched", { name: switched }));
+      }
+    } catch {
+      /* sessionStorage unavailable — skip replay */
+    }
+  }, [data, setMe, t]);
   return null;
 }
 
@@ -50,6 +77,8 @@ function CurrentView() {
       return <SellerView key={view.userId} userId={view.userId} />;
     case "compare":
       return <CompareView />;
+    case "dashboard":
+      return <DashboardView />;
     default:
       return <HomeView />;
   }
@@ -70,6 +99,7 @@ export default function Page() {
       <main className="flex-1 flex flex-col" id="main">
         <div className={cn("flex-1", locale === "km" && "font-khmer")}>
           <FavoritesBoot />
+          <SessionBoot />
           <CurrentView />
         </div>
       </main>

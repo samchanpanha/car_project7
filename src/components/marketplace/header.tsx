@@ -2,12 +2,20 @@
 
 import { useAppStore } from "@/lib/store";
 import { useT } from "@/hooks/use-t";
+import { apiSend } from "@/lib/client-hooks";
+import type { PersonaDTO } from "@/lib/dashboard-types";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
-import { Search, Heart, MessageSquare, Scale, Plus, Languages, CarFront } from "lucide-react";
+import {
+  DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel,
+  DropdownMenuSeparator, DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { Search, Heart, MessageSquare, Scale, Plus, Languages, CarFront, LayoutDashboard, ChevronDown, UserRound } from "lucide-react";
 import { useState } from "react";
 import { cn } from "@/lib/utils";
+import { initials } from "@/components/marketplace/dashboard/bits";
+import { toast } from "sonner";
 
 function LangToggle({ dark }: { dark?: boolean }) {
   const locale = useAppStore((s) => s.locale);
@@ -26,7 +34,7 @@ function LangToggle({ dark }: { dark?: boolean }) {
           key={l}
           onClick={() => setLocale(l)}
           className={cn(
-            "rounded-full px-2.5 py-1 transition-colors cursor-pointer",
+            "rounded-full px-1.5 py-1 text-xs transition-colors sm:px-2.5 sm:text-sm cursor-pointer",
             locale === l
               ? "bg-amber-500 text-slate-950"
               : dark
@@ -43,9 +51,110 @@ function LangToggle({ dark }: { dark?: boolean }) {
   );
 }
 
+const ROLE_DOT: Record<string, string> = {
+  SUPER_ADMIN: "bg-amber-400",
+  ADMIN: "bg-rose-400",
+  DEALER: "bg-emerald-400",
+  SELLER: "bg-teal-400",
+  BUYER: "bg-slate-400",
+};
+
+/** Persona switcher (demo). Renders a placeholder circle until the session boots
+ *  so server and client HTML match (no hydration mismatch). */
+function PersonaMenu() {
+  const t = useT();
+  const locale = useAppStore((s) => s.locale);
+  const me = useAppStore((s) => s.me);
+
+  if (!me) {
+    return (
+      <span
+        className="flex h-8 w-8 animate-pulse items-center justify-center rounded-full bg-slate-800"
+        aria-label={t("loading")}
+        role="status"
+      >
+        <UserRound className="h-4 w-4 text-slate-600" aria-hidden />
+      </span>
+    );
+  }
+
+  const switchPersona = async (p: PersonaDTO) => {
+    if (p.id === me.user.id) return;
+    try {
+      await apiSend("/api/session", "POST", { userId: p.id });
+      try {
+        sessionStorage.setItem("khlan_switched", p.name);
+      } catch {
+        /* ignore */
+      }
+      window.location.reload();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : t("errorGeneric"));
+    }
+  };
+
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <button
+          className="flex items-center gap-2 rounded-full border border-slate-700 py-1 pl-1 pr-1 transition-colors hover:border-slate-500 hover:bg-slate-900 cursor-pointer min-h-[36px] sm:pr-2.5"
+          aria-label={`${me.user.name} — ${t("personaMenuTitle")}`}
+        >
+          <span className="flex h-7 w-7 items-center justify-center rounded-full bg-amber-500 text-[11px] font-bold text-slate-950">
+            {initials(me.user.name)}
+          </span>
+          <span className="hidden lg:block text-left leading-tight">
+            <span className="block max-w-[120px] truncate text-xs font-semibold text-white">{me.user.name}</span>
+            <span className="flex items-center gap-1 text-[10px] text-amber-400">
+              <span className={cn("inline-block h-1.5 w-1.5 rounded-full", ROLE_DOT[me.user.role] ?? "bg-slate-400")} aria-hidden />
+              {me.tenant ? me.tenant.name : t(`role${me.user.role}` as never)}
+            </span>
+          </span>
+          <ChevronDown className="hidden h-3.5 w-3.5 text-slate-400 sm:block" aria-hidden />
+        </button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end" className="w-64">
+        <DropdownMenuLabel>
+          <span className="block text-sm font-semibold text-slate-900">{me.user.name}</span>
+          <span className="block text-[11px] font-normal text-slate-500">
+            {me.tenant ? `${me.tenant.name} · ${t(`trole${me.tenant.myRole}` as never)}` : t(`role${me.user.role}` as never)}
+          </span>
+        </DropdownMenuLabel>
+        <DropdownMenuSeparator />
+        <DropdownMenuLabel className="text-[10px] font-medium uppercase tracking-wide text-slate-400">
+          {t("personaSwitchLabel")}
+        </DropdownMenuLabel>
+        {me.personas.map((p) => (
+          <DropdownMenuItem
+            key={p.id}
+            disabled={p.id === me.user.id}
+            onClick={() => switchPersona(p)}
+            className={cn("gap-2", p.id === me.user.id && "bg-amber-50")}
+          >
+            <span className={cn("inline-block h-1.5 w-1.5 shrink-0 rounded-full", ROLE_DOT[p.role] ?? "bg-slate-400")} aria-hidden />
+            <span className="min-w-0 flex-1">
+              <span className="block truncate text-xs font-medium text-slate-800">{p.name}</span>
+              <span className="block truncate text-[10px] text-slate-400">{p.label[locale]}</span>
+            </span>
+            <Badge variant="outline" className="shrink-0 text-[9px] font-semibold text-slate-500">
+              {t(`role${p.role}` as never)}
+            </Badge>
+          </DropdownMenuItem>
+        ))}
+        <DropdownMenuSeparator />
+        <DropdownMenuItem onClick={() => useAppStore.getState().navigate({ name: "dashboard" })} className="gap-2">
+          <LayoutDashboard className="h-4 w-4 text-amber-600" aria-hidden />
+          <span className="text-xs font-semibold">{t("navDashboard")}</span>
+        </DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
+
 export function Header() {
   const t = useT();
   const navigate = useAppStore((s) => s.navigate);
+  const me = useAppStore((s) => s.me);
   const compareCount = useAppStore((s) => s.compare.length);
   const favoritesCount = useAppStore((s) => s.favorites.length);
   const [q, setQ] = useState("");
@@ -127,16 +236,29 @@ export function Header() {
             <MessageSquare className="h-4 w-4 mr-1.5" aria-hidden />
             {t("navMessages")}
           </Button>
+          {me && (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => navigate({ name: "dashboard" })}
+              className="hidden md:inline-flex text-white/80 hover:text-white hover:bg-slate-800 border border-slate-700"
+              aria-label={t("navDashboard")}
+            >
+              <LayoutDashboard className="h-4 w-4 mr-1.5 text-amber-400" aria-hidden />
+              {t("navDashboard")}
+            </Button>
+          )}
           <LangToggle dark />
           <Button
             size="sm"
             onClick={() => navigate({ name: "sell" })}
-            className="bg-amber-500 hover:bg-amber-400 text-slate-950 font-semibold rounded-full"
+            className="bg-amber-500 hover:bg-amber-400 text-slate-950 font-semibold rounded-full px-2.5 sm:px-4"
+            aria-label={t("navSell")}
           >
-            <Plus className="h-4 w-4 mr-1" aria-hidden />
+            <Plus className="h-4 w-4" aria-hidden />
             <span className="hidden sm:inline">{t("navSell")}</span>
-            <span className="sm:hidden">{t("navSell")}</span>
           </Button>
+          <PersonaMenu />
         </nav>
       </div>
     </header>

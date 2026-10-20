@@ -11,9 +11,11 @@ import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Separator } from "@/components/ui/separator";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import { ReportStatusBadge } from "@/components/marketplace/status-badge";
 import {
-  ArrowLeft, BadgeCheck, CarFront, ChevronLeft, ChevronRight, Eye, FileCheck2, FileX2,
+  ArrowLeft, BadgeCheck, CalendarClock, CarFront, ChevronLeft, ChevronRight, Eye, FileCheck2, FileX2,
   Flag, Gauge, Heart, Loader2, MapPin, MessageSquare, Phone, RefreshCw, Send, ShieldCheck,
   ShieldAlert, Star, Timer, TriangleAlert, Users,
 } from "lucide-react";
@@ -24,6 +26,12 @@ import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 
 const ABUSE_REASONS = ["SCAM", "WRONG_INFO", "DUPLICATE", "OFFENSIVE", "SOLD", "OTHER"] as const;
+
+/** Local "YYYY-MM-DDTHH:mm" for datetime-local min attribute. */
+function localInputValue(d: Date): string {
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
 
 export function DetailView({ vehicleId }: { vehicleId: string }) {
   const t = useT();
@@ -42,6 +50,11 @@ export function DetailView({ vehicleId }: { vehicleId: string }) {
   const [reportReason, setReportReason] = useState<(typeof ABUSE_REASONS)[number]>("SCAM");
   const [reportDetails, setReportDetails] = useState("");
   const [generating, setGenerating] = useState(false);
+  // test drive appointment
+  const [tdOpen, setTdOpen] = useState(false);
+  const [tdWhen, setTdWhen] = useState("");
+  const [tdNotes, setTdNotes] = useState("");
+  const [tdSubmitting, setTdSubmitting] = useState(false);
 
   if (loading && !data) {
     return (
@@ -112,6 +125,26 @@ export function DetailView({ vehicleId }: { vehicleId: string }) {
       setReportDetails("");
     } catch (e) {
       toast.error(e instanceof Error ? e.message : t("errorGeneric"));
+    }
+  };
+
+  const submitTestDrive = async () => {
+    if (!tdWhen) return;
+    setTdSubmitting(true);
+    try {
+      await apiSend("/api/account/appointments", "POST", {
+        vehicleId: v.id,
+        scheduledAt: new Date(tdWhen).toISOString(),
+        notes: tdNotes.trim() || undefined,
+      });
+      toast.success(t("toastAppointmentRequested"));
+      setTdOpen(false);
+      setTdWhen("");
+      setTdNotes("");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : t("errorGeneric"));
+    } finally {
+      setTdSubmitting(false);
     }
   };
 
@@ -326,6 +359,16 @@ export function DetailView({ vehicleId }: { vehicleId: string }) {
                 {isFav ? (locale === "km" ? "រក្សាទុករួច" : "Saved") : t("navFavorites")}
               </Button>
             </div>
+            {v.status === "PUBLISHED" && (
+              <Button
+                onClick={() => setTdOpen(true)}
+                variant="outline"
+                className="mt-2 h-11 w-full border-teal-200 text-teal-700 hover:bg-teal-50"
+              >
+                <CalendarClock className="h-4 w-4 mr-2" aria-hidden />
+                {t("requestTestDrive")}
+              </Button>
+            )}
             {v.sellerFull.phone && (
               <p className="mt-3 flex items-center gap-2 text-sm text-slate-500">
                 <Phone className="h-3.5 w-3.5" aria-hidden />
@@ -454,6 +497,48 @@ export function DetailView({ vehicleId }: { vehicleId: string }) {
         setDetails={setReportDetails}
         onSubmit={submitAbuse}
       />
+
+      {/* Test drive appointment dialog */}
+      <Dialog open={tdOpen} onOpenChange={setTdOpen}>
+        <DialogContent className="sm:max-w-sm">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <CalendarClock className="h-4 w-4 text-teal-600" aria-hidden />
+              {t("testDriveTitle")}
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3">
+            <div>
+              <Label htmlFor="td-when" className="text-xs text-slate-500">{t("testDriveWhen")}</Label>
+              <input
+                id="td-when"
+                type="datetime-local"
+                value={tdWhen}
+                min={localInputValue(new Date(Date.now() + 60 * 60 * 1000))}
+                onChange={(e) => setTdWhen(e.target.value)}
+                className="mt-1.5 h-9 w-full rounded-md border border-slate-200 bg-white px-3 text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-amber-500"
+              />
+            </div>
+            <div>
+              <Label htmlFor="td-notes" className="text-xs text-slate-500">{t("testDriveNotes")}</Label>
+              <Textarea id="td-notes" value={tdNotes} onChange={(e) => setTdNotes(e.target.value)} rows={3} maxLength={300} className="mt-1.5" />
+              <p className="mt-1 text-right text-[10px] text-slate-300">{tdNotes.length}/300</p>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" size="sm" onClick={() => setTdOpen(false)}>{t("cancel")}</Button>
+            <Button
+              size="sm"
+              onClick={submitTestDrive}
+              disabled={tdSubmitting || !tdWhen}
+              className="bg-teal-600 hover:bg-teal-700 text-white font-semibold"
+            >
+              {tdSubmitting && <Loader2 className="h-4 w-4 mr-2 animate-spin" aria-hidden />}
+              {t("testDriveSubmit")}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Sticky mobile CTA bar */}
       <div className="fixed bottom-[52px] inset-x-0 z-30 border-t border-slate-200 bg-white/95 backdrop-blur p-2.5 md:hidden">

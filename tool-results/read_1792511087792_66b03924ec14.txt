@@ -1,0 +1,1140 @@
+     1→// KhLan — demo seed script (Cambodia AI car marketplace)
+     2→// Run with: bun prisma/seed.ts
+     3→// Deterministic ids so API routes / frontend can reference them (see worklog Task 2-b).
+     4→
+     5→import fs from "node:fs";
+     6→import path from "node:path";
+     7→import { PrismaClient } from "@prisma/client";
+     8→import type { ReportCheck } from "../src/lib/types";
+     9→import seedImages from "./seed-images.json";
+    10→
+    11→// Belt & suspenders: Prisma Client usually loads .env itself, but make sure
+    12→// DATABASE_URL is available when running via `bun prisma/seed.ts`.
+    13→if (!process.env.DATABASE_URL) {
+    14→  const envFile = path.resolve(import.meta.dir, "..", ".env");
+    15→  if (fs.existsSync(envFile)) {
+    16→    for (const line of fs.readFileSync(envFile, "utf8").split("\n")) {
+    17→      const m = line.match(/^\s*([A-Z0-9_]+)\s*=\s*(.*)\s*$/);
+    18→      if (m && !process.env[m[1]]) {
+    19→        process.env[m[1]] = m[2].trim().replace(/^["']|["']$/g, "");
+    20→      }
+    21→    }
+    22→  }
+    23→}
+    24→
+    25→const prisma = new PrismaClient();
+    26→
+    27→const DAY = 24 * 60 * 60 * 1000;
+    28→const HOUR = 60 * 60 * 1000;
+    29→const daysAgo = (d: number) => new Date(Date.now() - d * DAY);
+    30→const hoursAgo = (h: number) => new Date(Date.now() - h * HOUR);
+    31→
+    32→const IMG = seedImages as Record<string, string[]>;
+    33→
+    34→// ---------------------------------------------------------------------------
+    35→// Users
+    36→// ---------------------------------------------------------------------------
+    37→
+    38→async function seedUsers() {
+    39→  await prisma.user.createMany({
+    40→    data: [
+    41→      {
+    42→        id: "usr_demo_buyer",
+    43→        phone: "+85511998877",
+    44→        name: "Dara Sok",
+    45→        role: "BUYER",
+    46→        locale: "km",
+    47→        phoneVerified: true,
+    48→      },
+    49→      {
+    50→        id: "usr_dealer_sokha",
+    51→        phone: "+85512998001",
+    52→        name: "Sokha Chea",
+    53→        role: "DEALER",
+    54→        phoneVerified: true,
+    55→      },
+    56→      {
+    57→        id: "usr_dealer_ppauto",
+    58→        phone: "+85512998002",
+    59→        name: "Rithy Chan",
+    60→        role: "DEALER",
+    61→        phoneVerified: true,
+    62→      },
+    63→      {
+    64→        id: "usr_priv_vireak",
+    65→        phone: "+85512998003",
+    66→        name: "Vireak Tan",
+    67→        role: "SELLER",
+    68→      },
+    69→      {
+    70→        id: "usr_priv_sopheak",
+    71→        phone: "+85512998004",
+    72→        name: "Sopheak Ngin",
+    73→        role: "SELLER",
+    74→      },
+    75→      {
+    76→        id: "usr_admin",
+    77→        phone: "+85512998009",
+    78→        name: "Admin",
+    79→        role: "ADMIN",
+    80→      },
+    81→    ],
+    82→  });
+    83→
+    84→  await prisma.sellerProfile.createMany({
+    85→    data: [
+    86→      {
+    87→        userId: "usr_dealer_sokha",
+    88→        type: "DEALER",
+    89→        shopName: "Sokha Motors",
+    90→        city: "Phnom Penh",
+    91→        verified: true,
+    92→        verification: "VERIFIED",
+    93→        responseRate: 96,
+    94→        ratingAvg: 4.7,
+    95→        ratingCount: 128,
+    96→        memberSince: new Date("2021-03-15T00:00:00Z"),
+    97→        bio: "Trusted dealer of premium Japanese SUVs and MPVs in Phnom Penh since 2015. Every car inspected and documented.",
+    98→        bioKm:
+    99→          "ពាណិជ្ជករទំនុកចិត្ត លក់ឡានត្រកូលជប៉ុនពីឆ្នាំ២០១៥។ ឡានទាំងអស់ត្រូវបានពិនិត្យនិងមានឯកសារច្បាស់លាស់។",
+   100→        phone: "+85512998001",
+   101→        telegram: "@sokhamotors",
+   102→      },
+   103→      {
+   104→        userId: "usr_dealer_ppauto",
+   105→        type: "DEALER",
+   106→        shopName: "PP Auto Trust",
+   107→        city: "Phnom Penh",
+   108→        verified: true,
+   109→        verification: "VERIFIED",
+   110→        responseRate: 88,
+   111→        ratingAvg: 4.4,
+   112→        ratingCount: 63,
+   113→        memberSince: new Date("2022-07-01T00:00:00Z"),
+   114→        bio: "Family-run dealership focusing on well-maintained family SUVs and crossovers.",
+   115→        bioKm: "រង្វាន់គ្រួសារលក់ឡានគ្រួសារដែលថែរក្សាល្អ។",
+   116→      },
+   117→      {
+   118→        userId: "usr_priv_vireak",
+   119→        type: "PRIVATE",
+   120→        city: "Phnom Penh",
+   121→        verified: false,
+   122→        verification: "UNVERIFIED",
+   123→        responseRate: 72,
+   124→        ratingAvg: 4.1,
+   125→        ratingCount: 7,
+   126→        memberSince: new Date("2024-02-10T00:00:00Z"),
+   127→      },
+   128→      {
+   129→        userId: "usr_priv_sopheak",
+   130→        type: "PRIVATE",
+   131→        city: "Kandal",
+   132→        verified: false,
+   133→        verification: "UNVERIFIED",
+   134→        responseRate: 64,
+   135→        ratingAvg: 3.9,
+   136→        ratingCount: 4,
+   137→        memberSince: new Date("2024-09-22T00:00:00Z"),
+   138→      },
+   139→    ],
+   140→  });
+   141→}
+   142→
+   143→// ---------------------------------------------------------------------------
+   144→// Vehicles
+   145→// ---------------------------------------------------------------------------
+   146→
+   147→interface SeedVehicle {
+   148→  id: string;
+   149→  sellerId: string;
+   150→  slug: string;
+   151→  imgCount: number;
+   152→  make: string;
+   153→  model: string;
+   154→  variant?: string;
+   155→  year: number;
+   156→  priceUsd: number;
+   157→  mileageKm: number;
+   158→  transmission: string;
+   159→  fuel: string;
+   160→  engineCc?: number;
+   161→  drivetrain?: string;
+   162→  bodyType: string;
+   163→  exteriorColor?: string;
+   164→  city: string;
+   165→  district?: string;
+   166→  description?: string;
+   167→  descriptionKm?: string;
+   168→  status?: string;
+   169→  featured?: boolean;
+   170→  views: number;
+   171→  daysAgo: number;
+   172→  vinLast6?: string;
+   173→  plateNo?: string;
+   174→  ownershipCount?: number;
+   175→  accidentDeclared?: string;
+   176→  importOrigin?: string;
+   177→  docs: { type: string; status: string; notes?: string }[];
+   178→}
+   179→
+   180→const VEHICLES: SeedVehicle[] = [
+   181→  {
+   182→    id: "veh_prado_2018",
+   183→    sellerId: "usr_dealer_sokha",
+   184→    slug: "prado",
+   185→    imgCount: 4,
+   186→    make: "Toyota",
+   187→    model: "Land Cruiser Prado",
+   188→    variant: "TX",
+   189→    year: 2018,
+   190→    priceUsd: 52500,
+   191→    mileageKm: 89000,
+   192→    transmission: "AUTOMATIC",
+   193→    fuel: "DIESEL",
+   194→    engineCc: 2800,
+   195→    drivetrain: "AWD",
+   196→    bodyType: "SUV",
+   197→    exteriorColor: "white",
+   198→    city: "Phnom Penh",
+   199→    district: "Chamkarmon",
+   200→    description:
+   201→      "Single-owner overseas unit, full service history at authorized workshop. New tires, clean interior, no repaint. Documents complete: registration book and import declaration available for inspection.",
+   202→    descriptionKm:
+   203→      "ឡានស្អាត ប្រវត្តិសកម្រងពេញលេញ កង់ថ្មី ខាងក្នុងស្អាត គ្មានសព្ទថ្ម។ ឯកសារពេញលេញ។",
+   204→    featured: true,
+   205→    views: 2140,
+   206→    daysAgo: 2,
+   207→    vinLast6: "T8H229",
+   208→    plateNo: "1KH-8823",
+   209→    ownershipCount: 2,
+   210→    accidentDeclared: "NONE_DECLARED",
+   211→    importOrigin: "DUBAI",
+   212→    docs: [
+   213→      { type: "REGISTRATION_BOOK", status: "VERIFIED" },
+   214→      { type: "IMPORT_DECLARATION", status: "VERIFIED" },
+   215→      {
+   216→        type: "SERVICE_RECORD",
+   217→        status: "PROVIDED",
+   218→        notes: "Authorized workshop records 2019-2024",
+   219→      },
+   220→    ],
+   221→  },
+   222→  {
+   223→    id: "veh_lexus_rx350",
+   224→    sellerId: "usr_dealer_sokha",
+   225→    slug: "lexus",
+   226→    imgCount: 4,
+   227→    make: "Lexus",
+   228→    model: "RX",
+   229→    variant: "350",
+   230→    year: 2015,
+   231→    priceUsd: 34900,
+   232→    mileageKm: 118000,
+   233→    transmission: "AUTOMATIC",
+   234→    fuel: "PETROL",
+   235→    engineCc: 3500,
+   236→    drivetrain: "AWD",
+   237→    bodyType: "SUV",
+   238→    exteriorColor: "pearl white",
+   239→    city: "Phnom Penh",
+   240→    district: "Toul Kork",
+   241→    description:
+   242→      "US-imported RX 350 in good condition. Minor parking-lot dent repaired on rear bumper (documented). Navigation and leather in great shape.",
+   243→    descriptionKm:
+   244→      "RX 350 នាំចូលពីអាមេរិក ស្ថានភាពល្អ។ ស្ពានក្រោយបានជួសជុលគ្រោះថ្នាក់តូច (មានឯកសារបញ្ជាក់)។ ប្រព័ន្ធនាវាចរណ៍ និងកៅអ៊ីស្បែកនៅល្អ។",
+   245→    featured: true,
+   246→    views: 1860,
+   247→    daysAgo: 6,
+   248→    vinLast6: "5T4119",
+   249→    plateNo: "2AB-1194",
+   250→    ownershipCount: 3,
+   251→    accidentDeclared: "MINOR_DECLARED",
+   252→    importOrigin: "USA",
+   253→    docs: [
+   254→      { type: "REGISTRATION_BOOK", status: "PROVIDED" },
+   255→      { type: "IMPORT_DECLARATION", status: "PROVIDED" },
+   256→      { type: "SERVICE_RECORD", status: "MISSING" },
+   257→    ],
+   258→  },
+   259→  {
+   260→    id: "veh_revo_2020",
+   261→    sellerId: "usr_priv_vireak",
+   262→    slug: "revo",
+   263→    imgCount: 4,
+   264→    make: "Toyota",
+   265→    model: "Hilux Revo",
+   266→    variant: "2.8 G",
+   267→    year: 2020,
+   268→    priceUsd: 29800,
+   269→    mileageKm: 76000,
+   270→    transmission: "MANUAL",
+   271→    fuel: "DIESEL",
+   272→    engineCc: 2800,
+   273→    drivetrain: "4WD",
+   274→    bodyType: "PICKUP",
+   275→    exteriorColor: "silver",
+   276→    city: "Phnom Penh",
+   277→    district: "Sen Sok",
+   278→    description:
+   279→      "One-owner Thai import used for both work and family. Engine and 4WD system strong on test drives. Serviced on schedule, new battery and tires.",
+   280→    descriptionKm:
+   281→      "ឡានម្ចាស់តែម្នាក់ នាំចូលពីប្រទេសថៃ។ ម៉ាស៊ីន និងប្រព័ន្ធ 4WD នៅមានកម្លាំងល្អ។ ការថែទាំទាន់ពេលវេលា ថ្ម និងកង់ថ្មី។",
+   282→    views: 940,
+   283→    daysAgo: 10,
+   284→    plateNo: "3CD-5567",
+   285→    ownershipCount: 1,
+   286→    accidentDeclared: "NONE_DECLARED",
+   287→    importOrigin: "THAILAND",
+   288→    docs: [
+   289→      { type: "REGISTRATION_BOOK", status: "PROVIDED" },
+   290→      {
+   291→        type: "IMPORT_DECLARATION",
+   292→        status: "MISSING",
+   293→        notes: "Seller to provide before sale",
+   294→      },
+   295→    ],
+   296→  },
+   297→  {
+   298→    id: "veh_crv_2019",
+   299→    sellerId: "usr_dealer_ppauto",
+   300→    slug: "crv",
+   301→    imgCount: 4,
+   302→    make: "Honda",
+   303→    model: "CR-V",
+   304→    variant: "1.5 Turbo",
+   305→    year: 2019,
+   306→    priceUsd: 25900,
+   307→    mileageKm: 95000,
+   308→    transmission: "AUTOMATIC",
+   309→    fuel: "PETROL",
+   310→    engineCc: 1500,
+   311→    drivetrain: "FWD",
+   312→    bodyType: "SUV",
+   313→    exteriorColor: "gray",
+   314→    city: "Phnom Penh",
+   315→    district: "Mean Chey",
+   316→    description:
+   317→      "Well-kept CR-V turbo: smooth CVT, excellent fuel economy, non-smoker interior. All electronics working. A great family SUV.",
+   318→    descriptionKm:
+   319→      "CR-V ទួរបូថែរក្សាល្អ បញ្ជូនរលូន សន្សំសាំង។ ខាងក្នុងស្អាត ឧបករណ៍អេឡិចត្រូនិកទាំងអស់ដំណើរការល្អ។ ល្អសម្រាប់គ្រួសារ។",
+   320→    featured: true,
+   321→    views: 1520,
+   322→    daysAgo: 14,
+   323→    vinLast6: "2HK331",
+   324→    ownershipCount: 1,
+   325→    accidentDeclared: "NONE_DECLARED",
+   326→    importOrigin: "THAILAND",
+   327→    docs: [
+   328→      { type: "REGISTRATION_BOOK", status: "VERIFIED" },
+   329→      { type: "IMPORT_DECLARATION", status: "PROVIDED" },
+   330→    ],
+   331→  },
+   332→  {
+   333→    id: "veh_camry_2018",
+   334→    sellerId: "usr_priv_sopheak",
+   335→    slug: "camry",
+   336→    imgCount: 4,
+   337→    make: "Toyota",
+   338→    model: "Camry",
+   339→    variant: "2.0 G",
+   340→    year: 2018,
+   341→    priceUsd: 21500,
+   342→    mileageKm: 124000,
+   343→    transmission: "AUTOMATIC",
+   344→    fuel: "PETROL",
+   345→    engineCc: 2000,
+   346→    drivetrain: "FWD",
+   347→    bodyType: "SEDAN",
+   348→    exteriorColor: "black",
+   349→    city: "Phnom Penh",
+   350→    district: "Chamkarmon",
+   351→    description:
+   352→      "urgent sale this week — owner relocating abroad. Daily-driver condition, engine and transmission smooth. Priced below market for a quick sale; import declaration to be provided.",
+   353→    descriptionKm:
+   354→      "លក់ប្រញាប់ក្នុងសប្តាហ៍នេះ — ម្ចាស់ត្រូវចេញដំណើរទៅបរទេស។ ឡានប្រើប្រចាំថ្ងៃ ម៉ាស៊ីន និងការបញ្ជូនដំណើរការរលូន។ តម្លៃក្រោមទីផ្សារសម្រាប់លក់រហ័ស។",
+   355→    views: 720,
+   356→    daysAgo: 18,
+   357→    plateNo: "1EF-7781",
+   358→    ownershipCount: 2,
+   359→    accidentDeclared: "UNKNOWN",
+   360→    importOrigin: "LOCAL",
+   361→    docs: [
+   362→      { type: "REGISTRATION_BOOK", status: "PROVIDED" },
+   363→      { type: "IMPORT_DECLARATION", status: "MISSING" },
+   364→      { type: "SERVICE_RECORD", status: "MISSING" },
+   365→    ],
+   366→  },
+   367→  {
+   368→    id: "veh_ranger_2019",
+   369→    sellerId: "usr_priv_vireak",
+   370→    slug: "ranger",
+   371→    imgCount: 4,
+   372→    make: "Ford",
+   373→    model: "Ranger",
+   374→    variant: "Wildtrak 2.0",
+   375→    year: 2019,
+   376→    priceUsd: 24700,
+   377→    mileageKm: 102000,
+   378→    transmission: "AUTOMATIC",
+   379→    fuel: "DIESEL",
+   380→    engineCc: 2000,
+   381→    drivetrain: "4WD",
+   382→    bodyType: "PICKUP",
+   383→    exteriorColor: "white",
+   384→    city: "Kandal",
+   385→    district: "Ta Khmau",
+   386→    description:
+   387→      "Wildtrak 2.0 with declared minor panel damage (door dent professionally repaired, documented). 4WD and towing package fully functional. New all-terrain tires.",
+   388→    descriptionKm:
+   389→      "Wildtrak មានប្រកាសគ្រោះថ្នាក់តូចតាច (ស្ពានទ្វារបានជួសជុលដោយវិជ្ជាជីវៈ មានឯកសារបញ្ជាក់)។ ប្រព័ន្ធ 4WD ដំណើរការពេញលេញ។ កង់ថ្មី។",
+   390→    views: 880,
+   391→    daysAgo: 22,
+   392→    plateNo: "3BK-2201",
+   393→    ownershipCount: 1,
+   394→    accidentDeclared: "MINOR_DECLARED",
+   395→    importOrigin: "THAILAND",
+   396→    docs: [
+   397→      { type: "REGISTRATION_BOOK", status: "PROVIDED" },
+   398→      { type: "SERVICE_RECORD", status: "PROVIDED" },
+   399→    ],
+   400→  },
+   401→  {
+   402→    id: "veh_tucson_2020",
+   403→    sellerId: "usr_dealer_ppauto",
+   404→    slug: "tucson",
+   405→    imgCount: 4,
+   406→    make: "Hyundai",
+   407→    model: "Tucson",
+   408→    variant: "2.0",
+   409→    year: 2020,
+   410→    priceUsd: 23400,
+   411→    mileageKm: 68000,
+   412→    transmission: "AUTOMATIC",
+   413→    fuel: "PETROL",
+   414→    engineCc: 2000,
+   415→    drivetrain: "FWD",
+   416→    bodyType: "SUV",
+   417→    exteriorColor: "white",
+   418→    city: "Phnom Penh",
+   419→    district: "Russey Keo",
+   420→    description:
+   421→      "Korean import with low mileage and clean body panels. Registration book platform-verified. Great-value family crossover.",
+   422→    descriptionKm:
+   423→      "Tucson នាំចូលពីកូរ៉េ ចំនួនគ.មតិច សន្លឹកខាងក្រៅស្អាត។ សៀវភៅចុះបញ្ជីបានផ្ទៀងផ្ទាត់ដោយវេទិកា។ តម្លៃល្អសម្រាប់ឡានគ្រួសារ។",
+   424→    views: 760,
+   425→    daysAgo: 26,
+   426→    vinLast6: "KMHD241",
+   427→    ownershipCount: 1,
+   428→    accidentDeclared: "NONE_DECLARED",
+   429→    importOrigin: "KOREA",
+   430→    docs: [
+   431→      { type: "REGISTRATION_BOOK", status: "VERIFIED" },
+   432→      { type: "IMPORT_DECLARATION", status: "PROVIDED" },
+   433→    ],
+   434→  },
+   435→  {
+   436→    id: "veh_carnival_2018",
+   437→    sellerId: "usr_dealer_ppauto",
+   438→    slug: "carnival",
+   439→    imgCount: 4,
+   440→    make: "Kia",
+   441→    model: "Carnival",
+   442→    variant: "2.2 D",
+   443→    year: 2018,
+   444→    priceUsd: 27300,
+   445→    mileageKm: 131000,
+   446→    transmission: "AUTOMATIC",
+   447→    fuel: "DIESEL",
+   448→    engineCc: 2200,
+   449→    drivetrain: "FWD",
+   450→    bodyType: "VAN",
+   451→    exteriorColor: "silver",
+   452→    city: "Phnom Penh",
+   453→    district: "Toul Kork",
+   454→    description:
+   455→      "Spacious 8-seat Carnival, ideal for family use or airport transfer business. Oil changed on schedule, new tires all round. Third row folds flat.",
+   456→    descriptionKm:
+   457→      "Carnival កៅអ៊ី ៨ ធំធេង ល្អសម្រាប់គ្រួសារ ឬសេវាដឹកជន។ ប្តូរប្រេងទាន់ពេល កង់ថ្មីទាំង ៤។ កៅអ៊ីជួរទី៣អាចបត់បានរាបស្មើ។",
+   458→    views: 690,
+   459→    daysAgo: 30,
+   460→    plateNo: "2GH-9014",
+   461→    ownershipCount: 3,
+   462→    accidentDeclared: "NONE_DECLARED",
+   463→    importOrigin: "KOREA",
+   464→    docs: [
+   465→      { type: "REGISTRATION_BOOK", status: "PROVIDED" },
+   466→      { type: "IMPORT_DECLARATION", status: "PROVIDED" },
+   467→      { type: "SERVICE_RECORD", status: "PROVIDED" },
+   468→    ],
+   469→  },
+   470→  {
+   471→    id: "veh_vellfire_2017",
+   472→    sellerId: "usr_dealer_sokha",
+   473→    slug: "vellfire",
+   474→    imgCount: 4,
+   475→    make: "Toyota",
+   476→    model: "Vellfire",
+   477→    variant: "2.5 Z",
+   478→    year: 2017,
+   479→    priceUsd: 49800,
+   480→    mileageKm: 92000,
+   481→    transmission: "AUTOMATIC",
+   482→    fuel: "HYBRID",
+   483→    engineCc: 2500,
+   484→    drivetrain: "FWD",
+   485→    bodyType: "VAN",
+   486→    exteriorColor: "black",
+   487→    city: "Phnom Penh",
+   488→    district: "Chamkarmon",
+   489→    description:
+   490→      "Japan-imported Vellfire 2.5 Z hybrid, full options: power doors, twin sunroof, premium audio. Immaculate garage-kept interior. Complete documents including technical inspection certificate.",
+   491→    descriptionKm:
+   492→      "Vellfire 2.5 Z Hybrid នាំចូលពីជប៉ុន បរិក្ខារពេញលេញ៖ ទ្វារអគ្គិសនី ស៊ុនរូហ្វទ្វេ ប្រព័ន្ធសំឡេងពិសេស។ ខាងក្នុងស្អាតខ្លាំង ចតក្នុងផ្ទះ។ ឯកសារពេញលេញ រួមទាំងសញ្ញាបត្រពិនិត្យបច្ចេកទេស។",
+   493→    featured: true,
+   494→    views: 1290,
+   495→    daysAgo: 34,
+   496→    vinLast6: "JTH778",
+   497→    plateNo: "1AA-3390",
+   498→    ownershipCount: 1,
+   499→    accidentDeclared: "NONE_DECLARED",
+   500→    importOrigin: "JAPAN",
+   501→    docs: [
+   502→      { type: "REGISTRATION_BOOK", status: "VERIFIED" },
+   503→      { type: "IMPORT_DECLARATION", status: "VERIFIED" },
+   504→      { type: "SERVICE_RECORD", status: "PROVIDED" },
+   505→      { type: "INSPECTION_CERT", status: "PROVIDED" },
+   506→    ],
+   507→  },
+   508→  {
+   509→    id: "veh_cclass_2016",
+   510→    sellerId: "usr_dealer_sokha",
+   511→    slug: "cclass",
+   512→    imgCount: 4,
+   513→    make: "Mercedes-Benz",
+   514→    model: "C-Class",
+   515→    variant: "C 200",
+   516→    year: 2016,
+   517→    priceUsd: 30200,
+   518→    mileageKm: 111000,
+   519→    transmission: "AUTOMATIC",
+   520→    fuel: "PETROL",
+   521→    engineCc: 2000,
+   522→    drivetrain: "RWD",
+   523→    bodyType: "SEDAN",
+   524→    exteriorColor: "silver",
+   525→    city: "Phnom Penh",
+   526→    district: "7 Makara",
+   527→    description:
+   528→      "Elegant C 200 with service stamps up to 2022. Suspension and A/C recently checked. Comes with two keys. Import declaration missing — seller is obtaining a copy.",
+   529→    descriptionKm:
+   530→      "C 200 ស្អាត កំណត់ហេតុសេវាកម្មដល់ឆ្នាំ ២០២២។ ស៊ុស និងម៉ាស៊ីនត្រជាក់ទើបពិនិត្យថ្មី។ លក់ជាមួយកូនសោ ២។ លិខិតប្រកាសនាំចូលបាត់ — អ្នកលក់កំពុងសុំចម្លង។",
+   531→    views: 1050,
+   532→    daysAgo: 38,
+   533→    plateNo: "1KL-4412",
+   534→    ownershipCount: 2,
+   535→    accidentDeclared: "UNKNOWN",
+   536→    importOrigin: "DUBAI",
+   537→    docs: [
+   538→      { type: "REGISTRATION_BOOK", status: "PROVIDED" },
+   539→      { type: "IMPORT_DECLARATION", status: "MISSING" },
+   540→    ],
+   541→  },
+   542→  {
+   543→    id: "veh_civic_2019",
+   544→    sellerId: "usr_priv_sopheak",
+   545→    slug: "civic",
+   546→    imgCount: 4,
+   547→    make: "Honda",
+   548→    model: "Civic",
+   549→    variant: "1.8 E",
+   550→    year: 2019,
+   551→    priceUsd: 19400,
+   552→    mileageKm: 88000,
+   553→    transmission: "AUTOMATIC",
+   554→    fuel: "PETROL",
+   555→    engineCc: 1800,
+   556→    drivetrain: "FWD",
+   557→    bodyType: "SEDAN",
+   558→    exteriorColor: "white",
+   559→    city: "Phnom Penh",
+   560→    district: "Sen Sok",
+   561→    description:
+   562→      "Reliable one-owner Civic 1.8 E, mostly highway kilometers. Serviced on schedule, new brakes. Clean documents ready for ownership transfer.",
+   563→    descriptionKm:
+   564→      "Civic 1.8 E អាចទុកចិត្តបាន ម្ចាស់តែម្នាក់ ប្រើផ្លូវឆ្ងាយជាចម្បង។ ម៉ាស៊ីនបានថែទាំទាន់ពេល ព្រឹលថ្មី។ ឯកសារស្អាត រួចរាល់សម្រាប់ផ្ទេរឈ្មោះ។",
+   565→    views: 980,
+   566→    daysAgo: 42,
+   567→    plateNo: "2DF-6620",
+   568→    ownershipCount: 1,
+   569→    accidentDeclared: "NONE_DECLARED",
+   570→    importOrigin: "THAILAND",
+   571→    docs: [
+   572→      { type: "REGISTRATION_BOOK", status: "PROVIDED" },
+   573→      { type: "IMPORT_DECLARATION", status: "PROVIDED" },
+   574→    ],
+   575→  },
+   576→  {
+   577→    id: "veh_fortuner_2019",
+   578→    sellerId: "usr_dealer_sokha",
+   579→    slug: "fortuner",
+   580→    imgCount: 4,
+   581→    make: "Toyota",
+   582→    model: "Fortuner",
+   583→    variant: "2.8",
+   584→    year: 2019,
+   585→    priceUsd: 37600,
+   586→    mileageKm: 97000,
+   587→    transmission: "AUTOMATIC",
+   588→    fuel: "DIESEL",
+   589→    engineCc: 2800,
+   590→    drivetrain: "4WD",
+   591→    bodyType: "SUV",
+   592→    exteriorColor: "white",
+   593→    city: "Phnom Penh",
+   594→    district: "Chbar Ampov",
+   595→    description:
+   596→      "Fortuner 2.8 diesel in excellent condition, Dubai import. Mostly city driving with occasional provincial trips. Complete documents ready for transfer.",
+   597→    descriptionKm:
+   598→      "Fortuner 2.8 ស្អាតខ្លាំង នាំចូលពីឌូបាយ។ ប្រើក្នុងក្រុងជាចម្បង មានដំណើរក្រៅក្រុងកម្រ។ ឯកសារពេញលេញ រួចរាល់សម្រាប់ផ្ទេរឈ្មោះ។",
+   599→    views: 1410,
+   600→    daysAgo: 46,
+   601→    vinLast6: "TRN881",
+   602→    plateNo: "1JH-5523",
+   603→    ownershipCount: 2,
+   604→    accidentDeclared: "NONE_DECLARED",
+   605→    importOrigin: "DUBAI",
+   606→    docs: [
+   607→      { type: "REGISTRATION_BOOK", status: "PROVIDED" },
+   608→      { type: "IMPORT_DECLARATION", status: "PROVIDED" },
+   609→      { type: "SERVICE_RECORD", status: "MISSING" },
+   610→    ],
+   611→  },
+   612→  {
+   613→    id: "veh_accent_2018",
+   614→    sellerId: "usr_priv_sopheak",
+   615→    slug: "accent",
+   616→    imgCount: 3, // SOLD listing keeps 3 photos
+   617→    make: "Hyundai",
+   618→    model: "Accent",
+   619→    variant: "1.4",
+   620→    year: 2018,
+   621→    priceUsd: 13200,
+   622→    mileageKm: 145000,
+   623→    transmission: "AUTOMATIC",
+   624→    fuel: "PETROL",
+   625→    engineCc: 1400,
+   626→    drivetrain: "FWD",
+   627→    bodyType: "SEDAN",
+   628→    exteriorColor: "silver",
+   629→    city: "Kandal",
+   630→    district: "Ta Khmau",
+   631→    description: "This car has been sold. Thank you for your interest!",
+   632→    descriptionKm:
+   633→      "ឡាននេះបានលក់រួចរាល់ហើយ។ សូមអរគុណសម្រាប់ការចាប់អារម្មណ៍!",
+   634→    status: "SOLD",
+   635→    views: 560,
+   636→    daysAgo: 50,
+   637→    plateNo: "3MK-8845",
+   638→    accidentDeclared: "UNKNOWN",
+   639→    docs: [{ type: "REGISTRATION_BOOK", status: "PROVIDED" }],
+   640→  },
+   641→  {
+   642→    id: "veh_cx5_2019",
+   643→    sellerId: "usr_dealer_ppauto",
+   644→    slug: "cx5",
+   645→    imgCount: 4,
+   646→    make: "Mazda",
+   647→    model: "CX-5",
+   648→    variant: "2.0",
+   649→    year: 2019,
+   650→    priceUsd: 24100,
+   651→    mileageKm: 84000,
+   652→    transmission: "AUTOMATIC",
+   653→    fuel: "PETROL",
+   654→    engineCc: 2000,
+   655→    drivetrain: "FWD",
+   656→    bodyType: "SUV",
+   657→    exteriorColor: "red",
+   658→    city: "Phnom Penh",
+   659→    district: "Toul Kork",
+   660→    description:
+   661→      "Listing submitted and awaiting review. 2.0 Skyactiv engine, one careful owner, service history available.",
+   662→    descriptionKm:
+   663→      "បញ្ជីលក់កំពុងរង់ចាំការត្រួតពិនិត្យ។ ម៉ាស៊ីន Skyactiv 2.0 ម្ចាស់តែម្នាក់ មានកំណត់ហេតុថែទាំ។",
+   664→    status: "PENDING_REVIEW",
+   665→    views: 260,
+   666→    daysAgo: 54,
+   667→    ownershipCount: 1,
+   668→    accidentDeclared: "UNKNOWN",
+   669→    docs: [
+   670→      { type: "REGISTRATION_BOOK", status: "PROVIDED" },
+   671→      { type: "IMPORT_DECLARATION", status: "PROVIDED" },
+   672→    ],
+   673→  },
+   674→];
+   675→
+   676→async function seedVehicles() {
+   677→  for (const v of VEHICLES) {
+   678→    const createdAt = daysAgo(v.daysAgo);
+   679→    const title = `${v.year} ${v.make} ${v.model}${v.variant ? " " + v.variant : ""}`;
+   680→    await prisma.vehicle.create({
+   681→      data: {
+   682→        id: v.id,
+   683→        sellerId: v.sellerId,
+   684→        make: v.make,
+   685→        model: v.model,
+   686→        variant: v.variant ?? null,
+   687→        year: v.year,
+   688→        priceUsd: v.priceUsd,
+   689→        mileageKm: v.mileageKm,
+   690→        transmission: v.transmission,
+   691→        fuel: v.fuel,
+   692→        engineCc: v.engineCc ?? null,
+   693→        drivetrain: v.drivetrain ?? null,
+   694→        bodyType: v.bodyType,
+   695→        exteriorColor: v.exteriorColor ?? null,
+   696→        city: v.city,
+   697→        district: v.district ?? null,
+   698→        description: v.description ?? null,
+   699→        descriptionKm: v.descriptionKm ?? null,
+   700→        status: v.status ?? "PUBLISHED",
+   701→        featured: v.featured ?? false,
+   702→        views: v.views,
+   703→        vinLast6: v.vinLast6 ?? null,
+   704→        plateNo: v.plateNo ?? null,
+   705→        ownershipCount: v.ownershipCount ?? null,
+   706→        accidentDeclared: v.accidentDeclared ?? "UNKNOWN",
+   707→        importOrigin: v.importOrigin ?? null,
+   708→        createdAt,
+   709→        images: {
+   710→          create: IMG[v.slug].slice(0, v.imgCount).map((url, i) => ({
+   711→            url,
+   712→            alt: `${title} — photo ${i + 1}`,
+   713→            sortOrder: i,
+   714→          })),
+   715→        },
+   716→        documents: {
+   717→          create: v.docs.map((d) => ({
+   718→            type: d.type,
+   719→            status: d.status,
+   720→            notes: d.notes ?? null,
+   721→          })),
+   722→        },
+   723→      },
+   724→    });
+   725→  }
+   726→}
+   727→
+   728→// ---------------------------------------------------------------------------
+   729→// Pre-generated AI history reports (exact ReportCheck shape from src/lib/types.ts)
+   730→// ---------------------------------------------------------------------------
+   731→
+   732→const CHECK_TITLES: Record<string, { title: string; titleKm: string }> = {
+   733→  identity: { title: "VIN & identity", titleKm: "អត្តសញ្ញាណ និងលេខសំគាល់" },
+   734→  registration: { title: "Registration book", titleKm: "សៀវភៅចុះបញ្ជី" },
+   735→  import: { title: "Import origin", titleKm: "ប្រភពនាំចូល" },
+   736→  mileage: { title: "Odometer & mileage", titleKm: "ចំនួនគីឡូម៉ែត្រ" },
+   737→  price: { title: "Price vs market", titleKm: "តម្លៃធៀបទីផ្សារ" },
+   738→  service: { title: "Service history", titleKm: "ប្រវត្តិថែទាំ" },
+   739→  photos: { title: "Photos vs description", titleKm: "រូបភាពធៀបការប្រកាស" },
+   740→  ownership: { title: "Ownership history", titleKm: "ប្រវត្តិម្ចាស់ភាព" },
+   741→  accident: { title: "Accident records", titleKm: "កំណត់ហេតុគ្រោះថ្នាក់" },
+   742→  listing: {
+   743→    title: "Listing quality & safety",
+   744→    titleKm: "គុណភាពបញ្ជី និងសុវត្ថិភាព",
+   745→  },
+   746→};
+   747→
+   748→const LIMITATIONS = [
+   749→  {
+   750→    en: "This report analyzes listing information and provided documents only. It is not a physical inspection.",
+   751→    km: "របាយការណ៍នេះវិភាគតែពីព័ត៌មានបញ្ជាក់ និងឯកសារដែលផ្ដល់ជូនប៉ុណ្ណោះ។ វាមិនមែនជាការពិនិត្យរថយន្តដោយផ្ទាល់ទេ។",
+   752→  },
+   753→  {
+   754→    en: "'No records found' does not mean 'no accidents' or 'no problems'.",
+   755→    km: "'រកមិនឃើញទិន្នន័យ' មិនមែនមានន័យថា 'គ្មានគ្រោះថ្នាក់' ឬ 'គ្មានបញ្ហា' ទេ។",
+   756→  },
+   757→  {
+   758→    en: "AI observations are probabilistic and may be wrong. Always inspect the vehicle in person.",
+   759→    km: "ការវិភាគដោយ AI អាចមានកំហុស។ សូមពិនិត្យរថយន្តដោយខ្លួនឯងជានិច្ច។",
+   760→  },
+   761→  {
+   762→    en: "Report results reflect the data available at generation time and may become outdated.",
+   763→    km: "លទ្ធផលរបាយការណ៍ឆ្លុះបញ្ចាំងតែទិន្នន័យនៅពេលបង្កើតប៉ុណ្ណោះ ហើយអាចមិនទាន់សម័យនៅពេលក្រោយ។",
+   764→  },
+   765→];
+   766→
+   767→function check(
+   768→  area: keyof typeof CHECK_TITLES,
+   769→  status: ReportCheck["status"],
+   770→  detail: string,
+   771→  detailKm: string,
+   772→  source: string,
+   773→  confidence: number
+   774→): ReportCheck {
+   775→  return { area, ...CHECK_TITLES[area], status, detail, detailKm, source, confidence };
+   776→}
+   777→
+   778→const PRADO_CHECKS: ReportCheck[] = [
+   779→  check(
+   780→    "identity",
+   781→    "NOT_VERIFIED",
+   782→    "Chassis ending T8H229 provided in the listing matches the registration book images, but the vehicle has not been physically inspected by the platform, so identity is not independently confirmed.",
+   783→    "លេខចាប់ចុង T8H229 ក្នុងបញ្ជីលក់ត្រូវគ្នានឹងរូបសៀវភៅចុះបញ្ជី ប៉ុន្តែវេទិកាមិនបានពិនិត្យរថយន្តដោយផ្ទាល់ទេ ដូច្នេះអត្តសញ្ញាណមិនអាចបញ្ជាក់ដោយឯករាជ្យបានទេ។",
+   784→    "Listing data + Registration book (platform-verified)",
+   785→    0.6
+   786→  ),
+   787→  check(
+   788→    "registration",
+   789→    "VERIFIED",
+   790→    "Registration book reviewed and platform-verified. Plate 1KH-8823 and owner details are internally consistent.",
+   791→    "សៀវភៅចុះបញ្ជីត្រូវបានពិនិត្យនិងផ្ទៀងផ្ទាត់ដោយវេទិកា។ ស្លាកលេខ 1KH-8823 និងព័ត៌មានម្ចាស់ត្រូវគ្នា។",
+   792→    "Registration book (platform-verified)",
+   793→    0.95
+   794→  ),
+   795→  check(
+   796→    "import",
+   797→    "VERIFIED",
+   798→    "Import declaration from Dubai was verified and matches the declared import origin.",
+   799→    "លិខិតប្រកាសនាំចូលពីឌូបាយត្រូវបានផ្ទៀងផ្ទាត់ ដែលត្រូវនឹងប្រភពនាំចូលដែលបានប្រកាស។",
+   800→    "Import declaration (platform-verified)",
+   801→    0.9
+   802→  ),
+   803→  check(
+   804→    "mileage",
+   805→    "EVIDENCE_FOUND",
+   806→    "Odometer of 89,000 km is plausible for a 2018 vehicle (about 11,100 km/year) and is consistent with service records covering 2019-2024. No independent odometer database check was possible.",
+   807→    "៨៩,០០០ គ.ម មានភាពសមរម្យសម្រាប់ឡានឆ្នាំ២០១៨ (~១១,១០០ គ.ម/ឆ្នាំ) និងត្រូវគ្នានឹងកំណត់ហេតុសេវាកម្ម ២០១៩–២០២៤ ទោះបីគ្មានការពិនិត្យទិន្នន័យ odometer ដោយឯករាជ្យក៏ដោយ។",
+   808→    "Service records + Listing data",
+   809→    0.8
+   810→  ),
+   811→  check(
+   812→    "price",
+   813→    "EVIDENCE_FOUND",
+   814→    "$52,500 sits within the typical range for 2018 Prado TX diesel units in Phnom Penh ($48,000-$57,000 based on current comparable listings).",
+   815→    "៥២,៥០០ ដុល្លាស្ថិតក្នុងជួរតម្លៃទីផ្សារសម្រាប់ Prado TX ស្លាបប្រេងសាឺតឆ្នាំ២០១៨ នៅភ្នំពេញ (៤៨,០០០–៥៧,០០០ ដុល្លាតាមបញ្ជីប្រៀបធៀប)។",
+   816→    "Market comparables",
+   817→    0.8
+   818→  ),
+   819→  check(
+   820→    "service",
+   821→    "EVIDENCE_FOUND",
+   822→    "Authorized workshop service records covering 2019-2024 were provided and show regular maintenance.",
+   823→    "កំណត់ហេតុសេវាកម្មពីរោងចក្រផ្លូវការឆ្នាំ ២០១៩–២០២៤ ត្រូវបានផ្ដល់ជូន ហើយបង្ហាញការថែទាំទាន់ពេល។",
+   824→    "Service records (provided)",
+   825→    0.8
+   826→  ),
+   827→  check(
+   828→    "photos",
+   829→    "EVIDENCE_FOUND",
+   830→    "Listing photos are consistent with the described condition (new tires, clean interior); no visible mismatch with the declared color or trim.",
+   831→    "រូបភាពត្រូវគ្នានឹងការប្រកាស (កង់ថ្មី ខាងក្នុងស្អាត) ហើយគ្មានភាពមិនត្រូវគ្នាជាមួយពណ៌ ឬកម្រិតបរិក្ខារ។",
+   832→    "Listing photo analysis",
+   833→    0.75
+   834→  ),
+   835→  check(
+   836→    "ownership",
+   837→    "EVIDENCE_FOUND",
+   838→    "Registration book shows 2 registered owners, consistent with the seller's declared ownership count.",
+   839→    "សៀវភៅចុះបញ្ជីបង្ហាញម្ចាស់ចំនួន ២ នាក់ ត្រូវនឹងចំនួនដែលអ្នកលក់ប្រកាស។",
+   840→    "Registration book (platform-verified)",
+   841→    0.85
+   842→  ),
+   843→  check(
+   844→    "accident",
+   845→    "NOT_VERIFIED",
+   846→    "Seller declares no accidents. This is a declaration only — it is not independent verification, and no official accident database was checked.",
+   847→    "អ្នកលក់ប្រកាសថាគ្មានគ្រោះថ្នាក់ចរាចរ។ នេះជាការប្រកាសតែប៉ុណ្ណោះ — មិនមែនជាការផ្ទៀងផ្ទាត់ដោយឯករាជ្យ ហើយគ្មានមូលដ្ឋានទិន្នន័យគ្រោះថ្នាក់ផ្លូវការណ៍ណាមួយត្រូវបានពិនិត្យទេ។",
+   848→    "Seller declaration",
+   849→    0.45
+   850→  ),
+   851→  check(
+   852→    "listing",
+   853→    "EVIDENCE_FOUND",
+   854→    "Listing text is detailed and consistent across fields (year, mileage, documents). No scam-pattern language detected.",
+   855→    "អត្ថបទបញ្ជីលក់មានព័ត៌មានលម្អិត និងត្រូវគ្នារវាងវាលនីមួយៗ (ឆ្នាំ គ.ម ឯកសារ)។ រកមិនឃើញលក្ខណៈសញ្ញានៃការបញ្ឆោតទេ។",
+   856→    "Listing text analysis",
+   857→    0.85
+   858→  ),
+   859→];
+   860→
+   861→const LEXUS_CHECKS: ReportCheck[] = [
+   862→  check(
+   863→    "identity",
+   864→    "NOT_VERIFIED",
+   865→    "Chassis ending 5T4119 from the listing could not be cross-checked against a physical inspection or an independent VIN database.",
+   866→    "លេខចាប់ចុង 5T4119 ពីបញ្ជីលក់មិនអាចផ្ទៀងផ្ទាត់ជាមួយការពិនិត្យដោយផ្ទាល់ ឬមូលដ្ឋានទិន្នន័យ VIN ឯករាជ្យបានទេ។",
+   867→    "Listing data",
+   868→    0.45
+   869→  ),
+   870→  check(
+   871→    "registration",
+   872→    "EVIDENCE_FOUND",
+   873→    "Registration book was provided and reviewed. Plate 2AB-1194 and the 3-owner history look consistent. Provided documents are reviewed but not platform-verified.",
+   874→    "សៀវភៅចុះបញ្ជីត្រូវបានផ្ដល់ជូននិងបានពិនិត្យ។ ស្លាកលេខ 2AB-1194 និងប្រវត្តិម្ចាស់ ៣ នាក់មើលទៅត្រូវគ្នា។ ឯកសារដែលផ្ដល់ជូនត្រូវបានពិនិត្យ ប៉ុន្តែមិនត្រូវបានផ្ទៀងផ្ទាត់ដោយវេទិកាទេ។",
+   875→    "Registration book (provided)",
+   876→    0.7
+   877→  ),
+   878→  check(
+   879→    "import",
+   880→    "EVIDENCE_FOUND",
+   881→    "US import declaration was provided; the declared USA origin is consistent with a left-hand-drive RX 350.",
+   882→    "លិខិតប្រកាសនាំចូលពីអាមេរិកត្រូវបានផ្ដល់ជូន ហើយប្រភព USA ត្រូវគ្នានឹង RX 350 ចង្កឹះឆ្វេង។",
+   883→    "Import declaration (provided)",
+   884→    0.7
+   885→  ),
+   886→  check(
+   887→    "mileage",
+   888→    "NOT_VERIFIED",
+   889→    "118,000 km over about 9 years (~13,100 km/year) is on the higher side for Phnom Penh but plausible. No odometer history database was available to rule out rollbacks.",
+   890→    "១១៨,០០០ គ.ម ក្នុងរយៈពេល ~៩ ឆ្នាំ (~១៣,១០០ គ.ម/ឆ្នាំ) ខ្ពស់បន្តិចសម្រាប់ភ្នំពេញ ប៉ុន្តែមានភាពអាចកើតមាន។ គ្មានទិន្នន័យ odometer ឯករាជ្យដើម្បីបញ្ជាក់ថាគ្មានការកែចំនួនគ.មទេ។",
+   891→    "Listing data",
+   892→    0.5
+   893→  ),
+   894→  check(
+   895→    "price",
+   896→    "EVIDENCE_FOUND",
+   897→    "$34,900 is within the typical market band for 2015 RX 350 imports in Phnom Penh ($32,000-$38,000).",
+   898→    "៣៤,៩០០ ដុល្លាស្ថិតក្នុងជួរទីផ្សារសម្រាប់ RX 350 ឆ្នាំ២០១៥ នៅភ្នំពេញ (៣២,០០០–៣៨,០០០ ដុល្លា)។",
+   899→    "Market comparables",
+   900→    0.75
+   901→  ),
+   902→  check(
+   903→    "service",
+   904→    "NO_DATA",
+   905→    "No service records were provided, so maintenance history could not be assessed. Missing records are common but reduce transparency.",
+   906→    "គ្មានកំណត់ហេតុសេវាកម្មត្រូវបានផ្ដល់ជូន ដូច្នេះប្រវត្តិថែទាំមិនអាចវាយតម្លៃបានទេ។ ការបាត់បង់កំណត់ហេតុគឺធម្មតា ប៉ុន្តែកាត់បន្ថយភាពច្បាស់លាស់។",
+   907→    "No documents provided",
+   908→    0.3
+   909→  ),
+   910→  check(
+   911→    "photos",
+   912→    "EVIDENCE_FOUND",
+   913→    "Photos show the described leather and navigation in good condition; the rear bumper appears repaired, consistent with the declared minor damage.",
+   914→    "រូបភាពបង្ហាញស្បែក និងប្រព័ន្ធនាវាចរណ៍ក្នុងស្ថានភាពល្អដូចការប្រកាស។ ស្ពានក្រោយដែលបានជួសជុលត្រូវគ្នានឹងការប្រកាស។",
+   915→    "Listing photo analysis",
+   916→    0.65
+   917→  ),
+   918→  check(
+   919→    "ownership",
+   920→    "EVIDENCE_FOUND",
+   921→    "Registration book indicates 3 owners, matching the declared ownership count of 3.",
+   922→    "សៀវភៅចុះបញ្ជីបង្ហាញម្ចាស់ ៣ នាក់ ត្រូវនឹងចំនួនដែលបានប្រកាស។",
+   923→    "Registration book (provided)",
+   924→    0.75
+   925→  ),
+   926→  check(
+   927→    "accident",
+   928→    "EVIDENCE_FOUND",
+   929→    "Seller declares minor rear-bumper damage; ask for repair documentation. Photos are consistent with a repaired bumper, but severity cannot be confirmed from the listing alone.",
+   930→    "អ្នកលក់ប្រកាសថាមានគ្រោះថ្នាក់តូចនៅស្ពានក្រោយ។ សូមសុំឯកសារជួសជុល។ រូបភាពត្រូវគ្នានឹងស្ពានដែលបានជួសជុល ប៉ុន្តែកម្រិតខាតបង់មិនអាចបញ្ជាក់ពីបញ្ជីតែមួយបានទេ។",
+   931→    "Seller declaration + Listing photos",
+   932→    0.6
+   933→  ),
+   934→  check(
+   935→    "listing",
+   936→    "EVIDENCE_FOUND",
+   937→    "Listing is complete and honest about prior damage, a positive trust signal. No scam-pattern language detected.",
+   938→    "បញ្ជីលក់ពេញលេញ និងត្រង់នៃការប្រកាសគ្រោះថ្នាក់ពីមុន ដែលជាសញ្ញាវិជ្ជមាន។ រកមិនឃើញលក្ខណៈសញ្ញាបញ្ឆោតទេ។",
+   939→    "Listing text analysis",
+   940→    0.75
+   941→  ),
+   942→];
+   943→
+   944→async function seedReports() {
+   945→  const pradoReport = await prisma.vehicleHistoryReport.create({
+   946→    data: {
+   947→      vehicleId: "veh_prado_2018",
+   948→      checksJson: JSON.stringify(PRADO_CHECKS),
+   949→      overallConfidence: 78,
+   950→      summaryEn:
+   951→        "This 2018 Prado TX presents well: the registration book and Dubai import declaration are platform-verified, and service records from 2019-2024 support the 89,000 km odometer. The seller declares no accidents, but that remains an unverified declaration. Overall the listing is consistent and transparent for its class.",
+   952→      summaryKm:
+   953→        "ឡាន Prado TX ឆ្នាំ២០១៨ នេះមានលក្ខណៈល្អ៖ សៀវភៅចុះបញ្ជី និងលិខិតប្រកាសនាំចូលពីឌូបាយ ត្រូវបានផ្ទៀងផ្ទាត់ដោយវេទិកាហើយ ហើយកំណត់ហេតុសេវាកម្មឆ្នាំ២០១៩–២០២៤ គាំទ្រចំនួន ៨៩,០០០ គ.ម។ អ្នកលក់ប្រកាសថាគ្មានគ្រោះថ្នាក់ចរាចរ ប៉ុន្តែការប្រកាសនេះមិនទាន់បានផ្ទៀងផ្ទាត់ដោយឯករាជ្យទេ។ ជារួម បញ្ជីលក់នេះមានភាពទៀងទាត់ និងគួរឱ្យទុកចិត្ត។",
+   954→      limitationsJson: JSON.stringify(LIMITATIONS),
+   955→      status: "COMPLETE",
+   956→      createdAt: daysAgo(1),
+   957→    },
+   958→  });
+   959→
+   960→  const lexusReport = await prisma.vehicleHistoryReport.create({
+   961→    data: {
+   962→      vehicleId: "veh_lexus_rx350",
+   963→      checksJson: JSON.stringify(LEXUS_CHECKS),
+   964→      overallConfidence: 62,
+   965→      summaryEn:
+   966→        "This 2015 RX 350 is honestly listed: the seller openly declares minor rear-bumper damage and provides registration and import documents that match the declared 3-owner history. However, the mileage could not be independently verified and no service records exist. A pre-purchase inspection with a trusted mechanic is strongly recommended.",
+   967→      summaryKm:
+   968→        "ឡាន RX 350 ឆ្នាំ២០១៥ នេះត្រូវបានប្រកាសដោយត្រង់៖ អ្នកលក់ប្រកាសចំហថាមានគ្រោះថ្នាក់តូចនៅស្ពានក្រោយ ហើយផ្ដល់ឯកសារចុះបញ្ជី និងនាំចូល ដែលត្រូវគ្នានឹងម្ចាស់ចំនួន ៣ នាក់។ ទោះជាយ៉ាងណា ចំនួនគ.មមិនអាចផ្ទៀងផ្ទាត់ដោយឯករាជ្យបានទេ ហើយគ្មានកំណត់ហេតុសេវាកម្មទេ។ សូមពិនិត្យឡានជាមួយគ្រូបង្គោលមុនពេលទិញ។",
+   969→      limitationsJson: JSON.stringify(LIMITATIONS),
+   970→      status: "COMPLETE",
+   971→      createdAt: daysAgo(1),
+   972→    },
+   973→  });
+   974→
+   975→  return { pradoReport, lexusReport };
+   976→}
+   977→
+   978→// ---------------------------------------------------------------------------
+   979→// Engagement: conversation, messages, favorites, audit log
+   980→// ---------------------------------------------------------------------------
+   981→
+   982→async function seedEngagement(pradoReportId: string) {
+   983→  const convCreated = hoursAgo(47);
+   984→  await prisma.conversation.create({
+   985→    data: {
+   986→      id: "conv_demo_1",
+   987→      vehicleId: "veh_lexus_rx350",
+   988→      buyerId: "usr_demo_buyer",
+   989→      createdAt: convCreated,
+   990→    },
+   991→  });
+   992→
+   993→  const sysAt = hoursAgo(47);
+   994→  const buyerAt = hoursAgo(26);
+   995→  const sellerAt = hoursAgo(20);
+   996→
+   997→  await prisma.message.createMany({
+   998→    data: [
+   999→      {
+  1000→        conversationId: "conv_demo_1",
+  1001→        senderId: null,
+  1002→        isSystem: true,
+  1003→        body: "គន្លឹះសុវត្ថិភាព: កុំបង់ប្រាក់ដុនមុនពេលមើលឡាននិងឯកសារ។ ជួបកន្លែងមានគេច្រើន ហើយនាំគ្រូបង្គោលមកពិនិត្យជាមួយ។ / Safety tip: Never pay a deposit before seeing the car and documents. Meet in a public place and bring a trusted mechanic.",
+  1004→        createdAt: sysAt,
+  1005→      },
+  1006→      {
+  1007→        conversationId: "conv_demo_1",
+  1008→        senderId: "usr_demo_buyer",
+  1009→        isSystem: false,
+  1010→        body: "សួស្តី ឡាននៅមានទេ? ចង់ដឹងថាអាចមកមើលថ្ងៃសៅរ៍បានទេ? / Hello, is the car still available? Can I come see it Saturday?",
+  1011→        createdAt: buyerAt,
+  1012→      },
+  1013→      {
+  1014→        conversationId: "conv_demo_1",
+  1015→        senderId: "usr_dealer_sokha",
+  1016→        isSystem: false,
+  1017→        body: "សួស្តី! ឡាននៅមាន។ សូមកោះមកមើលនៅផ្លូវព្រះនុហុង ៨ព្រឹក ដល់ ៦ល្ងាច។ / Hello! Yes, still available. You're welcome to view it on Preah Norodom Blvd, 8am–6pm any day.",
+  1018→        createdAt: sellerAt,
+  1019→      },
+  1020→    ],
+  1021→  });
+  1022→
+  1023→  await prisma.conversation.update({
+  1024→    where: { id: "conv_demo_1" },
+  1025→    data: { updatedAt: sellerAt },
+  1026→  });
+  1027→
+  1028→  await prisma.favorite.createMany({
+  1029→    data: [
+  1030→      {
+  1031→        userId: "usr_demo_buyer",
+  1032→        vehicleId: "veh_prado_2018",
+  1033→        createdAt: daysAgo(1),
+  1034→      },
+  1035→      {
+  1036→        userId: "usr_demo_buyer",
+  1037→        vehicleId: "veh_vellfire_2017",
+  1038→        createdAt: daysAgo(3),
+  1039→      },
+  1040→    ],
+  1041→  });
+  1042→
+  1043→  await prisma.auditLog.createMany({
+  1044→    data: [
+  1045→      {
+  1046→        actorId: "usr_dealer_sokha",
+  1047→        action: "LISTING_PUBLISHED",
+  1048→        entity: "Vehicle",
+  1049→        entityId: "veh_prado_2018",
+  1050→        metaJson: JSON.stringify({
+  1051→          make: "Toyota",
+  1052→          model: "Land Cruiser Prado",
+  1053→          year: 2018,
+  1054→          priceUsd: 52500,
+  1055→        }),
+  1056→        createdAt: daysAgo(2),
+  1057→      },
+  1058→      {
+  1059→        actorId: null,
+  1060→        action: "REPORT_GENERATED",
+  1061→        entity: "VehicleHistoryReport",
+  1062→        entityId: pradoReportId,
+  1063→        metaJson: JSON.stringify({
+  1064→          vehicleId: "veh_prado_2018",
+  1065→          overallConfidence: 78,
+  1066→        }),
+  1067→        createdAt: daysAgo(1),
+  1068→      },
+  1069→      {
+  1070→        actorId: "usr_admin",
+  1071→        action: "SEED_DATABASE",
+  1072→        entity: "system",
+  1073→        entityId: null,
+  1074→        metaJson: JSON.stringify({
+  1075→          note: "Initial KhLan demo seed",
+  1076→          users: 6,
+  1077→          vehicles: 14,
+  1078→          reports: 2,
+  1079→        }),
+  1080→      },
+  1081→    ],
+  1082→  });
+  1083→}
+  1084→
+  1085→// ---------------------------------------------------------------------------
+  1086→// Main
+  1087→// ---------------------------------------------------------------------------
+  1088→
+  1089→async function main() {
+  1090→  console.log("KhLan seed: wiping existing data...");
+  1091→  // Delete children before parents to respect FK constraints.
+  1092→  await prisma.auditLog.deleteMany();
+  1093→  await prisma.message.deleteMany();
+  1094→  await prisma.conversation.deleteMany();
+  1095→  await prisma.favorite.deleteMany();
+  1096→  await prisma.vehicleHistoryReport.deleteMany();
+  1097→  await prisma.vehicleDocument.deleteMany();
+  1098→  await prisma.vehicleImage.deleteMany();
+  1099→  await prisma.vehicle.deleteMany();
+  1100→  await prisma.sellerProfile.deleteMany();
+  1101→  await prisma.reportedContent.deleteMany();
+  1102→  await prisma.user.deleteMany();
+  1103→
+  1104→  console.log("Seeding users & seller profiles...");
+  1105→  await seedUsers();
+  1106→
+  1107→  console.log("Seeding vehicles (14) with images & documents...");
+  1108→  await seedVehicles();
+  1109→
+  1110→  console.log("Seeding pre-generated AI history reports (2)...");
+  1111→  const { pradoReport } = await seedReports();
+  1112→
+  1113→  console.log("Seeding conversation, favorites & audit log...");
+  1114→  await seedEngagement(pradoReport.id);
+  1115→
+  1116→  const counts = {
+  1117→    users: await prisma.user.count(),
+  1118→    sellerProfiles: await prisma.sellerProfile.count(),
+  1119→    vehicles: await prisma.vehicle.count(),
+  1120→    vehicleImages: await prisma.vehicleImage.count(),
+  1121→    vehicleDocuments: await prisma.vehicleDocument.count(),
+  1122→    reports: await prisma.vehicleHistoryReport.count(),
+  1123→    favorites: await prisma.favorite.count(),
+  1124→    conversations: await prisma.conversation.count(),
+  1125→    messages: await prisma.message.count(),
+  1126→    auditLogs: await prisma.auditLog.count(),
+  1127→  };
+  1128→  console.log("Seed complete:", counts);
+  1129→}
+  1130→
+  1131→main()
+  1132→  .then(async () => {
+  1133→    await prisma.$disconnect();
+  1134→  })
+  1135→  .catch(async (e) => {
+  1136→    console.error(e);
+  1137→    await prisma.$disconnect();
+  1138→    process.exit(1);
+  1139→  });
+  1140→

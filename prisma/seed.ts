@@ -27,7 +27,20 @@ const prisma = new PrismaClient();
 const DAY = 24 * 60 * 60 * 1000;
 const HOUR = 60 * 60 * 1000;
 const daysAgo = (d: number) => new Date(Date.now() - d * DAY);
+const daysFromNow = (d: number) => new Date(Date.now() + d * DAY);
 const hoursAgo = (h: number) => new Date(Date.now() - h * HOUR);
+// N days from now at a fixed local hour (for appointment demo slots, e.g. 10:00).
+const daysFromNowAt = (d: number, hour: number) => {
+  const dt = daysFromNow(d);
+  dt.setHours(hour, 0, 0, 0);
+  return dt;
+};
+
+// Dealer seller users own tenant-scoped vehicles; private sellers stay tenantId null.
+const TENANT_BY_SELLER: Record<string, string> = {
+  usr_dealer_sokha: "tenant_sokha",
+  usr_dealer_ppauto: "tenant_ppauto",
+};
 
 const IMG = seedImages as Record<string, string[]>;
 
@@ -75,18 +88,35 @@ async function seedUsers() {
       {
         id: "usr_admin",
         phone: "+85512998009",
-        name: "Admin",
-        role: "ADMIN",
+        name: "Nita Meng",
+        role: "SUPER_ADMIN",
+      },
+      {
+        id: "usr_staff_chan",
+        phone: "+85511223344",
+        name: "Chan Rithy",
+        role: "DEALER",
+        phoneVerified: true,
+      },
+      {
+        id: "usr_staff_sophea",
+        phone: "+85511556677",
+        name: "Sophea Tep",
+        role: "DEALER",
+        phoneVerified: true,
       },
     ],
   });
+}
 
+async function seedSellerProfiles() {
   await prisma.sellerProfile.createMany({
     data: [
       {
         userId: "usr_dealer_sokha",
         type: "DEALER",
         shopName: "Sokha Motors",
+        tenantId: "tenant_sokha",
         city: "Phnom Penh",
         verified: true,
         verification: "VERIFIED",
@@ -104,6 +134,7 @@ async function seedUsers() {
         userId: "usr_dealer_ppauto",
         type: "DEALER",
         shopName: "PP Auto Trust",
+        tenantId: "tenant_ppauto",
         city: "Phnom Penh",
         verified: true,
         verification: "VERIFIED",
@@ -135,6 +166,191 @@ async function seedUsers() {
         ratingAvg: 3.9,
         ratingCount: 4,
         memberSince: new Date("2024-09-22T00:00:00Z"),
+      },
+    ],
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Tenants (multi-tenant dealership orgs), members & subscriptions
+// ---------------------------------------------------------------------------
+
+async function seedTenants() {
+  await prisma.tenant.createMany({
+    data: [
+      {
+        id: "tenant_sokha",
+        name: "Sokha Motors Group",
+        slug: "sokha-motors",
+        city: "Phnom Penh",
+        address: "St. 271, Toul Kork",
+        phone: "+85511777888",
+        telegram: "@sokhamotors",
+        verified: true,
+        verification: "VERIFIED",
+        status: "ACTIVE",
+        bio: "Sokha Motors Group is a trusted Phnom Penh dealership group with two showrooms, offering fully inspected and documented vehicles backed by transparent AI history reports.",
+        bioKm:
+          "ក្រុមហ៊ុន Sokha Motors Group គឺជាក្រុមអាជីវកម្មលក់ឡានដែលមានទំនុកចិត្តនៅភ្នំពេញ មានសាលបង្ហាញ ២ ដែលលក់ឡានបានពិនិត្យពេញលេញ និងមានរបាយការណ៍ AI ច្បាស់លាស់។",
+      },
+      {
+        id: "tenant_ppauto",
+        name: "PP Auto Trust",
+        slug: "pp-auto-trust",
+        city: "Phnom Penh",
+        address: "Russian Blvd 110",
+        phone: "+85512444555",
+        verified: false,
+        verification: "PENDING",
+        status: "ACTIVE",
+        bio: "Family-run dealership on Russian Blvd focusing on well-maintained family SUVs and crossovers.",
+        bioKm: "ក្រុមហ៊ុនលក់ឡានគ្រួសារនៅផ្លូវរុស្ស៊ី ផ្តោតលើឡានគ្រួសារដែលថែរក្សាល្អ។",
+      },
+    ],
+  });
+
+  await prisma.tenantMember.createMany({
+    data: [
+      { tenantId: "tenant_sokha", userId: "usr_dealer_sokha", role: "OWNER" },
+      { tenantId: "tenant_sokha", userId: "usr_staff_chan", role: "SALES_STAFF" },
+      {
+        tenantId: "tenant_sokha",
+        userId: "usr_staff_sophea",
+        role: "INVENTORY_MANAGER",
+      },
+      { tenantId: "tenant_ppauto", userId: "usr_dealer_ppauto", role: "OWNER" },
+    ],
+  });
+
+  // Plans/limits match the PlanDTO tier contract in src/lib/dashboard-types.ts.
+  await prisma.subscription.createMany({
+    data: [
+      {
+        tenantId: "tenant_sokha",
+        plan: "PRO",
+        status: "ACTIVE",
+        billingCycle: "MONTHLY",
+        priceUsd: 149,
+        listingsLimit: 50,
+        featuredLimit: 10,
+        seats: 8,
+        startedAt: daysAgo(45),
+        currentPeriodEnd: daysFromNow(15),
+      },
+      {
+        tenantId: "tenant_ppauto",
+        plan: "BASIC",
+        status: "ACTIVE",
+        billingCycle: "MONTHLY",
+        priceUsd: 49,
+        listingsLimit: 15,
+        featuredLimit: 3,
+        seats: 3,
+        startedAt: daysAgo(20),
+        currentPeriodEnd: daysFromNow(10),
+      },
+    ],
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Dashboard demo data: saved searches, appointments, platform settings
+// ---------------------------------------------------------------------------
+
+async function seedDashboardData() {
+  // Customer dashboard — saved searches for the demo buyer.
+  await prisma.savedSearch.createMany({
+    data: [
+      {
+        userId: "usr_demo_buyer",
+        name: "SUVs under $30k",
+        queryJson: JSON.stringify({ bodyType: "SUV", priceMax: 30000, sort: "newest" }),
+        alertsEnabled: true,
+      },
+      {
+        userId: "usr_demo_buyer",
+        name: "Toyota latest",
+        queryJson: JSON.stringify({ make: "Toyota", sort: "newest" }),
+        alertsEnabled: false,
+      },
+    ],
+  });
+
+  // Buyer appointments — sellerId/tenantId mirror the vehicle's owner.
+  await prisma.appointment.createMany({
+    data: [
+      {
+        id: "apt_demo_prado",
+        vehicleId: "veh_prado_2018",
+        buyerId: "usr_demo_buyer",
+        sellerId: "usr_dealer_sokha",
+        tenantId: "tenant_sokha",
+        scheduledAt: daysFromNowAt(3, 10),
+        status: "REQUESTED",
+        notes: "Want to inspect and test drive on weekend.",
+        createdAt: daysAgo(1),
+      },
+      {
+        id: "apt_demo_lexus",
+        vehicleId: "veh_lexus_rx350",
+        buyerId: "usr_demo_buyer",
+        sellerId: "usr_dealer_sokha",
+        tenantId: "tenant_sokha",
+        scheduledAt: daysFromNowAt(2, 14),
+        status: "CONFIRMED",
+        notes: "Please prepare service records.",
+        createdAt: daysAgo(1),
+      },
+      {
+        id: "apt_demo_crv",
+        vehicleId: "veh_crv_2019",
+        buyerId: "usr_demo_buyer",
+        sellerId: "usr_dealer_ppauto",
+        tenantId: "tenant_ppauto",
+        scheduledAt: daysAgo(6),
+        status: "COMPLETED",
+        notes: null,
+        createdAt: daysAgo(8),
+      },
+    ],
+  });
+
+  // Platform settings (super admin dashboard) — valueJson stores the raw JSON value.
+  await prisma.platformSetting.createMany({
+    data: [
+      { key: "commissionPct", valueJson: JSON.stringify(2.5) },
+      { key: "featuredListingPriceUsd", valueJson: JSON.stringify(25) },
+      { key: "autoApproveListings", valueJson: JSON.stringify(false) },
+      { key: "maintenanceMode", valueJson: JSON.stringify(false) },
+    ],
+  });
+
+  // Tenant lifecycle audit entries.
+  const sokhaSub = await prisma.subscription.findUnique({
+    where: { tenantId: "tenant_sokha" },
+  });
+  await prisma.auditLog.createMany({
+    data: [
+      {
+        actorId: "usr_dealer_sokha",
+        action: "TENANT_CREATED",
+        entity: "Tenant",
+        entityId: "tenant_sokha",
+        metaJson: JSON.stringify({ name: "Sokha Motors Group", slug: "sokha-motors" }),
+        createdAt: daysAgo(46),
+      },
+      {
+        actorId: "usr_dealer_sokha",
+        action: "SUBSCRIPTION_STARTED",
+        entity: "Subscription",
+        entityId: sokhaSub?.id ?? null,
+        metaJson: JSON.stringify({
+          plan: "PRO",
+          billingCycle: "MONTHLY",
+          priceUsd: 149,
+          tenantId: "tenant_sokha",
+        }),
+        createdAt: daysAgo(45),
       },
     ],
   });
@@ -681,6 +897,7 @@ async function seedVehicles() {
       data: {
         id: v.id,
         sellerId: v.sellerId,
+        tenantId: TENANT_BY_SELLER[v.sellerId] ?? null,
         make: v.make,
         model: v.model,
         variant: v.variant ?? null,
@@ -1073,7 +1290,8 @@ async function seedEngagement(pradoReportId: string) {
         entityId: null,
         metaJson: JSON.stringify({
           note: "Initial KhLan demo seed",
-          users: 6,
+          users: 8,
+          tenants: 2,
           vehicles: 14,
           reports: 2,
         }),
@@ -1089,20 +1307,32 @@ async function seedEngagement(pradoReportId: string) {
 async function main() {
   console.log("KhLan seed: wiping existing data...");
   // Delete children before parents to respect FK constraints.
+  await prisma.appointment.deleteMany();
   await prisma.auditLog.deleteMany();
   await prisma.message.deleteMany();
   await prisma.conversation.deleteMany();
   await prisma.favorite.deleteMany();
+  await prisma.savedSearch.deleteMany();
   await prisma.vehicleHistoryReport.deleteMany();
   await prisma.vehicleDocument.deleteMany();
   await prisma.vehicleImage.deleteMany();
+  await prisma.tenantMember.deleteMany();
+  await prisma.subscription.deleteMany();
   await prisma.vehicle.deleteMany();
+  await prisma.tenant.deleteMany();
   await prisma.sellerProfile.deleteMany();
   await prisma.reportedContent.deleteMany();
+  await prisma.platformSetting.deleteMany();
   await prisma.user.deleteMany();
 
-  console.log("Seeding users & seller profiles...");
+  console.log("Seeding users (8: buyer, 2 dealers, 2 private sellers, super admin, 2 staff)...");
   await seedUsers();
+
+  console.log("Seeding tenants (2) with members & subscriptions...");
+  await seedTenants();
+
+  console.log("Seeding seller profiles (dealer profiles linked to tenants)...");
+  await seedSellerProfiles();
 
   console.log("Seeding vehicles (14) with images & documents...");
   await seedVehicles();
@@ -1113,16 +1343,25 @@ async function main() {
   console.log("Seeding conversation, favorites & audit log...");
   await seedEngagement(pradoReport.id);
 
+  console.log("Seeding dashboard demo data (saved searches, appointments, platform settings)...");
+  await seedDashboardData();
+
   const counts = {
     users: await prisma.user.count(),
     sellerProfiles: await prisma.sellerProfile.count(),
+    tenants: await prisma.tenant.count(),
+    tenantMembers: await prisma.tenantMember.count(),
+    subscriptions: await prisma.subscription.count(),
     vehicles: await prisma.vehicle.count(),
     vehicleImages: await prisma.vehicleImage.count(),
     vehicleDocuments: await prisma.vehicleDocument.count(),
     reports: await prisma.vehicleHistoryReport.count(),
     favorites: await prisma.favorite.count(),
+    savedSearches: await prisma.savedSearch.count(),
+    appointments: await prisma.appointment.count(),
     conversations: await prisma.conversation.count(),
     messages: await prisma.message.count(),
+    platformSettings: await prisma.platformSetting.count(),
     auditLogs: await prisma.auditLog.count(),
   };
   console.log("Seed complete:", counts);

@@ -1,14 +1,14 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { db } from "@/lib/db";
-import { getDemoUser } from "@/lib/session";
+import { getCurrentUser } from "@/lib/session";
 import { toCardDTO, vehicleCardInclude } from "@/lib/api/mappers";
 
 export const dynamic = "force-dynamic";
 
 export async function GET() {
   try {
-    const user = await getDemoUser();
+    const user = await getCurrentUser();
     const rows = await db.favorite.findMany({
       where: { userId: user.id },
       orderBy: { createdAt: "desc" },
@@ -45,7 +45,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "vehicleId is required" }, { status: 400 });
     }
 
-    const user = await getDemoUser();
+    const user = await getCurrentUser();
     const vehicle = await db.vehicle.findUnique({ where: { id: parsed.data.vehicleId } });
     if (!vehicle) {
       return NextResponse.json({ error: "Vehicle not found" }, { status: 404 });
@@ -71,7 +71,7 @@ export async function DELETE(req: Request) {
       return NextResponse.json({ error: "vehicleId query param is required" }, { status: 400 });
     }
 
-    const user = await getDemoUser();
+    const user = await getCurrentUser();
     await db.favorite.deleteMany({ where: { userId: user.id, vehicleId } });
 
     return NextResponse.json({ ok: true, favorited: false });

@@ -106,3 +106,69 @@ Work Log:
 Stage Summary:
 - Hydration false-positives from browser extensions are now suppressed at <body> level only (does not mask real hydration errors deeper in the tree)
 - No changes to app logic; layout.tsx is the only file touched
+
+---
+Task ID: 5-a
+Agent: full-stack-developer (seed extension)
+Task: Extend prisma/seed.ts with multi-tenant dashboard demo data (tenants, members, subscriptions, saved searches, appointments, platform settings)
+
+Work Log:
+- Read worklog.md (2-b, 3), prisma/schema.prisma (new models), src/lib/dashboard-types.ts (PlanDTO/SubscriptionDTO/AppointmentDTO contracts), prisma/seed.ts.
+- Regenerated Prisma client (`bunx prisma generate`) to pick up new models; schema had already been pushed by orchestrator.
+- Users: usr_admin role ADMIN→"SUPER_ADMIN", name→"Nita Meng"; added usr_staff_chan (+85511223344, Chan Rithy, DEALER, phoneVerified) and usr_staff_sophea (+85511556677, Sophea Tep, DEALER, phoneVerified) — no SellerProfiles for staff (staff don't sell personally).
+- Split sellerProfile.createMany out of seedUsers into seedSellerProfiles so dealer profiles can reference tenants: usr_dealer_sokha profile → tenant_sokha, usr_dealer_ppauto profile → tenant_ppauto; private profiles stay tenantId null. All other profile data unchanged.
+- seedTenants(): tenant_sokha "Sokha Motors Group" (slug sokha-motors, St. 271 Toul Kork, +85511777888, @sokhamotors, VERIFIED/verified, ACTIVE, bilingual bio) and tenant_ppauto "PP Auto Trust" (slug pp-auto-trust, Russian Blvd 110, +85512444555, PENDING/unverified, ACTIVE, short bilingual bio). TenantMembers: sokha OWNER + usr_staff_chan SALES_STAFF + usr_staff_sophea INVENTORY_MANAGER @ tenant_sokha; usr_dealer_ppauto OWNER @ tenant_ppauto. Subscriptions per PlanDTO tiers: tenant_sokha PRO MONTHLY $149, 50 listings, 10 featured, 8 seats, started 45d ago, period ends +15d; tenant_ppauto BASIC MONTHLY $49, 15/3/3, started 20d ago, ends +10d.
+- Vehicles: seedVehicles now sets tenantId via TENANT_BY_SELLER map (usr_dealer_sokha→tenant_sokha 5 vehicles, usr_dealer_ppauto→tenant_ppauto 4 vehicles; 5 private vehicles stay null). Vehicle data rows untouched.
+- seedDashboardData(): 2 SavedSearches for usr_demo_buyer ("SUVs under $30k" alerts on, queryJson {bodyType:SUV,priceMax:30000,sort:newest}; "Toyota latest" alerts off, {make:Toyota,sort:newest}); 3 Appointments (REQUESTED veh_prado_2018 +3d @10:00 notes "Want to inspect and test drive on weekend."; CONFIRMED veh_lexus_rx350 +2d @14:00 notes "Please prepare service records."; COMPLETED veh_crv_2019 6d ago notes null) each with buyerId usr_demo_buyer, sellerId/tenantId mirroring the vehicle's owner; PlatformSettings commissionPct "2.5", featuredListingPriceUsd "25", autoApproveListings "false", maintenanceMode "false" (valueJson = JSON.stringify of raw value).
+- Audit logs: +2 entries — TENANT_CREATED (Tenant/tenant_sokha, actor usr_dealer_sokha, 46d ago) and SUBSCRIPTION_STARTED (entity Subscription with the real subscription id as entityId, metaJson plan PRO + billingCycle/priceUsd/tenantId, 45d ago). Updated SEED_DATABASE meta to users 8 / tenants 2 (was users 6).
+- FK-safe wipe order extended: appointments → auditLog → messages → conversations → favorites → savedSearches → reports → documents → images → tenantMembers → subscriptions → vehicles → tenants → sellerProfiles → reportedContent → platformSettings → users.
+- Ran `bun prisma/seed.ts` twice (idempotency confirmed) + throwaway verify script (37 assertions: ids, fields, tenant links, subscription windows, appointment hours, settings values, existing rows intact 14/55/34/2/2/1/3) — ALL PASSED; script deleted after verification.
+- `bun run lint`: prisma/seed.ts clean. NOTE: one PRE-EXISTING error in src/lib/dashboard-types.ts:177 (empty interface TenantVehicleRowDTO extends VehicleCardDTO) — not touched per task rules (src/ off-limits); dashboard agents should drop the empty interface or add a member.
+
+Stage Summary:
+- Full reseed now yields: users 8, sellerProfiles 4, tenants 2, tenantMembers 4, subscriptions 2, vehicles 14 (5 sokha / 4 ppauto tenant-scoped), images 55, docs 34, reports 2, favorites 2, savedSearches 2, appointments 3, conversations 1, messages 3, platformSettings 4, auditLogs 5.
+- New deterministic ids: tenant_sokha, tenant_ppauto, usr_staff_chan, usr_staff_sophea (+ appointments apt_demo_prado / apt_demo_lexus / apt_demo_crv for stable PATCH testing). MRR demo value: $149 + $49 = $198.
+- Deviations: (1) sellerProfile creation split into its own function (same rows + tenantId); (2) fixed ids also given to the 3 appointments; (3) SEED_DATABASE audit meta counts updated to 8 users / 2 tenants; (4) SUBSCRIPTION_STARTED entityId = actual subscription cuid (fetched post-insert).
+- Dashboard agents (5-b/5-c): use /api/tenant/* with usr_dealer_sokha (OWNER, PRO plan) or usr_staff_* for role-based UI; usr_admin is the SUPER_ADMIN; usr_demo_buyer owns saved searches + appointments.
+
+---
+Task ID: 5-b
+Agent: full-stack-developer (APIs) — completed by main orchestrator after tool-timeout
+Task: Session/persona APIs + Super Admin / Tenant / Account dashboard APIs + advanced vehicle filters
+
+Work Log:
+- NOTE: agent's final report + worklog append were lost to a Task-tool timeout, but file work was ~complete. Orchestrator audited every route file, fixed one truncated artifact, and verified everything below via curl.
+- src/lib/session.ts: added getCurrentUser() (cookie `khlan_persona` → validated against 8 ALLOWED_PERSONA_IDS → fallback getDemoUser) + GET/POST /api/session (SessionDTO with bilingual PersonaDTO list; POST sets 1y cookie, 400 on unknown id).
+- Migrated buyer-flow routes (favorites, conversations, conversations/[id], messages, reports/abuse) from getDemoUser to getCurrentUser. Conversation access relaxed: buyer OR ACTIVE member of the vehicle's tenant; canned seller auto-reply only for buyer senders.
+- src/lib/api/guards.ts: HttpError + toErrorResponse + requireAdmin() + requireTenantMember() + canWriteTenant/canManageTenant + parseMetaJson. src/lib/api/plans.ts: FREE/BASIC/PRO/ENTERPRISE catalog (0/49/149/399 monthly; yearly = 10×; bilingual features).
+- Admin: overview (KPIs incl mrrUsd=198, 6-week signupTrend, topTenants, recentAudit), tenants list + PATCH (verification/status + audit), vehicles queue (status/q filters, sellerName) + PATCH (approve/reject/feature + audit), users list + PATCH role (+audit), ai stats (per-check statusBreakdown across checksJson), settings GET/PUT (PlatformSetting KV), audit list.
+- Tenant: me (tenant+myRole+subscription+members+4 plans+8 stats), profile PATCH, inventory GET (all statuses)/PATCH (status/price/featured with subscription featuredLimit enforcement), leads, appointments GET/PATCH, staff GET/POST (phone upsert, cross-tenant rejection, owner protection)/PATCH.
+- Account: overview (counts + recentReports), saved-searches GET/POST(≤20)/DELETE/run (shared filter builder), appointments GET/POST (future date, PUBLISHED vehicles, duplicate-active guard)/PATCH cancel.
+- src/lib/api/vehicle-filters.ts: shared where-builder; GET /api/vehicles extended backward-compatibly with multi-value fuel/transmission/drivetrain/bodyType (CSV), condition, featured, hasReport, mileageMin, yearMax.
+- Orchestrator fixes: recreated truncated src/app/api/tenant/staff/[memberId]/route.ts (PATCH: role/status, blocks OWNER edits, audit logs) after the agent's write was cut off mid-file.
+- curl-verified: persona switch (admin sees admin APIs; buyer 403), overview mrrUsd 198, tenants (PRO 149 VERIFIED / BASIC 49 PENDING), pending queue (CX-5), ai avgConfidence 70, settings PUT, tenant me/inventory(5)/leads(1)/appointments(2)/staff, subscription plans, account overview, saved-search run (SUV<30k → 2), appointments POST guard, vehicles: fuel=DIESEL,HYBRID→6, hasReport→2, featured→4, AWD/4WD+price+year combo→1.
+- Cleaned test residue: deleted 2 test users ("Test Staff", "PP Owner") + memberships; DB back to seeded state (users 8).
+
+Stage Summary:
+- 30 new endpoints live: /api/session (GET/POST), /api/admin/* (overview, tenants, tenants/[id], vehicles, vehicles/[id], users, users/[id], ai, settings, audit), /api/tenant/* (me, profile, inventory, inventory/[id], leads, appointments, appointments/[id], staff, staff/[memberId], subscription GET/POST), /api/account/* (overview, saved-searches CRUD+run, appointments CRUD).
+- Enhanced /api/vehicles fully backward compatible. Role matrix enforced server-side (SALES_STAFF read-only; INVENTORY_MANAGER no staff/subscription; OWNER/MANAGER full; admin-only platform APIs).
+
+---
+Task ID: 5-c
+Agent: full-stack-developer (frontend) — completed by main orchestrator after tool-timeout
+Task: Role-aware dashboard SPA (Admin/Dealer/Customer), persona switcher, advanced filters, test-drive appointments
+
+Work Log:
+- NOTE: agent's final report + worklog append were lost to a Task-tool timeout; orchestrator verified the built UI end-to-end via agent-browser and fixed one defect.
+- src/lib/store.ts: View + {name:"dashboard",tab?}; session state me/setMe. page.tsx: SessionBoot + DashboardView routing.
+- Dashboard components (src/components/marketplace/dashboard/): shell.tsx (sidebar md+ / scrollable tab bar mobile), bits.tsx (StatCard/EmptyState/MiniBarChart/ConfidenceRing shared), admin-dashboard.tsx (7 tabs: Overview KPIs+trend+top dealers, Dealers verify/suspend, Listings moderation queue with Approve/Reject/Feature, Users role change, AI reports stats+ring, Settings form, Audit log), dealer-dashboard.tsx (7 tabs: Overview+plan usage, Inventory actions Publish/Sold/Archive/Feature/Edit price, Leads open-chat, Appointments confirm/complete/cancel, Staff invite+role+suspend, Subscription plan cards monthly/yearly switch, Settings profile form), customer-dashboard.tsx (5 tabs: Overview stat cards+upcoming appointment, Favorites grid, Saved searches run-in-dialog/delete, Appointments cancel, My reports with confidence rings), dashboard-view.tsx (role router SUPER_ADMIN→admin, tenant→dealer, else customer).
+- header.tsx: PersonaMenu dropdown (8 demo personas, bilingual labels, sessionStorage toast after reload) + Dashboard button. mobile-nav.tsx: Dashboard entry. i18n.ts: dashboard key section EN+KM.
+- browse-view.tsx: Advanced filters panel (price/year/mileage ranges, fuel/transmission/drivetrain/bodyType multi-checkbox, condition, verified/featured/hasReport toggles), active-filter chips with remove + clear-all, Save search dialog (POST saved-searches with current params), multi-value CSV serialization.
+- detail-view.tsx: Request test drive dialog (datetime-local min now+1h, notes) → POST /api/account/appointments with duplicate-guard error toast.
+- Orchestrator fixes: header mobile overflow (439px→390px at 390vw) — Sell button icon-only on mobile (removed duplicated always-visible span), compact LangToggle, persona trigger chevron hidden <sm.
+- agent-browser E2E: persona switch buyer→admin→dealer→buyer all reload + header updates; Admin dashboard 7 tabs + tenants actions + moderation queue (CX-5 pending); Dealer dashboard 7 tabs + inventory rows + staff management; Customer dashboard tabs + saved search "Run" dialog (2 matching SUVs); advanced filters applied (Diesel+Hybrid, year≥2017) with chips + correct results; Save search E2E (toast + API shows {fuel:"DIESEL,HYBRID", yearMin:2017}); KH locale renders (រុករកឡាន); mobile 390px + desktop 1280px zero horizontal overflow on home/browse/dashboard; footer sticky OK; zero console/page errors.
+- Cleanup: E2E-created saved search deleted; DB returned to seeded state.
+
+Stage Summary:
+- Dashboard architecture shipped on the single-route SPA: role-aware shells for Super Admin (platform control), Tenant/Dealer (company ops), Customer (favorites/saved searches/appointments/reports) + role-based staff access via persona switcher.
+- Advanced vehicle filtering + save-search round-trip complete. All strings bilingual EN/KM. lint 0 errors; tsc clean; dev.log clean.

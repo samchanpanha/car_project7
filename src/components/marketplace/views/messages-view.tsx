@@ -120,6 +120,7 @@ export function MessagesView({ conversationId }: { conversationId?: string }) {
 function Thread({ conversationId, onBack }: { conversationId: string; onBack: () => void }) {
   const t = useT();
   const locale = useAppStore((s) => s.locale);
+  const navigate = useAppStore((s) => s.navigate);
   const { data, loading, refetch } = useFetch<{ conversation: ConversationDetailDTO }>(
     `/api/conversations/${conversationId}`
   );

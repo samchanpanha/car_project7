@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { db } from "@/lib/db";
-import { getDemoUser } from "@/lib/session";
+import { getCurrentUser } from "@/lib/session";
 import { SELLER_AUTO_REPLY } from "@/lib/api/messages";
 import type { MessageDTO } from "@/lib/types";
 
@@ -27,18 +27,35 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
       return NextResponse.json({ error: "body (min 2 chars) is required" }, { status: 400 });
     }
 
-    const user = await getDemoUser();
+    const user = await getCurrentUser();
 
     const conversation = await db.conversation.findUnique({
       where: { id },
       include: {
-        vehicle: { select: { sellerId: true } },
+        vehicle: { select: { sellerId: true, tenantId: true } },
         messages: { where: { isSystem: false }, select: { senderId: true } },
       },
     });
 
-    // Ownership check — 404 unless the demo buyer owns the conversation.
-    if (!conversation || conversation.buyerId !== user.id) {
+    if (!conversation) {
+      return NextResponse.json({ error: "Conversation not found" }, { status: 404 });
+    }
+
+    // Access: the conversation's buyer OR an ACTIVE member of the tenant that
+    // owns the listed vehicle (dealer staff inbox). 404 otherwise.
+    let allowed = conversation.buyerId === user.id;
+    if (!allowed && conversation.vehicle.tenantId) {
+      const membership = await db.tenantMember.findFirst({
+        where: {
+          userId: user.id,
+          tenantId: conversation.vehicle.tenantId,
+          status: "ACTIVE",
+        },
+        select: { id: true },
+      });
+      allowed = !!membership;
+    }
+    if (!allowed) {
       return NextResponse.json({ error: "Conversation not found" }, { status: 404 });
     }
 
@@ -46,12 +63,13 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
       data: { conversationId: conversation.id, senderId: user.id, body: parsed.data.body },
     });
 
-    // Canned seller auto-reply, but only while the seller has replied fewer
-    // than 2 times in this conversation (keeps the demo chat from looping).
+    // Canned seller auto-reply fires only when the message sender is the buyer
+    // (staff replies must not trigger it), and only while the seller has
+    // replied fewer than 2 times (keeps the demo chat from looping).
     const sellerMessages = conversation.messages.filter(
       (m) => m.senderId === conversation.vehicle.sellerId,
     ).length;
-    if (sellerMessages < 2) {
+    if (conversation.buyerId === user.id && sellerMessages < 2) {
       await db.message.create({
         data: {
           conversationId: conversation.id,

@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { db } from "@/lib/db";
-import { getDemoUser } from "@/lib/session";
+import { getCurrentUser } from "@/lib/session";
 import { SAFETY_TIP_MESSAGE, SELLER_AUTO_REPLY } from "@/lib/api/messages";
 import type { ConversationListItemDTO } from "@/lib/types";
 
@@ -14,7 +14,7 @@ function firstImage(urls: { sortOrder: number; url: string }[]): string | null {
 
 export async function GET() {
   try {
-    const user = await getDemoUser();
+    const user = await getCurrentUser();
     const conversations = await db.conversation.findMany({
       where: { buyerId: user.id },
       orderBy: { updatedAt: "desc" },
@@ -76,7 +76,7 @@ export async function POST(req: Request) {
     }
 
     const { vehicleId, message } = parsed.data;
-    const user = await getDemoUser();
+    const user = await getCurrentUser();
 
     const vehicle = await db.vehicle.findUnique({ where: { id: vehicleId } });
     if (!vehicle) {

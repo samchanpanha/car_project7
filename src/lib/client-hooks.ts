@@ -47,10 +47,10 @@ export function useFetch<T>(url: string | null) {
   return { data: state.data, loading, error: state.error, refetch };
 }
 
-/** POST/DELETE helpers with JSON */
+/** POST/DELETE/PATCH/PUT helpers with JSON */
 export async function apiSend<T>(
   url: string,
-  method: "POST" | "DELETE" | "PATCH",
+  method: "POST" | "DELETE" | "PATCH" | "PUT",
   body?: unknown
 ): Promise<T> {
   const res = await fetch(url, {

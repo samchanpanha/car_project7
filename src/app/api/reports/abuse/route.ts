@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { db } from "@/lib/db";
-import { getDemoUser } from "@/lib/session";
+import { getCurrentUser } from "@/lib/session";
 
 export const dynamic = "force-dynamic";
 
@@ -30,7 +30,7 @@ export async function POST(req: Request) {
     }
 
     const { vehicleId, reason, details } = parsed.data;
-    const user = await getDemoUser();
+    const user = await getCurrentUser();
 
     const vehicle = await db.vehicle.findUnique({ where: { id: vehicleId } });
     if (!vehicle) {

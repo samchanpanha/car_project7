@@ -17,18 +17,21 @@ model User {
   phone         String   @unique
   email         String?
   name          String
-  role          String   @default("BUYER") // BUYER | SELLER | DEALER | ADMIN
+  role          String   @default("BUYER") // BUYER | SELLER | DEALER | ADMIN | SUPER_ADMIN
   locale        String   @default("km") // km | en
   phoneVerified Boolean  @default(false)
   avatarUrl     String?
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 
-  sellerProfile SellerProfile?
-  vehiclesSold  Vehicle[]      @relation("SellerVehicles")
-  favorites     Favorite[]
-  conversations Conversation[] @relation("BuyerConversations")
-  messages      Message[]
+  sellerProfile     SellerProfile?
+  vehiclesSold      Vehicle[]        @relation("SellerVehicles")
+  favorites         Favorite[]
+  conversations     Conversation[]   @relation("BuyerConversations")
+  messages          Message[]
+  tenantMemberships TenantMember[]
+  savedSearches     SavedSearch[]
+  buyerAppointments Appointment[]    @relation("BuyerAppointments")
 }
 
 model SellerProfile {
@@ -52,6 +55,100 @@ model SellerProfile {
   telegram     String?
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
+  tenantId     String?
+  tenant       Tenant?  @relation(fields: [tenantId], references: [id])
+}
+
+// ---------- Tenants (Dealership Organizations) ----------
+
+model Tenant {
+  id           String   @id @default(cuid())
+  name         String
+  slug         String   @unique
+  logoUrl      String?
+  bio          String?
+  bioKm        String?
+  city         String   @default("Phnom Penh")
+  address      String?
+  phone        String?
+  telegram     String?
+  verified     Boolean  @default(false)
+  verification String   @default("UNVERIFIED") // UNVERIFIED | PENDING | VERIFIED | REJECTED
+  status       String   @default("ACTIVE") // ACTIVE | SUSPENDED
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  members      TenantMember[]
+  vehicles     Vehicle[]
+  profiles     SellerProfile[]
+  subscription Subscription?
+  appointments Appointment[]
+}
+
+model TenantMember {
+  id        String   @id @default(cuid())
+  tenantId  String
+  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  userId    String
+  user      User     @relation(fields: [userId], references: [id])
+  role      String   @default("SALES_STAFF") // OWNER | MANAGER | SALES_STAFF | INVENTORY_MANAGER
+  status    String   @default("ACTIVE") // ACTIVE | SUSPENDED
+  createdAt DateTime @default(now())
+
+  @@unique([tenantId, userId])
+}
+
+// ---------- Subscriptions (Monetization) ----------
+
+model Subscription {
+  id               String   @id @default(cuid())
+  tenantId         String   @unique
+  tenant           Tenant   @relation(fields: [tenantId], references: [id])
+  plan             String   @default("FREE") // FREE | BASIC | PRO | ENTERPRISE
+  status           String   @default("ACTIVE") // ACTIVE | CANCELLED | PAST_DUE
+  billingCycle     String   @default("MONTHLY") // MONTHLY | YEARLY
+  priceUsd         Float    @default(0)
+  listingsLimit    Int      @default(3)
+  featuredLimit    Int      @default(0)
+  seats            Int      @default(1)
+  startedAt        DateTime @default(now())
+  currentPeriodEnd DateTime @default(now())
+}
+
+// ---------- Customer Dashboard ----------
+
+model SavedSearch {
+  id            String   @id @default(cuid())
+  userId        String
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name          String
+  queryJson     String // JSON of VehicleQuery filters
+  alertsEnabled Boolean  @default(false)
+  createdAt     DateTime @default(now())
+}
+
+model Appointment {
+  id          String   @id @default(cuid())
+  vehicleId   String
+  vehicle     Vehicle  @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
+  buyerId     String
+  buyer       User     @relation("BuyerAppointments", fields: [buyerId], references: [id])
+  tenantId    String?
+  tenant      Tenant?  @relation(fields: [tenantId], references: [id])
+  sellerId    String
+  scheduledAt DateTime
+  status      String   @default("REQUESTED") // REQUESTED | CONFIRMED | COMPLETED | CANCELLED
+  notes       String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+// ---------- Platform Settings (Super Admin) ----------
+
+model PlatformSetting {
+  key       String   @id
+  valueJson String
+  updatedAt DateTime @updatedAt
 }
 
 // ---------- Vehicles ----------
@@ -94,6 +191,9 @@ model Vehicle {
   favorites     Favorite[]
   conversations Conversation[]
   reportsAbuse  ReportedContent[]
+  appointments  Appointment[]
+  tenantId      String?
+  tenant        Tenant?          @relation(fields: [tenantId], references: [id])
 }
 
 model VehicleImage {
