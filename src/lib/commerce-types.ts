@@ -1,15 +1,14 @@
-// KhLan commerce layer — subscription payments (Bakong KHQR / Manual KHQR)
-// and buyer purchase requests. Extends (does not modify) dashboard-types.ts.
+// KhLan commerce layer — subscription payments (Manual KHQR only) and
+// buyer purchase requests. Extends (does not modify) dashboard-types.ts.
 
 import type { PlanDTO } from "./dashboard-types";
 
-// ---------- Subscription payments ----------
+// ---------- Subscription payments (manual KHQR only) ----------
 
-export type PaymentMethod = "BAKONG" | "MANUAL";
+export type PaymentMethod = "MANUAL";
 
 export type PaymentStatus =
-  | "PENDING" // Bakong QR issued — waiting for the seller to transfer
-  | "AWAITING_VERIFICATION" // needs Super Admin verification (manual submit or admin confirms Bakong)
+  | "AWAITING_VERIFICATION" // seller submitted the bank reference — needs Super Admin verification
   | "VERIFIED"
   | "REJECTED"
   | "CANCELLED";
@@ -35,8 +34,8 @@ export interface SubscriptionPaymentDTO {
 
 /** GET /api/tenant/payments/config — what the seller can use to pay. */
 export interface PaymentConfigDTO {
-  /** true when BAKONG_TOKEN is configured server-side */
-  bakongConfigured: boolean;
+  /** master switch — when false the admin has disabled new subscription payments */
+  enabled: boolean;
   manual: {
     accountName: string | null;
     instructionsEn: string | null;
@@ -45,6 +44,13 @@ export interface PaymentConfigDTO {
     hasKhqr: boolean;
     /** data URL of the admin-configured KHQR payload (null → show fallback) */
     khqrDataUrl: string | null;
+  };
+  /** admin-configured FREE tier */
+  freePlan: {
+    enabled: boolean;
+    listingsLimit: number;
+    featuredLimit: number;
+    seats: number;
   };
 }
 

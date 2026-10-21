@@ -752,7 +752,15 @@ function AdminAudit() {
 
 // ---------------- payments verification ----------------
 
-const PAYMENT_FILTERS = ["AWAITING_VERIFICATION", "PENDING", "VERIFIED", "REJECTED", "CANCELLED", "ALL"] as const;
+const PAYMENT_FILTERS = ["AWAITING_VERIFICATION", "VERIFIED", "REJECTED", "CANCELLED", "ALL"] as const;
+
+const PAYMENT_FILTER_LABEL: Record<(typeof PAYMENT_FILTERS)[number], string> = {
+  AWAITING_VERIFICATION: "payStatusAwaiting",
+  VERIFIED: "payStatusVerified",
+  REJECTED: "payStatusRejected",
+  CANCELLED: "payStatusCancelled",
+  ALL: "anyCondition",
+};
 
 function AdminPayments() {
   const t = useT();
@@ -792,7 +800,7 @@ function AdminPayments() {
               status === c ? "border-amber-500 bg-amber-50 text-amber-800" : "border-slate-200 bg-white text-slate-600 hover:border-slate-300",
             )}
           >
-            {c === "ALL" ? t("anyCondition") : t(c === "PENDING" ? "payStatusPending" : c === "AWAITING_VERIFICATION" ? "payStatusAwaiting" : `payStatus${c.charAt(0)}${c.slice(1).toLowerCase()}` as never)}
+            {t(PAYMENT_FILTER_LABEL[c] as never)}
           </button>
         ))}
       </div>
@@ -819,7 +827,7 @@ function AdminPayments() {
                     {p.manualRef ? ` · ${t("payManualRef")}: ${p.manualRef}` : ""}
                   </p>
                   <p className="mt-0.5 text-[11px] text-slate-400">
-                    {p.method === "BAKONG" ? "Bakong KHQR" : t("payMethodManual")}
+                    {t("payMethodManual")}
                     {" · "}{timeAgo(p.createdAt, locale)}
                     {p.reviewedAt ? ` · ${t("payVerifier")}` : ""}
                   </p>
@@ -833,7 +841,7 @@ function AdminPayments() {
                     </a>
                   )}
                 </div>
-                {(p.status === "AWAITING_VERIFICATION" || p.status === "PENDING") && (
+                {p.status === "AWAITING_VERIFICATION" && (
                   <div className="flex shrink-0 items-center gap-2">
                     <Button
                       size="sm" disabled={busyId === p.id} onClick={() => decide(p, "verify")}
@@ -893,12 +901,14 @@ function AdminPayments() {
 // ---------------- payment configuration (manual KHQR) ----------------
 
 interface ManualConfig {
+  enabled: boolean;
   accountName: string | null;
   khqrPayload: string | null;
   khqrImageUrl: string | null;
   instructionsEn: string | null;
   instructionsKm: string | null;
   telegram: string | null;
+  freePlan: { enabled: boolean; listingsLimit: number; featuredLimit: number; seats: number };
 }
 
 function AdminPaymentConfig() {
@@ -918,12 +928,19 @@ function AdminPaymentConfig() {
     setSaving(true);
     try {
       await apiSend("/api/admin/payment-config", "PUT", {
+        enabled: form.enabled,
         accountName: form.accountName || null,
         khqrPayload: form.khqrPayload || null,
         khqrImageUrl: form.khqrImageUrl || null,
         instructionsEn: form.instructionsEn || null,
         instructionsKm: form.instructionsKm || null,
         telegram: form.telegram || null,
+        freePlan: {
+          enabled: form.freePlan.enabled,
+          listingsLimit: Number(form.freePlan.listingsLimit) || 0,
+          featuredLimit: Number(form.freePlan.featuredLimit) || 0,
+          seats: Number(form.freePlan.seats) || 1,
+        },
       });
       toast.success(t("payConfigSaved"));
       refetch();
@@ -942,6 +959,21 @@ function AdminPaymentConfig() {
   return (
     <SectionCard title={t("payConfigTitle")}>
       <p className="-mt-2 mb-3 text-xs text-slate-400">{t("payConfigSubtitle")}</p>
+
+      {/* master switch */}
+      <div className="mb-4 flex items-start justify-between gap-3 rounded-xl border border-amber-200 bg-amber-50/60 p-3">
+        <div className="min-w-0">
+          <Label htmlFor="pc-enabled" className="text-sm font-semibold text-slate-900">{t("payConfigEnabled")}</Label>
+          <p className="mt-0.5 text-xs text-slate-500">{t("payConfigEnabledDesc")}</p>
+        </div>
+        <Switch
+          id="pc-enabled"
+          checked={form.enabled}
+          onCheckedChange={(v) => setForm({ ...form, enabled: v })}
+          aria-label={t("payConfigEnabled")}
+        />
+      </div>
+
       <div className="grid gap-4 sm:grid-cols-2">
         <div>
           <Label htmlFor="pc-name" className="text-xs text-slate-500">{t("payConfigAccountName")}</Label>
@@ -953,7 +985,7 @@ function AdminPaymentConfig() {
         </div>
         <div className="sm:col-span-2">
           <Label htmlFor="pc-payload" className="text-xs text-slate-500">{t("payConfigKhqrPayload")}</Label>
-          <Textarea id="pc-payload" value={form.khqrPayload ?? ""} onChange={(e) => setForm({ ...form, khqrPayload: e.target.value })} rows={2} className="mt-1.5 font-mono text-xs" maxLength={600} />
+          <Textarea id="pc-payload" value={form.khqrPayload ?? ""} onChange={(e) => setForm({ ...form, khqrPayload: e.target.value })} rows={2} className="mt-1.5 font-mono text-xs field-sizing-fixed min-w-0" maxLength={600} />
         </div>
         <div className="sm:col-span-2">
           <Label htmlFor="pc-img" className="text-xs text-slate-500">{t("payConfigKhqrImage")}</Label>
@@ -961,13 +993,52 @@ function AdminPaymentConfig() {
         </div>
         <div>
           <Label htmlFor="pc-inst-en" className="text-xs text-slate-500">{t("payConfigInstructionsEn")}</Label>
-          <Textarea id="pc-inst-en" value={form.instructionsEn ?? ""} onChange={(e) => setForm({ ...form, instructionsEn: e.target.value })} rows={3} className="mt-1.5" />
+          <Textarea id="pc-inst-en" value={form.instructionsEn ?? ""} onChange={(e) => setForm({ ...form, instructionsEn: e.target.value })} rows={3} className="mt-1.5 field-sizing-fixed min-w-0" />
         </div>
         <div>
           <Label htmlFor="pc-inst-km" className="text-xs text-slate-500">{t("payConfigInstructionsKm")}</Label>
-          <Textarea id="pc-inst-km" value={form.instructionsKm ?? ""} onChange={(e) => setForm({ ...form, instructionsKm: e.target.value })} rows={3} className={cn("mt-1.5", locale === "km" && "font-khmer")} />
+          <Textarea id="pc-inst-km" value={form.instructionsKm ?? ""} onChange={(e) => setForm({ ...form, instructionsKm: e.target.value })} rows={3} className={cn("mt-1.5 field-sizing-fixed min-w-0", locale === "km" && "font-khmer")} />
         </div>
       </div>
+
+      {/* free plan configuration */}
+      <div className="mt-5 rounded-xl border border-slate-200 p-3">
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0">
+            <Label htmlFor="pc-free-enabled" className="text-sm font-semibold text-slate-900">{t("payFreePlanTitle")}</Label>
+            <p className="mt-0.5 text-xs text-slate-500">{t("payFreePlanDesc")}</p>
+          </div>
+          <Switch
+            id="pc-free-enabled"
+            checked={form.freePlan.enabled}
+            onCheckedChange={(v) => setForm({ ...form, freePlan: { ...form.freePlan, enabled: v } })}
+            aria-label={t("payFreePlanEnabled")}
+          />
+        </div>
+        {form.freePlan.enabled && (
+          <div className="mt-3 grid grid-cols-3 gap-3">
+            <div>
+              <Label htmlFor="pc-free-listings" className="text-xs text-slate-500">{t("kpiListings")}</Label>
+              <Input id="pc-free-listings" type="number" min={0} max={9999} value={form.freePlan.listingsLimit}
+                onChange={(e) => setForm({ ...form, freePlan: { ...form.freePlan, listingsLimit: Number(e.target.value) } })}
+                className="mt-1.5 h-9" />
+            </div>
+            <div>
+              <Label htmlFor="pc-free-featured" className="text-xs text-slate-500">{t("actFeature")}</Label>
+              <Input id="pc-free-featured" type="number" min={0} max={9999} value={form.freePlan.featuredLimit}
+                onChange={(e) => setForm({ ...form, freePlan: { ...form.freePlan, featuredLimit: Number(e.target.value) } })}
+                className="mt-1.5 h-9" />
+            </div>
+            <div>
+              <Label htmlFor="pc-free-seats" className="text-xs text-slate-500">{t("subSeatsLabel")}</Label>
+              <Input id="pc-free-seats" type="number" min={1} max={9999} value={form.freePlan.seats}
+                onChange={(e) => setForm({ ...form, freePlan: { ...form.freePlan, seats: Number(e.target.value) } })}
+                className="mt-1.5 h-9" />
+            </div>
+          </div>
+        )}
+      </div>
+
       {preview.data?.dataUrl && (
         <div className="mt-4 flex items-center gap-3">
           <img src={preview.data.dataUrl} alt={t("payConfigPreview")} className="h-24 w-24 rounded-lg border border-slate-200 bg-white p-1" />

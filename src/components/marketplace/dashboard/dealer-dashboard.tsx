@@ -610,10 +610,16 @@ function DealerStaff() {
 function DealerSubscription() {
   const t = useT();
   const locale = useAppStore((s) => s.locale);
-  const { data, loading, error, refetch } = useFetch<{ subscription: SubscriptionDTO | null; plans: PlanDTO[] }>("/api/tenant/subscription");
+  const { data, loading, error, refetch } = useFetch<{
+    subscription: SubscriptionDTO | null;
+    plans: PlanDTO[];
+    freePlanEnabled?: boolean;
+    paymentsEnabled?: boolean;
+  }>("/api/tenant/subscription");
   const [cycle, setCycle] = useState<"MONTHLY" | "YEARLY">("MONTHLY");
   const [requesting, setRequesting] = useState<PlanDTO | null>(null);
   const [downgrading, setDowngrading] = useState(false);
+  const [historyKey, setHistoryKey] = useState(0);
 
   useEffect(() => {
     if (data?.subscription) setCycle(data.subscription.billingCycle);
@@ -637,9 +643,16 @@ function DealerSubscription() {
   const plans = data?.plans ?? [];
   const current = data?.subscription ?? null;
   const expired = current?.status === "EXPIRED";
+  const freeDisabled = data?.freePlanEnabled === false;
+  const paymentsDisabled = data?.paymentsEnabled === false;
 
   return (
     <div className="space-y-4">
+      {paymentsDisabled && (
+        <Alert className="border-amber-300 bg-amber-50">
+          <AlertDescription className="text-xs font-medium text-amber-900">{t("payDisabledNotice")}</AlertDescription>
+        </Alert>
+      )}
       <div className="flex flex-wrap items-center justify-between gap-2">
         <p className="text-sm font-semibold text-slate-900">{t("subCurrentPlan")}</p>
         <div className="flex items-center rounded-full border border-slate-200 bg-white p-0.5" role="group" aria-label={t("tabSubscription")}>
@@ -679,12 +692,14 @@ function DealerSubscription() {
           const isCurrent = current?.plan === p.plan && !expired;
           const price = cycle === "MONTHLY" ? p.priceUsdMonthly : p.priceUsdYearly;
           const isPaid = p.plan !== "FREE";
+          const freeBlocked = p.plan === "FREE" && freeDisabled;
           return (
             <div
               key={p.plan}
               className={cn(
                 "flex flex-col rounded-xl border bg-white p-4",
-                isCurrent ? "border-amber-400 ring-1 ring-amber-200" : "border-slate-200"
+                isCurrent ? "border-amber-400 ring-1 ring-amber-200" : "border-slate-200",
+                freeBlocked && "opacity-70"
               )}
             >
               <div className="flex items-center justify-between">
@@ -703,11 +718,14 @@ function DealerSubscription() {
                   <li key={f.en}>· {f[locale]}</li>
                 ))}
               </ul>
+              {freeBlocked && (
+                <p className="mt-2 text-[11px] font-medium text-rose-700">{t("payFreeDisabledNotice")}</p>
+              )}
               <Button
                 size="sm"
                 className="mt-4 w-full"
                 variant={isCurrent ? "secondary" : "default"}
-                disabled={isCurrent || downgrading || (p.plan === "FREE" && (!current || current.plan === "FREE"))}
+                disabled={isCurrent || downgrading || freeBlocked || (p.plan === "FREE" && (!current || current.plan === "FREE"))}
                 onClick={() => (isPaid ? setRequesting(p) : downgrade())}
                 aria-label={isPaid ? t("payOpen") : t("subFreeDowngrade")}
               >
@@ -719,7 +737,7 @@ function DealerSubscription() {
         })}
       </div>
 
-      <TenantPaymentHistory onChanged={refetch} />
+      <TenantPaymentHistory key={historyKey} onChanged={refetch} />
 
       <RequestSubscriptionDialog
         open={requesting !== null}
@@ -727,7 +745,7 @@ function DealerSubscription() {
         plan={requesting}
         cycle={cycle}
         priceUsd={requesting ? (cycle === "MONTHLY" ? requesting.priceUsdMonthly : requesting.priceUsdYearly) : 0}
-        onDone={() => { refetch(); setRequesting(null); }}
+        onDone={() => { refetch(); setRequesting(null); setHistoryKey((k) => k + 1); }}
       />
     </div>
   );

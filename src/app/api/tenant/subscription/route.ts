@@ -7,7 +7,8 @@ import {
   toErrorResponse,
 } from "@/lib/api/guards";
 import { PLAN_BY_KEY, toSubscriptionDTO } from "@/lib/api/plans";
-import { refreshExpiredSubscription } from "@/lib/api/payments";
+import type { PlanDTO } from "@/lib/dashboard-types";
+import { getManualPaymentConfig, refreshExpiredSubscription } from "@/lib/api/payments";
 
 export const dynamic = "force-dynamic";
 
@@ -21,9 +22,24 @@ export async function GET() {
     // auto-expire overdue subscriptions on read
     const subscription = await refreshExpiredSubscription(raw);
 
+    // the FREE plan card reflects the admin-configured free tier
+    const config = await getManualPaymentConfig();
+    const plans: PlanDTO[] = Object.values(PLAN_BY_KEY).map((p) =>
+      p.plan === "FREE"
+        ? {
+            ...p,
+            listingsLimit: config.freePlan.listingsLimit,
+            featuredLimit: config.freePlan.featuredLimit,
+            seats: config.freePlan.seats,
+          }
+        : p,
+    );
+
     return NextResponse.json({
       subscription: subscription ? toSubscriptionDTO(subscription) : null,
-      plans: Object.values(PLAN_BY_KEY),
+      plans,
+      freePlanEnabled: config.freePlan.enabled,
+      paymentsEnabled: config.enabled,
     });
   } catch (err) {
     return toErrorResponse(err, "api/tenant/subscription GET", "Failed to load subscription");
@@ -36,9 +52,10 @@ const subscribeSchema = z.object({
 });
 
 /**
- * Paid plans can NO LONGER be activated directly — they require a verified
- * payment (Bakong KHQR or manual admin verification) via
- * POST /api/tenant/payments. Only the FREE downgrade is applied instantly.
+ * Paid plans can NO LONGER be activated directly — they require admin
+ * verification of a manual KHQR payment via POST /api/tenant/payments.
+ * Only the FREE downgrade is applied instantly (when the admin's free tier
+ * is enabled); it uses the admin-configured free limits.
  */
 export async function POST(req: Request) {
   try {
@@ -71,7 +88,14 @@ export async function POST(req: Request) {
       );
     }
 
-    const planRow = PLAN_BY_KEY.FREE;
+    const config = await getManualPaymentConfig();
+    if (!config.freePlan.enabled) {
+      return NextResponse.json(
+        { error: "The Free plan is currently disabled by the platform administrator — a paid subscription is required" },
+        { status: 403 },
+      );
+    }
+
     const now = new Date();
 
     const subscription = await db.subscription.upsert({
@@ -82,9 +106,9 @@ export async function POST(req: Request) {
         status: "ACTIVE",
         billingCycle: "MONTHLY",
         priceUsd: 0,
-        listingsLimit: planRow.listingsLimit,
-        featuredLimit: planRow.featuredLimit,
-        seats: planRow.seats,
+        listingsLimit: config.freePlan.listingsLimit,
+        featuredLimit: config.freePlan.featuredLimit,
+        seats: config.freePlan.seats,
         startedAt: now,
         currentPeriodEnd: now,
       },
@@ -93,9 +117,9 @@ export async function POST(req: Request) {
         status: "ACTIVE",
         billingCycle: "MONTHLY",
         priceUsd: 0,
-        listingsLimit: planRow.listingsLimit,
-        featuredLimit: planRow.featuredLimit,
-        seats: planRow.seats,
+        listingsLimit: config.freePlan.listingsLimit,
+        featuredLimit: config.freePlan.featuredLimit,
+        seats: config.freePlan.seats,
         currentPeriodEnd: now,
       },
     });

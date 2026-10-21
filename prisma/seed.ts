@@ -342,14 +342,16 @@ async function seedDashboardData() {
       {
         key: "payments.manualConfig",
         valueJson: JSON.stringify({
+          enabled: true,
           accountName: "KhLan Payments (Sokha Chan)",
           khqrPayload: null,
           khqrImageUrl: null,
           instructionsEn:
-            "1. Scan the KHQR with your banking app\n2. Transfer the exact USD amount\n3. Include the payment reference in the transfer note\n4. Submit your bank transaction reference here\n5. Contact the admin on Telegram after paying",
+            "1. Scan the KHQR with your banking app\n2. Transfer the exact USD amount\n3. Include the payment reference in the transfer note\n4. Send your transaction reference to the admin on Telegram\n5. The admin verifies and activates your subscription",
           instructionsKm:
-            "១. ស្កេន KHQR ដោយកម្មវិធីធនាគាររបស់អ្នក\n២. បញ្ជូនចំនួនត្រឹមត្រូវជាដុល្លារ\n៣. ដាក់លេខយោងក្នុងកំណត់សម្គាល់បញ្ជូន\n៤. ដាក់ស្នើលេខយោងប្រតិបត្តិការធនាគារនៅទីនេះ\n៥. ទាក់ទងអ្នកគ្រប់គ្រងតាម Telegram បន្ទាប់ពីបញ្ជូន",
+            "១. ស្កេន KHQR ដោយកម្មវិធីធនាគាររបស់អ្នក\n២. បញ្ជូនចំនួនត្រឹមត្រូវជាដុល្លារ\n៣. ដាក់លេខយោងក្នុងកំណត់សម្គាល់បញ្ជូន\n៤. ផ្ញើលេខយោងប្រតិបត្តិការធនាគារទៅអ្នកគ្រប់គ្រងតាម Telegram\n៥. អ្នកគ្រប់គ្រងផ្ទៀងផ្ទាត់ និងដំណើរការការជាវរបស់អ្នក",
           telegram: "@khlan_admin",
+          freePlan: { enabled: true, listingsLimit: 3, featuredLimit: 0, seats: 1 },
         }),
       },
     ],

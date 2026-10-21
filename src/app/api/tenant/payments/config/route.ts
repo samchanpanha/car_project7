@@ -1,8 +1,6 @@
 import { NextResponse } from "next/server";
-import { db } from "@/lib/db";
 import { requireTenantMember, toErrorResponse } from "@/lib/api/guards";
 import { khqrDataUrl, getManualPaymentConfig } from "@/lib/api/payments";
-import { bakongConfigured } from "@/lib/bakong";
 import type { PaymentConfigDTO } from "@/lib/commerce-types";
 
 export const dynamic = "force-dynamic";
@@ -13,7 +11,7 @@ export async function GET() {
     await requireTenantMember();
     const config = await getManualPaymentConfig();
     const dto: PaymentConfigDTO = {
-      bakongConfigured: bakongConfigured(),
+      enabled: config.enabled,
       manual: {
         accountName: config.accountName,
         instructionsEn: config.instructionsEn,
@@ -22,6 +20,7 @@ export async function GET() {
         hasKhqr: Boolean(config.khqrPayload || config.khqrImageUrl),
         khqrDataUrl: await khqrDataUrl(config),
       },
+      freePlan: config.freePlan,
     };
     return NextResponse.json(dto);
   } catch (err) {

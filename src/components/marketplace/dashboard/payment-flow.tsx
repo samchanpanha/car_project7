@@ -1,13 +1,12 @@
 "use client";
 
-// Seller-side subscription payment flow.
-// Bakong KHQR: creates a PENDING payment, shows the official QR, and polls the
-// backend check endpoint (server-side verification only). Without BAKONG_TOKEN
-// the option is disabled with a clear notice.
-// Manual KHQR: shows the Super Admin-configured KHQR + Telegram contact and
-// submits the bank transaction reference → AWAITING_VERIFICATION.
+// Seller-side subscription payment flow — Manual KHQR only.
+// The seller sees the Super Admin's KHQR, pays with their banking app,
+// sends the payment proof via the admin's Telegram contact, and submits the
+// bank transaction reference. The subscription activates only after the
+// Super Admin verifies the request (AWAITING_VERIFICATION → VERIFIED).
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { useAppStore } from "@/lib/store";
 import { useT } from "@/hooks/use-t";
 import { apiSend, useFetch } from "@/lib/client-hooks";
@@ -27,11 +26,9 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import {
   Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
 } from "@/components/ui/dialog";
-import { QrCode, HandCoins, Loader2, CheckCircle2, Send, XCircle, Copy, ExternalLink } from "lucide-react";
+import { Loader2, Send, ExternalLink, QrCode, MessageCircle, ClipboardList, ShieldOff } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
-
-type Method = "BAKONG" | "MANUAL";
 
 export function RequestSubscriptionDialog({
   open,
@@ -52,93 +49,34 @@ export function RequestSubscriptionDialog({
   const locale = useAppStore((s) => s.locale);
   const config = useFetch<PaymentConfigDTO>(open ? "/api/tenant/payments/config" : null);
 
-  const [method, setMethod] = useState<Method | null>(null);
   const [creating, setCreating] = useState(false);
-  const [created, setCreated] = useState<SubscriptionPaymentDTO | null>(null);
-  const [qrDataUrl, setQrDataUrl] = useState<string | null>(null);
   const [manualRef, setManualRef] = useState("");
   const [evidenceUrl, setEvidenceUrl] = useState("");
   const [note, setNote] = useState("");
-  const [checking, setChecking] = useState(false);
-  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   // reset on open
   useEffect(() => {
     if (open) {
-      setMethod(null);
-      setCreated(null);
-      setQrDataUrl(null);
       setManualRef("");
       setEvidenceUrl("");
       setNote("");
       setCreating(false);
-      setChecking(false);
     }
   }, [open]);
-
-  // stop polling when closed
-  useEffect(() => {
-    if (!open && pollRef.current) {
-      clearInterval(pollRef.current);
-      pollRef.current = null;
-    }
-  }, [open]);
-
-  useEffect(() => {
-    return () => {
-      if (pollRef.current) clearInterval(pollRef.current);
-    };
-  }, []);
-
-  const startBakong = async () => {
-    setCreating(true);
-    try {
-      const res = await apiSend<{ payment: SubscriptionPaymentDTO; qrPayload: string | null }>(
-        "/api/tenant/payments", "POST",
-        { plan: plan!.plan, billingCycle: cycle, method: "BAKONG" },
-      );
-      setCreated(res.payment);
-      setMethod("BAKONG");
-      // render the official QR payload via the guarded render endpoint
-      const qr = await fetch(`/api/tenant/payments/${res.payment.id}/qr`).then((r) => r.json()).catch(() => null);
-      setQrDataUrl(qr?.dataUrl ?? null);
-      pollRef.current = setInterval(() => void checkPayment(res.payment.id), 5000);
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : t("errorGeneric"));
-    } finally {
-      setCreating(false);
-    }
-  };
-
-  const checkPayment = async (id: string) => {
-    try {
-      const res = await apiSend<{ status: string }>(`/api/tenant/payments/${id}/check`, "POST");
-      if (res.status === "VERIFIED") {
-        if (pollRef.current) clearInterval(pollRef.current);
-        pollRef.current = null;
-        toast.success(t("payVerifiedToast"));
-        onDone();
-        onOpenChange(false);
-      }
-    } catch {
-      // transient network/API errors — keep polling quietly
-    }
-  };
 
   const submitManual = async () => {
     if (manualRef.trim().length < 4) return;
     setCreating(true);
     try {
-      const res = await apiSend<{ payment: SubscriptionPaymentDTO }>(
+      await apiSend<{ payment: SubscriptionPaymentDTO }>(
         "/api/tenant/payments", "POST",
         {
-          plan: plan!.plan, billingCycle: cycle, method: "MANUAL",
+          plan: plan!.plan, billingCycle: cycle,
           manualRef: manualRef.trim(),
           evidenceUrl: evidenceUrl.trim() || undefined,
           note: note.trim() || undefined,
         },
       );
-      setCreated(res.payment);
       toast.success(t("payManualSubmitted"));
       onDone();
       setTimeout(() => onOpenChange(false), 1200);
@@ -153,6 +91,13 @@ export function RequestSubscriptionDialog({
   const tgLink = manual?.telegram
     ? `https://t.me/${manual.telegram.replace(/^@/, "")}`
     : null;
+  const disabled = config.data ? !config.data.enabled : false;
+
+  const steps = [
+    { icon: QrCode, text: t("payStepPay") },
+    { icon: MessageCircle, text: t("payStepTelegram") },
+    { icon: ClipboardList, text: t("payStepSubmit") },
+  ];
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -164,64 +109,26 @@ export function RequestSubscriptionDialog({
           </DialogDescription>
         </DialogHeader>
 
-        {!method && (
+        {disabled ? (
+          <Alert className="border-amber-300 bg-amber-50">
+            <ShieldOff className="h-4 w-4 text-amber-700" aria-hidden />
+            <AlertDescription className="text-xs font-medium text-amber-900">
+              {t("payDisabledNotice")}
+            </AlertDescription>
+          </Alert>
+        ) : (
           <div className="space-y-3">
-            <p className="text-sm text-slate-500">{t("paySubtitle")}</p>
-            <MethodCard
-              icon={<QrCode className="h-5 w-5" aria-hidden />}
-              title={t("payMethodBakong")}
-              desc={t("payMethodBakongDesc")}
-              disabled={creating}
-              loading={creating}
-              unavailable={config.data ? !config.data.bakongConfigured : false}
-              unavailableText={t("payBakongUnavailable")}
-              onSelect={startBakong}
-            />
-            <MethodCard
-              icon={<HandCoins className="h-5 w-5" aria-hidden />}
-              title={t("payMethodManual")}
-              desc={t("payMethodManualDesc")}
-              disabled={creating}
-              loading={false}
-              onSelect={() => setMethod("MANUAL")}
-            />
-          </div>
-        )}
+            {/* how it works */}
+            <ol className="space-y-1.5">
+              {steps.map((s, i) => (
+                <li key={i} className="flex items-center gap-2 text-xs text-slate-600">
+                  <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-amber-100 text-[10px] font-bold text-amber-800">{i + 1}</span>
+                  <s.icon className="h-3.5 w-3.5 shrink-0 text-slate-400" aria-hidden />
+                  {s.text}
+                </li>
+              ))}
+            </ol>
 
-        {method === "BAKONG" && (
-          <div className="space-y-3 text-center">
-            {!created || !qrDataUrl ? (
-              <Skeleton className="mx-auto h-56 w-56 rounded-xl" />
-            ) : (
-              <>
-                <img
-                  src={qrDataUrl}
-                  alt={t("payScanQr")}
-                  className="mx-auto h-56 w-56 rounded-xl border border-slate-200 bg-white p-2"
-                />
-                <p className="text-xs font-medium text-slate-500">{t("payScanQr")}</p>
-                <p className="text-xs text-slate-400">{t("payWaitScan")}</p>
-                <div className="flex items-center justify-center gap-2">
-                  <code className="rounded bg-slate-100 px-2 py-1 text-[11px] font-semibold text-slate-700">{created.reference}</code>
-                  <span className="text-[11px] text-slate-400">{t("payIncludeRef")}</span>
-                </div>
-                <div className="flex justify-center gap-2">
-                  <Button variant="outline" size="sm" disabled={checking} onClick={async () => { setChecking(true); await checkPayment(created.id); setChecking(false); }}>
-                    {checking ? <Loader2 className="h-4 w-4 mr-1.5 animate-spin" aria-hidden /> : <CheckCircle2 className="h-4 w-4 mr-1.5" aria-hidden />}
-                    {t("payCheckStatus")}
-                  </Button>
-                  <Button variant="ghost" size="sm" onClick={() => onOpenChange(false)}>
-                    <XCircle className="h-4 w-4 mr-1.5" aria-hidden />
-                    {t("cancel")}
-                  </Button>
-                </div>
-              </>
-            )}
-          </div>
-        )}
-
-        {method === "MANUAL" && (
-          <div className="space-y-3">
             {manual?.khqrDataUrl ? (
               <div className="text-center">
                 <img src={manual.khqrDataUrl} alt={t("payScanQr")} className="mx-auto h-48 w-48 rounded-xl border border-slate-200 bg-white p-2" />
@@ -240,7 +147,10 @@ export function RequestSubscriptionDialog({
               </p>
             )}
             {(locale === "km" ? manual?.instructionsKm : manual?.instructionsEn) && (
-              <p className="whitespace-pre-line rounded-lg bg-slate-50 border border-slate-100 px-3 py-2 text-xs text-slate-600">
+              <p className={cn(
+                "whitespace-pre-line rounded-lg bg-slate-50 border border-slate-100 px-3 py-2 text-xs text-slate-600",
+                locale === "km" && "font-khmer",
+              )}>
                 {locale === "km" ? manual?.instructionsKm : manual?.instructionsEn}
               </p>
             )}
@@ -272,7 +182,7 @@ export function RequestSubscriptionDialog({
               <Textarea id="pay-note" value={note} onChange={(e) => setNote(e.target.value)} rows={2} className="mt-1.5" maxLength={300} />
             </div>
             <DialogFooter>
-              <Button variant="outline" size="sm" onClick={() => setMethod(null)} disabled={creating}>{t("cancel")}</Button>
+              <Button variant="outline" size="sm" onClick={() => onOpenChange(false)} disabled={creating}>{t("cancel")}</Button>
               <Button size="sm" onClick={submitManual} disabled={creating || manualRef.trim().length < 4}
                 className="bg-amber-500 hover:bg-amber-400 text-slate-950 font-semibold">
                 {creating && <Loader2 className="h-4 w-4 mr-1.5 animate-spin" aria-hidden />}
@@ -283,43 +193,6 @@ export function RequestSubscriptionDialog({
         )}
       </DialogContent>
     </Dialog>
-  );
-}
-
-function MethodCard({
-  icon, title, desc, onSelect, disabled, loading, unavailable, unavailableText,
-}: {
-  icon: React.ReactNode;
-  title: string;
-  desc: string;
-  onSelect: () => void;
-  disabled?: boolean;
-  loading?: boolean;
-  unavailable?: boolean;
-  unavailableText?: string;
-}) {
-  return (
-    <button
-      onClick={onSelect}
-      disabled={disabled || unavailable}
-      aria-label={title}
-      className={cn(
-        "w-full rounded-xl border p-4 text-left transition-colors cursor-pointer",
-        unavailable
-          ? "border-slate-200 bg-slate-50 opacity-70 cursor-not-allowed"
-          : "border-slate-200 bg-white hover:border-amber-300 hover:bg-amber-50/40",
-      )}
-    >
-      <div className="flex items-start gap-3">
-        <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-slate-100 text-slate-700">
-          {loading ? <Loader2 className="h-5 w-5 animate-spin" aria-hidden /> : icon}
-        </span>
-        <div className="min-w-0">
-          <p className="text-sm font-semibold text-slate-900">{title}</p>
-          <p className="mt-0.5 text-xs text-slate-500">{unavailable && unavailableText ? unavailableText : desc}</p>
-        </div>
-      </div>
-    </button>
   );
 }
 
@@ -358,7 +231,7 @@ export function TenantPaymentHistory({ onChanged }: { onChanged?: () => void }) 
                 {p.plan} · {formatUsd(p.amountUsd)}
                 <PaymentStatusBadge status={p.status} />
                 <span className="text-[10px] font-normal text-slate-400">
-                  {p.method === "BAKONG" ? "Bakong" : t("payMethodManual")}
+                  {t("payMethodManual")}
                 </span>
               </p>
               <p className="truncate text-[11px] text-slate-400">
@@ -368,7 +241,7 @@ export function TenantPaymentHistory({ onChanged }: { onChanged?: () => void }) 
                 {p.rejectionReason ? ` · ${t("payRejectedReason")}: ${p.rejectionReason}` : ""}
               </p>
             </div>
-            {(p.status === "PENDING" || p.status === "AWAITING_VERIFICATION") && (
+            {p.status === "AWAITING_VERIFICATION" && (
               <Button variant="ghost" size="sm" disabled={busyId === p.id}
                 onClick={() => cancel(p.id)}
                 className="text-rose-600 hover:bg-rose-50 hover:text-rose-700">

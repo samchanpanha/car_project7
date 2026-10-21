@@ -12,34 +12,61 @@ import type { Subscription, SubscriptionPayment } from "@prisma/client";
 
 // ---------- Manual KHQR configuration (Super Admin settings) ----------
 
+export interface FreePlanConfig {
+  enabled: boolean; // when false, sellers cannot use/downgrade to the FREE plan
+  listingsLimit: number;
+  featuredLimit: number;
+  seats: number;
+}
+
 export interface ManualPaymentConfig {
+  /** master switch — when false sellers cannot submit new subscription payments */
+  enabled: boolean;
   accountName: string | null;
   khqrPayload: string | null; // EMVCo KHQR string from the admin's banking app
   khqrImageUrl: string | null; // fallback: URL of a QR image
   instructionsEn: string | null;
   instructionsKm: string | null;
   telegram: string | null; // admin Telegram contact, e.g. "@khlan_admin"
+  freePlan: FreePlanConfig; // admin-configured FREE tier usage
 }
 
 const CONFIG_KEY = "payments.manualConfig";
 
 const DEFAULT_CONFIG: ManualPaymentConfig = {
+  enabled: true,
   accountName: null,
   khqrPayload: null,
   khqrImageUrl: null,
   instructionsEn: null,
   instructionsKm: null,
   telegram: null,
+  freePlan: { enabled: true, listingsLimit: 3, featuredLimit: 0, seats: 1 },
 };
+
+function clampLimit(n: unknown, fallback: number): number {
+  const v = typeof n === "number" && Number.isFinite(n) ? Math.floor(n) : fallback;
+  return Math.min(9999, Math.max(0, v));
+}
 
 export async function getManualPaymentConfig(): Promise<ManualPaymentConfig> {
   const row = await db.platformSetting.findUnique({ where: { key: CONFIG_KEY } });
-  if (!row) return { ...DEFAULT_CONFIG };
+  if (!row) return { ...DEFAULT_CONFIG, freePlan: { ...DEFAULT_CONFIG.freePlan } };
   try {
     const parsed = JSON.parse(row.valueJson) as Partial<ManualPaymentConfig>;
-    return { ...DEFAULT_CONFIG, ...parsed };
+    return {
+      ...DEFAULT_CONFIG,
+      ...parsed,
+      freePlan: {
+        ...DEFAULT_CONFIG.freePlan,
+        ...(parsed.freePlan ?? {}),
+        listingsLimit: clampLimit(parsed.freePlan?.listingsLimit, DEFAULT_CONFIG.freePlan.listingsLimit),
+        featuredLimit: clampLimit(parsed.freePlan?.featuredLimit, DEFAULT_CONFIG.freePlan.featuredLimit),
+        seats: clampLimit(parsed.freePlan?.seats, DEFAULT_CONFIG.freePlan.seats) || 1,
+      },
+    };
   } catch {
-    return { ...DEFAULT_CONFIG };
+    return { ...DEFAULT_CONFIG, freePlan: { ...DEFAULT_CONFIG.freePlan } };
   }
 }
 
@@ -53,6 +80,15 @@ export async function saveManualPaymentConfig(
     create: { key: CONFIG_KEY, valueJson },
     update: { valueJson },
   });
+  // keep every FREE subscription in sync with the configured free-tier limits
+  await db.subscription.updateMany({
+    where: { plan: "FREE" },
+    data: {
+      listingsLimit: config.freePlan.listingsLimit,
+      featuredLimit: config.freePlan.featuredLimit,
+      seats: config.freePlan.seats,
+    },
+  });
   await db.auditLog.create({
     data: {
       actorId,
@@ -60,9 +96,11 @@ export async function saveManualPaymentConfig(
       entity: "PlatformSetting",
       entityId: CONFIG_KEY,
       metaJson: JSON.stringify({
+        enabled: config.enabled,
         telegram: config.telegram,
         hasKhqrPayload: Boolean(config.khqrPayload),
         hasKhqrImage: Boolean(config.khqrImageUrl),
+        freePlan: config.freePlan,
       }),
     },
   });

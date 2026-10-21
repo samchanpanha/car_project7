@@ -4,12 +4,12 @@ import { db } from "@/lib/db";
 import { canManageTenant, requireTenantMember, toErrorResponse } from "@/lib/api/guards";
 import {
   generatePaymentReference,
+  getManualPaymentConfig,
   monthsForCycle,
   priceForCycle,
   toPaymentErrorResponse,
 } from "@/lib/api/payments";
 import type { PlanKey } from "@/lib/api/plans";
-import { generateKhqr, bakongConfigured } from "@/lib/bakong";
 import { rateLimit } from "@/lib/rate-limit";
 import type { SubscriptionPaymentDTO } from "@/lib/commerce-types";
 
@@ -61,8 +61,8 @@ export async function GET() {
 const createSchema = z.object({
   plan: z.enum(["BASIC", "PRO", "ENTERPRISE"]),
   billingCycle: z.enum(["MONTHLY", "YEARLY"]),
-  method: z.enum(["BAKONG", "MANUAL"]),
-  manualRef: z.string().trim().min(4).max(80).optional(),
+  manualRef: z.string().trim().min(4).max(80),
+  evidenceUrl: z.string().trim().url().max(500).optional(),
   note: z.string().trim().max(300).optional(),
 });
 
@@ -80,6 +80,15 @@ export async function POST(req: Request) {
     }
     rateLimit(`payments:${user.id}`, 10, 60_000);
 
+    // master switch — the Super Admin can disable new subscription payments
+    const config = await getManualPaymentConfig();
+    if (!config.enabled) {
+      return NextResponse.json(
+        { error: "Subscription payments are currently disabled by the platform administrator" },
+        { status: 403 },
+      );
+    }
+
     let json: unknown;
     try {
       json = await req.json();
@@ -94,15 +103,15 @@ export async function POST(req: Request) {
         { status: 400 },
       );
     }
-    const { plan, billingCycle, method } = parsed.data;
+    const { plan, billingCycle, manualRef } = parsed.data;
 
     // one open request at a time prevents duplicate payments
     const open = await db.subscriptionPayment.findFirst({
-      where: { tenantId: tenant.id, status: { in: ["PENDING", "AWAITING_VERIFICATION"] } },
+      where: { tenantId: tenant.id, status: "AWAITING_VERIFICATION" },
     });
     if (open) {
       return NextResponse.json(
-        { error: `You already have a ${open.status.replace(/_/g, " ").toLowerCase()} payment request (${open.reference})` },
+        { error: `You already have a payment request awaiting verification (${open.reference})` },
         { status: 409 },
       );
     }
@@ -111,33 +120,6 @@ export async function POST(req: Request) {
     const months = monthsForCycle(billingCycle);
     const reference = generatePaymentReference();
 
-    let qrPayload: string | null = null;
-    let bakongMd5: string | null = null;
-    let status = "AWAITING_VERIFICATION";
-
-    if (method === "BAKONG") {
-      if (!bakongConfigured()) {
-        return NextResponse.json(
-          { error: "Bakong KHQR is not configured on the platform — please use Manual KHQR payment" },
-          { status: 503 },
-        );
-      }
-      const qr = await generateKhqr({
-        amountUsd,
-        merchantName: tenant.name,
-        billNumber: reference,
-        storeLabel: "KhLan",
-      });
-      qrPayload = qr.qr;
-      bakongMd5 = qr.md5;
-      status = "PENDING";
-    } else if (!parsed.data.manualRef) {
-      return NextResponse.json(
-        { error: "A bank transaction reference is required for manual payment" },
-        { status: 400 },
-      );
-    }
-
     const payment = await db.subscriptionPayment.create({
       data: {
         tenantId: tenant.id,
@@ -145,12 +127,11 @@ export async function POST(req: Request) {
         billingCycle,
         amountUsd,
         months,
-        method,
-        status,
+        method: "MANUAL",
+        status: "AWAITING_VERIFICATION",
         reference,
-        qrPayload,
-        bakongMd5,
-        manualRef: parsed.data.manualRef ?? null,
+        manualRef,
+        evidenceUrl: parsed.data.evidenceUrl ?? null,
         note: parsed.data.note ?? null,
       },
     });
@@ -161,12 +142,12 @@ export async function POST(req: Request) {
         action: "PAYMENT_REQUESTED",
         entity: "SubscriptionPayment",
         entityId: payment.id,
-        metaJson: JSON.stringify({ reference, method, plan, billingCycle, amountUsd }),
+        metaJson: JSON.stringify({ reference, method: "MANUAL", plan, billingCycle, amountUsd, manualRef }),
       },
     });
 
     return NextResponse.json(
-      { payment: toDTO(payment, tenant.name), qrPayload, bakongMd5 },
+      { payment: toDTO(payment, tenant.name) },
       { status: 201 },
     );
   } catch (err) {
