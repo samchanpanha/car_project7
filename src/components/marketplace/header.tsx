@@ -361,7 +361,9 @@ export function Header() {
             <MessageSquare className="h-4 w-4 mr-1.5" aria-hidden />
             {t("navMessages")}
           </Button>
-          {me && (
+          {/* Dashboard is an account surface — hide it from guests entirely
+              (they get Log in / Sign up instead). Demo personas keep it. */}
+          {me && !isGuest(me) && (
             <Button
               variant="ghost"
               size="sm"

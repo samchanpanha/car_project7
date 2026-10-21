@@ -37,6 +37,21 @@ export function verifyPassword(password: string, stored: string | null | undefin
   }
 }
 
+/**
+ * Normalize Cambodian phone input to the canonical `+855XXXXXXXX` form used
+ * for User.phone. Accepts 0-prefixed local numbers (012998009), bare 8–9 digit
+ * numbers (12998009) and 855-prefixed numbers (85512998009), ignoring spaces,
+ * dashes, dots and parentheses. Returns null when nothing matches.
+ */
+export function normalizeKhmerPhone(raw: string): string | null {
+  const d = raw.replace(/[\s\-().]/g, "");
+  if (/^\+855\d{7,9}$/.test(d)) return d;
+  if (/^855\d{7,9}$/.test(d)) return `+855${d.slice(3)}`;
+  if (/^0\d{8,9}$/.test(d)) return `+855${d.slice(1)}`;
+  if (/^\d{7,9}$/.test(d)) return `+855${d}`;
+  return null;
+}
+
 // ---------- Signed session tokens ----------
 
 export function createSessionToken(userId: string): string {

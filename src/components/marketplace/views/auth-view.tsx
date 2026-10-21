@@ -30,6 +30,18 @@ import type { DictKey } from "@/lib/i18n";
 
 const PHONE_RE = /^\+855\d{7,9}$/;
 
+/** Normalize Khmer phone input: accept 0-prefixed local numbers, bare
+ *  8–9 digit numbers and 855-prefixed numbers — everything becomes
+ *  +855XXXXXXXX so login/registration can never fail on formatting alone. */
+function normalizePhone(raw: string): string {
+  const d = raw.replace(/[\s\-().]/g, "");
+  if (/^\+855\d{7,9}$/.test(d)) return d;
+  if (/^855\d{7,9}$/.test(d)) return `+855${d.slice(3)}`;
+  if (/^0\d{8,9}$/.test(d)) return `+855${d.slice(1)}`;
+  if (/^\d{7,9}$/.test(d)) return `+855${d}`;
+  return raw.trim();
+}
+
 /** Server error → localized message when the server text is recognizable. */
 function localAuthError(t: ReturnType<typeof useT>, msg: string): string {
   if (/Incorrect phone number or password/i.test(msg)) return t("authErrBadCreds");
@@ -55,6 +67,21 @@ function parkDashboardRedirect() {
     sessionStorage.setItem("khlan_go_dashboard", "1");
   } catch {
     /* ignore */
+  }
+}
+
+/** Make sure the session cookie really persisted in this browser context.
+ *  Embedded previews and strict third-party-cookie blocking can silently
+ *  drop Set-Cookie — the login would then "succeed" while every following
+ *  request stays logged out. Detect it and tell the user what to do. */
+async function sessionPersistedAs(userId: string): Promise<boolean> {
+  try {
+    const r = await fetch("/api/session", { cache: "no-store" });
+    if (!r.ok) return false;
+    const s = (await r.json()) as { authed?: boolean; user?: { id?: string } };
+    return Boolean(s.authed && s.user?.id === userId);
+  } catch {
+    return false;
   }
 }
 
@@ -119,7 +146,7 @@ function LoginForm() {
   const submit = (e: React.FormEvent) => {
     e.preventDefault();
     setError(undefined);
-    if (!PHONE_RE.test(phone.trim())) return setError(t("authErrPhone"));
+    if (!PHONE_RE.test(normalizePhone(phone))) return setError(t("authErrPhone"));
     if (!password) return setError(t("authErrPassword"));
     // Valid credentials open the Security Verification dialog; the actual
     // login request fires only after the captcha is solved.
@@ -133,8 +160,16 @@ function LoginForm() {
       const res = await apiSend<{ ok: boolean; user: { id: string; name: string; role: string } }>(
         "/api/auth/login",
         "POST",
-        { phone: phone.trim(), password, captchaToken },
+        { phone: normalizePhone(phone), password, captchaToken },
       );
+      // The cookie must actually persist — blocked cookies (embedded preview,
+      // strict browser) would otherwise loop the user back to logged-out.
+      if (!(await sessionPersistedAs(res.user.id))) {
+        setBusy(false);
+        setCaptchaOpen(false);
+        setError(t("authErrCookieBlocked"));
+        return;
+      }
       parkWelcome(res.user.name, false);
       if (res.user.role === "SUPER_ADMIN" || res.user.role === "ADMIN") {
         parkDashboardRedirect();
@@ -204,7 +239,7 @@ function SignupForm() {
     e.preventDefault();
     setError(undefined);
     if (!name.trim()) return setError(t("authErrName"));
-    if (!PHONE_RE.test(phone.trim())) return setError(t("authErrPhone"));
+    if (!PHONE_RE.test(normalizePhone(phone))) return setError(t("authErrPhone"));
     if (password.length < 8) return setError(t("authErrPassword"));
     if (password !== confirm) return setError(t("authErrConfirm"));
     // Registration continues after the Security Verification captcha.
@@ -218,8 +253,15 @@ function SignupForm() {
       const res = await apiSend<{ ok: boolean; user: { id: string; name: string } }>(
         "/api/auth/register",
         "POST",
-        { name: name.trim(), phone: phone.trim(), password, locale, captchaToken },
+        { name: name.trim(), phone: normalizePhone(phone), password, locale, captchaToken },
       );
+      // Same cookie-persistence guard as login (see sessionPersistedAs).
+      if (!(await sessionPersistedAs(res.user.id))) {
+        setBusy(false);
+        setCaptchaOpen(false);
+        setError(t("authErrCookieBlocked"));
+        return;
+      }
       parkWelcome(res.user.name, true);
       toast.success(t("authWelcomeNew"));
       window.location.reload();

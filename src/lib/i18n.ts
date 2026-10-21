@@ -581,6 +581,7 @@ const en = {
   guestPanelBody: "Browsing is open to everyone. Register to contact dealers, save favorites, request test drives and more.",
   guestCtaRegister: "Register free",
   guestCtaLogin: "Log in",
+  authErrCookieBlocked: "Signed in, but this browser blocked the session cookie — common inside embedded previews. Open KhLan in a new tab (or allow cookies for this site), then log in again.",
 };
 
 const km: Record<keyof typeof en, string> = {
@@ -1148,6 +1149,7 @@ const km: Record<keyof typeof en, string> = {
   guestPanelBody: "ការរុករកបើកចំហសម្រាប់អ្នកទាំងអស់គ្នា។ ចុះឈ្មោះដើម្បីទាក់ទងអ្នកលក់ រក្សាទុកចំណូលចិត្ត ស្នើសុំសាកល្បងបើកបរ និងច្រើនទៀត។",
   guestCtaRegister: "ចុះឈ្មោះឥតគិតថ្លៃ",
   guestCtaLogin: "ចូលប្រើ",
+  authErrCookieBlocked: "ចូលបានសម្រេច ប៉ុន្តែកម្មវិធីរុករករបស់អ្នកបានទប់ស្កាត់ខូឃីសេសិន — កើតឡើងញឹកញាប់នៅក្នុងការមើលជាមុនដែលបង្កប់។ សូមបើក KhLan ក្នុងផ្ទាំងថ្មី (ឬអនុញ្ញាត cookies សម្រាប់គេហទំព័រនេះ) រួចចូលម្តងទៀត។",
 };
 
 export const dictionaries = { en, km };

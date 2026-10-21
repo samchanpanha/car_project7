@@ -1,14 +1,15 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { db } from "@/lib/db";
-import { AUTH_COOKIE, createSessionToken, hashPassword, sessionCookieOptions } from "@/lib/auth";
+import { AUTH_COOKIE, createSessionToken, hashPassword, normalizeKhmerPhone, sessionCookieOptions } from "@/lib/auth";
 import { consumeCaptchaToken } from "@/lib/captcha";
 
 export const dynamic = "force-dynamic";
 
 const registerSchema = z.object({
   name: z.string().trim().min(1).max(120),
-  phone: z.string().regex(/^\+855\d{7,9}$/, "phone must be a Cambodian number like +85512345678"),
+  // loose on the wire — normalizeKhmerPhone canonicalizes (012…, 855…, +855…)
+  phone: z.string().min(6).max(32),
   password: z.string().min(8, "password must be at least 8 characters").max(128),
   locale: z.enum(["en", "km"]).optional(),
   /** single-use token minted by POST /api/auth/captcha/verify */
@@ -32,7 +33,14 @@ export async function POST(req: Request) {
         { status: 400 },
       );
     }
-    const { name, phone, password, locale } = parsed.data;
+    const { name, password, locale } = parsed.data;
+    const phone = normalizeKhmerPhone(parsed.data.phone);
+    if (!phone) {
+      return NextResponse.json(
+        { error: "phone: must be a Cambodian number like +85512345678" },
+        { status: 400 },
+      );
+    }
 
     // Security Verification first — every registration attempt needs a fresh captcha.
     if (!consumeCaptchaToken(parsed.data.captchaToken)) {

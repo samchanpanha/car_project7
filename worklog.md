@@ -357,3 +357,25 @@ Stage Summary:
 - The intermittent "all not working well" had a second, independent cause: a session-boot race that returned 500 on /api/session — now race-proof.
 - Super Admin credentials (unchanged, guaranteed to exist on any fresh DB): phone +85512998009, password khlan123 (Nita Meng, id usr_admin); also available via the demo persona switcher "Super Admin — Nita".
 - Files: MODIFIED src/app/api/session/route.ts, src/lib/session.ts, src/components/marketplace/dashboard/dashboard-view.tsx, src/components/marketplace/views/auth-view.tsx, src/app/page.tsx.
+
+---
+Task ID: 11
+Agent: Z.ai Code (main)
+Task: "I test login but not work, help me fix all relate it, when not login don't need display dashboard" — fix the remaining login failure modes and hide the Dashboard entry from non-logged-in visitors
+
+Work Log:
+- Diagnosed why login could still fail for the user while curl/agent-browser (canonical +855…) passed: the login zod schema required EXACTLY +855XXXXXXXXX — typing 012998009 / 85512998009 / 12998009 / spaced numbers all returned 400 "phone: must be a Cambodian number…" (verified via curl: 85512998009 → 400). Formatting alone was a login killer.
+- Phone normalization (client + server, shared semantics):
+  - lib/auth.ts NEW normalizeKhmerPhone(): canonicalizes 0-prefixed local, bare 8–9 digit, 855-prefixed and +855 (spaces/dashes/dots/parens ignored) → +855XXXXXXXX, null when invalid.
+  - api/auth/login + api/auth/register: zod phone loosened to min(6).max(32) then normalized server-side before lookup; invalid → 400 with the same message.
+  - auth-view.tsx normalizePhone() mirror used for form validation and the API payload — login and signup both.
+  - curl matrix: 85512998009→200, 012998009→200, 12998009→200, "+855 129 980 09"→200, "(+855) 129-980-09"→200, 12345→400.
+- Login self-diagnosis (cookie-persistence guard): NEW sessionPersistedAs(userId) in auth-view — after the login/register POST succeeds, fetch /api/session and require authed && user.id match BEFORE reloading. If the browser dropped Set-Cookie (embedded preview / third-party-cookie blocking), show NEW i18n key authErrCookieBlocked (EN+KM appended, dicts 555/555 parity) telling the user to open KhLan in a new tab or allow cookies — instead of silently looping back to logged-out.
+- Guest Dashboard removal (explicit request): header.tsx Dashboard button now renders only when me && !isGuest(me) (real login or demo persona); mobile-nav.tsx 5th slot uses hasSession = me && !isGuest(me) → guests get Favorites in that slot, Dashboard gone. Guests clicking a dashboard deep-link still hit the Task-10 GuestPanel.
+- Verification: agent-browser guest (desktop): header shows Favorites/Messages/Log in/Sign up, NO Dashboard; guest (390px): bottom nav Home/Browse/Sell/Favorites/Messages, scrollWidth 390; full UI login typing 012998009 + captcha COUPE → logged in as Nita Meng → auto-landed on the Super Admin dashboard; zero console/page errors; lint 0; no new /api/session 500s (only the pre-fix historical one at log line 448).
+
+Stage Summary:
+- Login can no longer fail on phone formatting (any common Cambodian input form is accepted on both client and server), and if the environment blocks session cookies the user now gets a clear bilingual explanation instead of a silent logged-out loop.
+- Non-logged-in visitors no longer see the Dashboard entry anywhere (desktop header + mobile bottom nav); it appears for real logins and demo personas only, and deep-links to the dashboard still funnel guests to the register/login panel.
+- Super Admin credentials unchanged: +85512998009 / khlan123 — now also accepted as 012998009, 12998009, 85512998009.
+- Files: MODIFIED src/lib/auth.ts, src/app/api/auth/login/route.ts, src/app/api/auth/register/route.ts, src/components/marketplace/views/auth-view.tsx, src/components/marketplace/header.tsx, src/components/marketplace/mobile-nav.tsx, src/lib/i18n.ts.

@@ -1,24 +1,27 @@
 "use client";
 
-import { useAppStore } from "@/lib/store";
+import { useAppStore, isGuest } from "@/lib/store";
 import { useT } from "@/hooks/use-t";
 import { Home, Search, PlusCircle, Heart, MessageSquare, Scale, LayoutDashboard } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 /** Mobile-first bottom navigation (fixed). Header carries desktop actions.
- *  5th slot is contextual: Dashboard when a session (persona) is loaded, else Favorites. */
+ *  5th slot is contextual: Dashboard for a real session (login or demo
+ *  persona), Favorites for guests — never show an account dashboard to a
+ *  visitor who is not signed in. */
 export function MobileNav() {
   const t = useT();
   const view = useAppStore((s) => s.view);
   const navigate = useAppStore((s) => s.navigate);
   const compareCount = useAppStore((s) => s.compare.length);
   const me = useAppStore((s) => s.me);
+  const hasSession = Boolean(me && !isGuest(me));
 
   const items = [
     { key: "home", icon: Home, label: t("navHome"), active: view.name === "home", onClick: () => navigate({ name: "home" }) },
     { key: "browse", icon: Search, label: t("navBrowse"), active: view.name === "browse", onClick: () => navigate({ name: "browse" }) },
     { key: "sell", icon: PlusCircle, label: t("navSell"), active: view.name === "sell", onClick: () => navigate({ name: "sell" }), primary: true },
-    me
+    hasSession
       ? { key: "dashboard", icon: LayoutDashboard, label: t("navDashboard"), active: view.name === "dashboard", onClick: () => navigate({ name: "dashboard" }) }
       : { key: "favorites", icon: Heart, label: t("navFavorites"), active: view.name === "favorites", onClick: () => navigate({ name: "favorites" }) },
     { key: "messages", icon: MessageSquare, label: t("navMessages"), active: view.name === "messages", onClick: () => navigate({ name: "messages" }) },
