@@ -60,8 +60,9 @@ function parkWelcome(name: string, isNew: boolean) {
 }
 
 /** Park a post-login redirect request — SessionBoot replays it once the
- *  reloaded page has the fresh session (admins land directly on their
- *  dashboard instead of hunting for the manage controls). */
+ *  reloaded page has the fresh session. Every signed-in role lands directly
+ *  on their dashboard (admin tools / dealer tools / customer account) so the
+ *  dashboard is impossible to miss after a successful login. */
 function parkDashboardRedirect() {
   try {
     sessionStorage.setItem("khlan_go_dashboard", "1");
@@ -194,9 +195,8 @@ function LoginForm() {
         clearAuthFallback();
       }
       parkWelcome(res.user.name, false);
-      if (res.user.role === "SUPER_ADMIN" || res.user.role === "ADMIN") {
-        parkDashboardRedirect();
-      }
+      // Every signed-in role lands on their dashboard after the reload.
+      parkDashboardRedirect();
       toast.success(t("authWelcomeBack", { name: res.user.name }));
       window.location.reload();
     } catch (err) {
@@ -294,6 +294,9 @@ function SignupForm() {
         clearAuthFallback();
       }
       parkWelcome(res.user.name, true);
+      // New accounts are BUYER role — land them on their account dashboard
+      // too, so a successful registration always ends somewhere useful.
+      parkDashboardRedirect();
       toast.success(t("authWelcomeNew"));
       window.location.reload();
     } catch (err) {

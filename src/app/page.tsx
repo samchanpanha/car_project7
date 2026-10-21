@@ -55,15 +55,15 @@ function SessionBoot() {
     if (data.authed && (data.user.locale === "en" || data.user.locale === "km")) {
       useAppStore.getState().setLocale(data.user.locale);
     }
-    // Replay the post-login redirect (set by the auth view): admins land
-    // directly on their dashboard so the manage controls are obvious.
+    // Replay the post-login redirect (set by the auth view): every signed-in
+    // role lands directly on their dashboard — admin tools / dealer tools /
+    // customer account — so the dashboard is impossible to miss after login.
     try {
       if (sessionStorage.getItem("khlan_go_dashboard")) {
         sessionStorage.removeItem("khlan_go_dashboard");
-        if (
-          data.authed &&
-          (data.user.role === "SUPER_ADMIN" || data.user.role === "ADMIN")
-        ) {
+        // Authed users only — a guest (stale flag, failed session) is never
+        // taken to the dashboard; they keep the public experience.
+        if (data.authed) {
           useAppStore.getState().navigate({ name: "dashboard" });
         }
       }

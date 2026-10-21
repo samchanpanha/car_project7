@@ -404,3 +404,29 @@ Stage Summary:
 - Cookies themselves also improved: HTTPS-embedded contexts now get SameSite=None; Secure (settable in cross-site frames) instead of a silently-dropped Lax cookie.
 - The user-facing flow is now: log in (any phone format) → captcha → session persists via cookie OR header → land on the dashboard. The cookie-blocked error message remains only as a last-resort diagnostic.
 - Files: MODIFIED src/lib/auth.ts, src/lib/session.ts, src/lib/client-hooks.ts, src/app/api/session/route.ts, src/app/api/auth/login/route.ts, src/app/api/auth/register/route.ts, src/app/api/auth/telegram/route.ts (await async cookie options), src/components/marketplace/views/auth-view.tsx, src/components/marketplace/header.tsx.
+
+---
+Task ID: 13
+Agent: Z.ai Code (main)
+Task: "I log in successfully, but not display dashboard, help me fix it, check and verify for me" — make the dashboard appear for EVERY successful sign-in, not just admins
+
+Work Log:
+- dev.log forensics on the user's last two logins: Flow 1 (admin) → reload → GET /api/admin/overview → dashboard displayed; Flow 2 (the complaint) → reload → only Home/Browse/Messages fetches, ZERO dashboard endpoints. Flow 2 was a non-admin login (or signup): the post-login redirect was parked for SUPER_ADMIN/ADMIN only, so every other role landed on Home by design — and the header Dashboard button was `hidden md:inline-flex`, i.e. invisible in the narrow preview panel, so the dashboard was effectively unreachable for buyers/dealers on small screens.
+- Fix 1 — auth-view.tsx: parkDashboardRedirect() now fires on EVERY successful login (any role; admin-only condition removed) AND on signup (new accounts land on their account dashboard too).
+- Fix 2 — page.tsx SessionBoot: replay of khlan_go_dashboard now navigates for ANY authed user (role check dropped); guests (authed=false) are still never taken to the dashboard — stale flags are consumed and dropped.
+- Fix 3 — header.tsx: Dashboard button no longer hidden on small screens — visible at all widths when me && !isGuest(me): icon-only below lg (aria-label kept), icon + label ≥ lg. Demo personas keep access; guests still never see it (mobile-nav 5th slot logic unchanged from Task 11).
+- Verification (agent-browser E2E, full UI incl. click-in-order captchas):
+  - Guest desktop 1280px: header = Compare/Favorites/Messages/Log in/Sign up, NO Dashboard anywhere.
+  - Admin login +85512998009 (captcha LEXUS) → reload → auto-landed AdminDashboard "សូមស្វាគមន៍, Nita Meng" with all 8 tabs (Overview…Settings…Audit).
+  - Logout → clean guest state restored (Log in / Sign up).
+  - Buyer login +85511998877 (captcha WAGON) → reload → auto-landed CustomerDashboard "សូមស្វាគមន៍, Dara Sok" with all 6 tabs — the exact previously-failing scenario.
+  - Mobile 390px signed in: header Dashboard icon visible and navigates correctly; MobileNav keeps the Dashboard tab.
+  - Guest mobile 390px: MobileNav 5th slot = Favorites; no Dashboard entry anywhere.
+  - Signup (new account, captcha DRIVE) → reload → auto-landed CustomerDashboard.
+  - Zero browser console/page errors; dev.log slice for the whole run contains zero 4xx/5xx; `bun run lint` clean.
+- Housekeeping: deleted the E2E signup test account (Test Ravy, +855712345678) incl. sellerProfile/favorites/audit rows — DB back to clean seed state.
+
+Stage Summary:
+- Root cause was role-gated post-login redirect + a md-hidden Dashboard button: non-admin sign-ins had no visible dashboard path in narrow viewports. Now every successful login/registration lands directly on the correct dashboard (admin tools / dealer tools / customer account), and the Dashboard entry is permanently visible for signed-in users at every viewport width while remaining completely hidden from guests.
+- Credentials unchanged: Super Admin +85512998009 / khlan123 (any phone format); demo buyer +85511998877 / khlan123.
+- Files: MODIFIED src/components/marketplace/views/auth-view.tsx, src/app/page.tsx, src/components/marketplace/header.tsx.

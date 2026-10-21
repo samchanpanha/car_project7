@@ -378,17 +378,18 @@ export function Header() {
             {t("navMessages")}
           </Button>
           {/* Dashboard is an account surface — hide it from guests entirely
-              (they get Log in / Sign up instead). Demo personas keep it. */}
+              (they get Log in / Sign up instead). Signed-in users always have
+              a visible entry: icon-only on small screens, icon + label ≥ lg. */}
           {me && !isGuest(me) && (
             <Button
               variant="ghost"
               size="sm"
               onClick={() => navigate({ name: "dashboard" })}
-              className="hidden md:inline-flex text-white/80 hover:text-white hover:bg-slate-800 border border-slate-700"
+              className="text-white/80 hover:text-white hover:bg-slate-800 border border-slate-700 px-2 sm:px-3"
               aria-label={t("navDashboard")}
             >
-              <LayoutDashboard className="h-4 w-4 mr-1.5 text-amber-400" aria-hidden />
-              {t("navDashboard")}
+              <LayoutDashboard className="h-4 w-4 text-amber-400" aria-hidden />
+              <span className="hidden lg:inline ml-1.5">{t("navDashboard")}</span>
             </Button>
           )}
           <LangToggle dark />
