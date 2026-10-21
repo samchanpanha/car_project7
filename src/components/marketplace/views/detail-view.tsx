@@ -15,6 +15,7 @@ import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { ReportStatusBadge } from "@/components/marketplace/status-badge";
+import { SellerTelegramButtons } from "@/components/marketplace/seller-telegram-buttons";
 import {
   ArrowLeft, BadgeCheck, CalendarClock, CarFront, ChevronLeft, ChevronRight, Eye, FileCheck2, FileText, FileX2,
   Flag, Gauge, Handshake, Heart, Loader2, MapPin, MessageSquare, Phone, RefreshCw, Send, ShieldCheck,
@@ -494,6 +495,7 @@ export function DetailView({ vehicleId }: { vehicleId: string }) {
                 Telegram · {v.sellerFull.telegram}
               </a>
             )}
+            <SellerTelegramButtons seller={v.sellerFull} className="mt-3" />
           </div>
 
           {/* AI report card */}

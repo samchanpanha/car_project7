@@ -1,5 +1,6 @@
 import type {
   SellerSummaryDTO,
+  SellerTelegramLinksDTO,
   VehicleCardDTO,
   VehicleDetailDTO,
 } from "@/lib/types";
@@ -27,7 +28,7 @@ export type SellerFullDTO = SellerSummaryDTO & {
   telegram?: string | null;
   responseRate: number;
   logoUrl?: string | null;
-};
+} & SellerTelegramLinksDTO;
 
 /** Map a User (+ optional SellerProfile) to the shared SellerSummaryDTO. */
 export function toSellerSummary(user: UserWithSellerProfile): SellerSummaryDTO {
@@ -57,6 +58,10 @@ export function toSellerFullDTO(user: UserWithSellerProfile): SellerFullDTO {
     telegram: p?.telegram ?? null,
     responseRate: p?.responseRate ?? 0,
     logoUrl: p?.logoUrl ?? null,
+    tgMiniAppUrl: p?.tgMiniAppUrl ?? null,
+    tgChannelUrl: p?.tgChannelUrl ?? null,
+    tgGroupUrl: p?.tgGroupUrl ?? null,
+    inviteCode: p?.inviteCode ?? null,
   };
 }
 

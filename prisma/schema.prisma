@@ -57,10 +57,38 @@ model SellerProfile {
   logoUrl      String?
   phone        String?
   telegram     String?
+  // ----- Telegram Hub (seller/dealer self-service growth tools) -----
+  // The seller's own Telegram Mini App link (any https URL, usually a t.me
+  // bot-app link) shown to buyers on listings and the storefront.
+  tgMiniAppUrl String?
+  // Public Telegram channel link (https://t.me/<channel>) buyers can join.
+  tgChannelUrl String?
+  // Telegram group chat link (https://t.me/<group> or https://t.me/+hash).
+  tgGroupUrl   String?
+  // Short unique referral code minted lazily; powers tracked invite links
+  // /api/tg/<code> that count buyer clicks before redirecting into Telegram.
+  inviteCode   String?  @unique
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
   tenantId     String?
   tenant       Tenant?  @relation(fields: [tenantId], references: [id])
+
+  inviteEvents TelegramInviteEvent[]
+}
+
+// One row per buyer click on a seller's tracked Telegram invite link
+// (/api/tg/<code>?d=DEST) — powers the seller's Telegram Hub stats.
+model TelegramInviteEvent {
+  id        String   @id @default(cuid())
+  profileId String
+  profile   SellerProfile @relation(fields: [profileId], references: [id], onDelete: Cascade)
+  code      String
+  // MINIAPP | CHANNEL | GROUP — which destination the click targeted
+  dest      String
+  createdAt DateTime @default(now())
+
+  @@index([profileId, createdAt])
+  @@index([code])
 }
 
 // ---------- Tenants (Dealership Organizations) ----------

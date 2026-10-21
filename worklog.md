@@ -643,3 +643,35 @@ Work Log:
 
 Stage Summary:
 - New SELLER/DEALER registrations now have a dashboard Inventory ("add car for sell") and a Subscription tab showing an automatic FREE trial — 30 days by default, fully admin-configurable via Settings → Platform settings → "Free trial days". Trial is virtual (registration date + setting), so config changes apply instantly platform-wide.
+
+---
+Task ID: telegram-hub
+Agent: Main orchestrator (Z.ai Code)
+Task: Sellers & dealers can configure their own Telegram Mini App and share tracked invite links that bring new buyers into their Telegram group/channel (+ buyer-facing join buttons)
+
+Work Log:
+- prisma/schema.prisma: SellerProfile gained tgMiniAppUrl / tgChannelUrl / tgGroupUrl / inviteCode (@unique); new TelegramInviteEvent model (profileId FK cascade, code, dest MINIAPP|CHANNEL|GROUP|UNIVERSAL, indexes [profileId,createdAt] + [code]); pushed with bun run db:push.
+- src/lib/dashboard-types.ts: SellerTelegramDTO (config + inviteCode + stats {total, byDest, last14 UTC buckets}) and TelegramDest type. src/lib/types.ts: new SellerTelegramLinksDTO mixed into VehicleDetailDTO.sellerFull and SellerPageDTO.seller. src/lib/api/mappers.ts: toSellerFullDTO now maps the 4 new fields, so detail + storefront APIs expose them for free.
+- GET/PUT /api/seller/telegram (new): 401 guest, 403 non-SELLER/DEALER; zod validation — Mini App any https URL, channel/group must be https://t.me|telegram.me/...; "" → null clearing; lazily mints an 8-char unambiguous invite code (P2002 retry loop); stats from TelegramInviteEvent (total count, byDest, 14-day UTC trend); PUT writes fields + AuditLog SELLER_TELEGRAM_UPDATED and returns the refreshed DTO. ensureProfile() heals missing SellerProfile rows.
+- GET /api/tg/[code] (new, public): records a TelegramInviteEvent then 302-redirects into the seller's Telegram — per-dest with fallback chain (GROUP→group→channel→miniapp etc., universal = first configured), unknown codes / path traversal / nothing configured → redirect home; analytics failures never block the redirect.
+- src/components/marketplace/dashboard/seller-telegram.tsx (new): Telegram Hub tab — 3-URL config form with client validation (t.me regex for channel/group, https URL check for Mini App, red field errors + toast), tracked invite links (universal + per-destination) each with Copy (clipboard + toast), native Telegram share (t.me/share/url), QR dialog (dynamic import of existing `qrcode` dep → PNG data URL), stats (4 StatCards + 14-day pure-CSS bar trend with date tooltips + HBar per-destination breakdown), growth tips card. Link rows stay disabled until the destination is configured. Invite URLs built client-side from window.location.origin so shared links always match the browsing origin.
+- customer-dashboard.tsx: new "Telegram" tab (Send icon) for isSellerish (non-tenant SELLER/DEALER) next to Inventory/Subscription.
+- Buyer side: new shared src/components/marketplace/seller-telegram-buttons.tsx renders "Join Telegram group / Join channel / Open Mini App" buttons on the vehicle detail page seller card and the seller storefront, pointing at /api/tg/<code>?d=DEST when the seller has an invite code (clicks counted), raw URLs otherwise; renders null when nothing configured.
+- i18n: 46 new keys (tabTelegram, tg*, sellerJoinGroup/Channel, sellerOpenMiniApp) added to all 4 locales (en/km/zh/vi) after setFreeTrialDaysHint — type system enforces completeness.
+
+Verification (agent-browser + dev.log + DB):
+- Registered fresh seller via UI (account type Seller, click-in-order captcha — note: captcha aria-labels localize to Khmer when UI locale is km, solver regex matched both), landed on dashboard with the new Telegram tab visible next to My inventory + Subscription.
+- Hub renders (config empty state, only universal link row enabled); saved https://t.me/... ×3 → toast, DB row persisted, invite code EM36SDVQ minted, all 4 invite links enabled in UI.
+- Redirect endpoint via curl: ?d=GROUP/CHANNEL/MINIAPP → exact configured URLs; universal → group (first configured); unknown code and ../-style code → 302 home; 4 TelegramInviteEvent rows recorded (unknown NOT recorded).
+- Stats live in UI after refetch: total 4, group/channel/miniapp 1/1/1, 14-day trend bar titles show today=4. QR dialog renders a real PNG (data:image/png;base64) of the universal link.
+- Client validation: channel https://example.com/fake → red "must be a https://t.me/..." hint + fix toast; restore + save OK.
+- Buyer side: temporarily configured an existing demo seller's profile (Sokha) — Prado detail page and Sokha Motors storefront both showed the 3 join buttons with correct /api/tg/DEMO1QA?d=... hrefs; demo profile then reverted to all-null.
+- DEALER role: flipped test user role to DEALER (+ profile type DEALER), re-login through captcha → same Telegram tab + hub loads (GET 200, same code/config/stats). English locale switch: hub headings/labels render in English.
+- Mobile 390px: no horizontal overflow, fields stack, footer pushed naturally; desktop screenshot clean. Restarted dev server once (stale Prisma Client in memory after schema push — "Unknown field inviteCode" 500, gone after restart).
+- Cleanup: test user +85571500123 (+ profile, events, audit rows) deleted; demo seller reverted; invite events 0. bun run lint clean; dev.log free of errors; GET / 200.
+
+Stage Summary:
+- Sellers and dealers now have a self-service Telegram growth hub: they connect their own Mini App/channel/group, get a shareable tracked invite link (copy/share/QR), and watch buyer clicks accumulate (total, per destination, 14-day trend).
+- Buyers discover the seller's Telegram on listings and storefronts with one-tap join buttons; every click flows through /api/tg/<code> so growth is measurable.
+- All Telegram destinations are admin-of-none: only the seller edits them; channel/group links are locked to t.me by validation; the invite route only redirects to https(s) URLs the seller configured.
+- Files: prisma/schema.prisma; src/lib/dashboard-types.ts, src/lib/types.ts, src/lib/api/mappers.ts, src/lib/i18n.ts; src/app/api/seller/telegram/route.ts, src/app/api/tg/[code]/route.ts (new); src/components/marketplace/dashboard/seller-telegram.tsx, src/components/marketplace/seller-telegram-buttons.tsx (new); src/components/marketplace/dashboard/customer-dashboard.tsx, src/components/marketplace/views/detail-view.tsx, src/components/marketplace/views/seller-view.tsx.

@@ -24,6 +24,16 @@ export interface SellerSummaryDTO {
   city: string;
 }
 
+/** Telegram growth channels a seller/dealer can attach to their profile
+ *  (configured in the dashboard Telegram Hub; shown to buyers).
+ *  inviteCode powers tracked invite links: /api/tg/<code>?d=DEST */
+export interface SellerTelegramLinksDTO {
+  tgMiniAppUrl?: string | null;
+  tgChannelUrl?: string | null;
+  tgGroupUrl?: string | null;
+  inviteCode?: string | null;
+}
+
 export interface VehicleCardDTO {
   id: string;
   make: string;
@@ -76,7 +86,7 @@ export interface VehicleDetailDTO extends VehicleCardDTO {
     phone?: string | null;
     telegram?: string | null;
     responseRate: number;
-  };
+  } & SellerTelegramLinksDTO;
   report?: { id: string; createdAt: string; overallConfidence: number } | null;
 }
 
@@ -153,7 +163,7 @@ export interface SellerPageDTO {
     telegram?: string | null;
     responseRate: number;
     logoUrl?: string | null;
-  };
+  } & SellerTelegramLinksDTO;
   listings: VehicleCardDTO[];
 }
 

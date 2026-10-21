@@ -13,6 +13,7 @@ import { VehicleCard, VehicleCardSkeleton } from "@/components/marketplace/vehic
 import { DashboardShell, type DashboardTabDef } from "./shell";
 import { PurchaseRequestList } from "./purchase-list";
 import { SellerInventory, SellerSubscription } from "./seller-tabs";
+import { SellerTelegram } from "./seller-telegram";
 import {
   AppointmentStatusBadge, ConfidenceRing, EmptyState, FetchErrorState, SectionCard, StatCard,
   StatCardSkeleton, errorText, formatDateTime, isForbidden,
@@ -26,7 +27,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import {
   CalendarDays, Car, CreditCard, FileCheck2, Handshake, Heart, LayoutDashboard, MessageSquare, Play, Search,
-  Trash2, TriangleAlert, X,
+  Send, Trash2, TriangleAlert, X,
 } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
@@ -59,6 +60,7 @@ export function CustomerDashboard({ me }: { me: SessionDTO }) {
       ? [
           { id: "inventory", label: t("tabInventoryMine"), icon: Car } as DashboardTabDef,
           { id: "subscription", label: t("tabSubscription"), icon: CreditCard } as DashboardTabDef,
+          { id: "telegram", label: t("tabTelegram"), icon: Send } as DashboardTabDef,
         ]
       : []),
   ];
@@ -87,6 +89,7 @@ export function CustomerDashboard({ me }: { me: SessionDTO }) {
       )}
       {active === "inventory" && isSellerish && <SellerInventory />}
       {active === "subscription" && isSellerish && <SellerSubscription />}
+      {active === "telegram" && isSellerish && <SellerTelegram />}
     </DashboardShell>
   );
 }

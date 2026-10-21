@@ -5,6 +5,7 @@ import { useT } from "@/hooks/use-t";
 import { useFetch } from "@/lib/client-hooks";
 import type { SellerPageDTO } from "@/lib/types";
 import { VehicleCard, VehicleCardSkeleton } from "@/components/marketplace/vehicle-card";
+import { SellerTelegramButtons } from "@/components/marketplace/seller-telegram-buttons";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -103,6 +104,7 @@ export function SellerView({ userId }: { userId: string }) {
             )}
           </div>
         )}
+        <SellerTelegramButtons seller={s} className="mt-3" />
       </div>
 
       {/* Listings */}

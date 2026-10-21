@@ -169,6 +169,28 @@ export interface SellerSubscriptionDTO {
   freeTrialDays: number;
 }
 
+/** GET/PUT /api/seller/telegram — the Telegram Hub for SELLER/DEALER
+ *  accounts: self-configured Mini App / channel / group links, a lazily
+ *  minted referral code for tracked invite links, and click stats.
+ *  Invite URLs are built client-side as {origin}/api/tg/<code>?d=DEST so the
+ *  shared links always use the origin the seller is browsing. */
+export interface SellerTelegramDTO {
+  miniAppUrl: string | null;
+  channelUrl: string | null;
+  groupUrl: string | null;
+  /** 8-char unique referral code (minted on first GET if absent) */
+  inviteCode: string;
+  stats: {
+    total: number;
+    byDest: { MINIAPP: number; CHANNEL: number; GROUP: number };
+    /** last 14 days, oldest → newest (UTC date buckets) */
+    last14: { date: string; count: number }[];
+  };
+}
+
+/** Valid ?d= destinations on tracked invite links. */
+export type TelegramDest = "MINIAPP" | "CHANNEL" | "GROUP";
+
 // ---------- Tenant / Dealer ----------
 
 export interface TenantDashboardDTO {
