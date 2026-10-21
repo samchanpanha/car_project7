@@ -11,6 +11,9 @@ const registerSchema = z.object({
   // loose on the wire — normalizeKhmerPhone canonicalizes (012…, 855…, +855…)
   phone: z.string().min(6).max(32),
   password: z.string().min(8, "password must be at least 8 characters").max(128),
+  // Self-selected account type. Staff roles (ADMIN / SUPER_ADMIN) can NEVER be
+  // created through public registration — they are provisioned internally only.
+  role: z.enum(["BUYER", "SELLER", "DEALER"]).default("BUYER"),
   locale: z.enum(["en", "km", "zh", "vi"]).optional(),
   /** single-use token minted by POST /api/auth/captcha/verify */
   captchaToken: z.string().min(20).max(256),
@@ -33,7 +36,7 @@ export async function POST(req: Request) {
         { status: 400 },
       );
     }
-    const { name, password, locale } = parsed.data;
+    const { name, password, locale, role } = parsed.data;
     const phone = normalizeKhmerPhone(parsed.data.phone);
     if (!phone) {
       return NextResponse.json(
@@ -63,13 +66,16 @@ export async function POST(req: Request) {
         name,
         phone,
         passwordHash: hashPassword(password),
-        role: "BUYER",
+        role,
         locale: locale ?? "km",
         phoneVerified: false,
       },
     });
-    // Private sellers get a profile lazily; give every new account one.
-    await db.sellerProfile.create({ data: { userId: user.id, type: "PRIVATE" } });
+    // Every account gets a seller profile lazily; sellers/dealers get the
+    // matching profile type so their future listings are attributed correctly.
+    await db.sellerProfile.create({
+      data: { userId: user.id, type: role === "DEALER" ? "DEALER" : "PRIVATE" },
+    });
 
     const token = createSessionToken(user.id);
     const res = NextResponse.json(

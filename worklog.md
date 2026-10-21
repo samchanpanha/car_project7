@@ -606,3 +606,20 @@ Stage Summary:
 - Fallback philosophy: strings outside the dictionary (inline km/en ternaries in sell/listing forms, AI report body, contact templates) fall back to English for zh/vi — noted as future polish, no functional gaps.
 - Credentials unchanged: Super Admin +85512998009 / khlan123; demo buyer +85511998877 / khlan123. Admin profile locale restored to km.
 - Files: MODIFIED src/lib/i18n.ts, src/lib/store.ts, src/lib/format.ts, src/lib/dashboard-types.ts, src/app/page.tsx, src/app/globals.css, src/components/marketplace/header.tsx, src/components/marketplace/views/auth-view.tsx, src/components/marketplace/profile-dialog.tsx, src/components/marketplace/status-badge.tsx, src/app/api/session/route.ts, src/app/api/auth/register/route.ts, src/app/api/account/profile/route.ts, src/app/api/vehicles/[id]/route.ts, src/components/marketplace/listing-editor.tsx.
+
+---
+Task ID: reg-role-dropdown
+Agent: Main orchestrator (Z.ai Code)
+Task: Add account-type dropdown (Buyer / Seller / Dealer) to new-user registration
+
+Work Log:
+- Added 4 i18n keys (authRoleLabel, authRoleBuyerHint, authRoleSellerHint, authRoleDealerHint) to all locales (en/km/zh/vi) in src/lib/i18n.ts.
+- Updated src/app/api/auth/register/route.ts: registerSchema now accepts `role: z.enum(["BUYER","SELLER","DEALER"]).default("BUYER")`; created user gets the chosen role; SellerProfile type = DEALER for dealer signups, PRIVATE otherwise. ADMIN/SUPER_ADMIN remain impossible via public registration (zod rejects → 400).
+- Updated SignupForm in src/components/marketplace/views/auth-view.tsx: new "Account type" Select placed after Full name, with per-role icons (UserRound/Tag/Store), localized labels reusing roleBUYER/roleSELLER/roleDEALER, and a dynamic hint line under the trigger describing the selected role. Role sent in POST body.
+- Verified with Agent Browser end-to-end: opened Sign up tab, saw dropdown (default Buyer), selected Dealer (hint updated), filled form, solved the click-in-order captcha (letters must be clicked in the order of the bold target WORD in the instruction, not display order), registration landed on dashboard as "Test Dealer User".
+- DB verification: new user had role=DEALER + SellerProfile.type=DEALER. API tests: SELLER → role SELLER/PRIVATE; omitted role → BUYER/PRIVATE (backward compatible); role=SUPER_ADMIN → HTTP 400 rejected.
+- Cleaned up the 3 test users from the demo DB. Lint clean; no runtime errors in dev.log.
+
+Stage Summary:
+- Registration now self-selects account type among BUYER/SELLER/DEALER, defaulting to BUYER when omitted; staff roles blocked by schema.
+- Dealer signups get a DEALER-type seller profile; a future "create dealership/tenant" flow can pick these accounts up.

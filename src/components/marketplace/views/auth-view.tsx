@@ -27,12 +27,26 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Separator } from "@/components/ui/separator";
-import { CarFront, ChevronDown, Eye, EyeOff, Loader2 } from "lucide-react";
+import { CarFront, ChevronDown, Eye, EyeOff, Loader2, Store, Tag, UserRound } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { isLocale, type DictKey, type Locale } from "@/lib/i18n";
 
 const PHONE_RE = /^\+855\d{7,9}$/;
+
+/** Self-selectable account types at registration — staff roles (ADMIN /
+ *  SUPER_ADMIN) are intentionally absent: they are provisioned internally. */
+const ACCOUNT_TYPES = ["BUYER", "SELLER", "DEALER"] as const;
+type AccountType = (typeof ACCOUNT_TYPES)[number];
+
+const ACCOUNT_TYPE_META: Record<
+  AccountType,
+  { icon: typeof UserRound; labelKey: DictKey; hintKey: DictKey }
+> = {
+  BUYER: { icon: UserRound, labelKey: "roleBUYER", hintKey: "authRoleBuyerHint" },
+  SELLER: { icon: Tag, labelKey: "roleSELLER", hintKey: "authRoleSellerHint" },
+  DEALER: { icon: Store, labelKey: "roleDEALER", hintKey: "authRoleDealerHint" },
+};
 
 /** Normalize Khmer phone input: accept 0-prefixed local numbers, bare
  *  8–9 digit numbers and 855-prefixed numbers — everything becomes
@@ -269,6 +283,7 @@ function LoginForm() {
 function SignupForm() {
   const t = useT();
   const [name, setName] = useState("");
+  const [role, setRole] = useState<AccountType>("BUYER");
   const [phone, setPhone] = useState("");
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");
@@ -295,7 +310,7 @@ function SignupForm() {
       const res = await apiSend<{ ok: boolean; user: { id: string; name: string }; sessionToken?: string }>(
         "/api/auth/register",
         "POST",
-        { name: name.trim(), phone: normalizePhone(phone), password, locale, captchaToken },
+        { name: name.trim(), phone: normalizePhone(phone), password, role, locale, captchaToken },
       );
       // Same session-persistence guard as login (cookie → header fallback).
       let session = await fetchVerifiedSession(res.user.id);
@@ -314,8 +329,8 @@ function SignupForm() {
       } else {
         clearAuthFallback();
       }
-      // New accounts are BUYER role — land them on their account dashboard
-      // too, fully in-memory (see doLogin).
+      // The chosen account type (BUYER/SELLER/DEALER) was applied server-side —
+      // land on the account dashboard too, fully in-memory (see doLogin).
       await applySessionInPlace(session);
       toast.success(t("authWelcomeNew"));
       useAppStore.getState().navigate({ name: "dashboard" });
@@ -342,6 +357,33 @@ function SignupForm() {
             autoComplete="name"
             className="h-11"
           />
+        </div>
+        <div className="flex flex-col gap-1.5">
+          <Label htmlFor="signup-role">{t("authRoleLabel")}</Label>
+          <Select
+            value={role}
+            onValueChange={(v) => {
+              if ((ACCOUNT_TYPES as readonly string[]).includes(v)) setRole(v as AccountType);
+            }}
+          >
+            <SelectTrigger id="signup-role" className="h-11" aria-label={t("authRoleLabel")}>
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {ACCOUNT_TYPES.map((r) => {
+                const Icon = ACCOUNT_TYPE_META[r].icon;
+                return (
+                  <SelectItem key={r} value={r} className="py-2">
+                    <span className="flex items-center gap-2">
+                      <Icon className="h-4 w-4 text-amber-600" aria-hidden />
+                      <span className="font-medium">{t(ACCOUNT_TYPE_META[r].labelKey)}</span>
+                    </span>
+                  </SelectItem>
+                );
+              })}
+            </SelectContent>
+          </Select>
+          <p className="text-[11px] text-slate-400">{t(ACCOUNT_TYPE_META[role].hintKey)}</p>
         </div>
         <div className="flex flex-col gap-1.5">
           <Label htmlFor="signup-phone">{t("authPhoneLabel")}</Label>
