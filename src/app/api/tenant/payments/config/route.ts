@@ -17,8 +17,9 @@ export async function GET() {
         instructionsEn: config.instructionsEn,
         instructionsKm: config.instructionsKm,
         telegram: config.telegram,
-        hasKhqr: Boolean(config.khqrPayload || config.khqrImageUrl),
+        hasKhqr: Boolean(config.khqrImage || config.khqrPayload || config.khqrImageUrl),
         khqrDataUrl: await khqrDataUrl(config),
+        khqrImage: config.khqrImage,
       },
       freePlan: config.freePlan,
     };

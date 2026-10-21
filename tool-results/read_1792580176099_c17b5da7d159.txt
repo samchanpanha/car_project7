@@ -1,0 +1,1055 @@
+     1→"use client";
+     2→
+     3→// Super Admin / Admin dashboard — platform KPIs, moderation, users, AI stats, settings, audit.
+     4→
+     5→import { useAppStore } from "@/lib/store";
+     6→import { useT } from "@/hooks/use-t";
+     7→import { useFetch, apiSend, qs } from "@/lib/client-hooks";
+     8→import { formatUsd, timeAgo } from "@/lib/format";
+     9→import type {
+    10→  AdminOverviewDTO,
+    11→  AdminTenantDTO,
+    12→  AdminVehicleRowDTO,
+    13→  AdminUserDTO,
+    14→  AiStatsDTO,
+    15→  AuditEntryDTO,
+    16→  PlatformSettingsDTO,
+    17→  SessionDTO,
+    18→} from "@/lib/dashboard-types";
+    19→import type { VehicleStatus } from "@/lib/types";
+    20→import type { SubscriptionPaymentDTO } from "@/lib/commerce-types";
+    21→import { DashboardShell, type DashboardTabDef } from "./shell";
+    22→import {
+    23→  AvatarCircle, ConfidenceRing, EmptyState, FetchErrorState, HBar, MiniBarChart, PaymentStatusBadge,
+    24→  RoleBadge, SectionCard, StatCard, StatCardSkeleton, TenantStatusBadge, VehicleStatusBadge,
+    25→  VerificationBadge, errorText, isForbidden,
+    26→} from "./bits";
+    27→import { Button } from "@/components/ui/button";
+    28→import { Input } from "@/components/ui/input";
+    29→import { Label } from "@/components/ui/label";
+    30→import { Switch } from "@/components/ui/switch";
+    31→import { Skeleton } from "@/components/ui/skeleton";
+    32→import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+    33→import { Textarea } from "@/components/ui/textarea";
+    34→import {
+    35→  Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle,
+    36→} from "@/components/ui/dialog";
+    37→import {
+    38→  DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger,
+    39→} from "@/components/ui/dropdown-menu";
+    40→import {
+    41→  BadgeCheck, Car, ChevronDown, CreditCard, DollarSign, FileCheck2, Gauge, Hourglass, LayoutDashboard, Loader2,
+    42→  MessageSquare, MoreHorizontal, ScrollText, Settings, ShieldCheck, Sparkles, Star, Store, TriangleAlert, Users, Wallet,
+    43→} from "lucide-react";
+    44→import { useEffect, useState } from "react";
+    45→import { toast } from "sonner";
+    46→import { cn } from "@/lib/utils";
+    47→
+    48→const VEHICLE_STATUSES: VehicleStatus[] = ["PUBLISHED", "PENDING_REVIEW", "DRAFT", "SOLD", "REJECTED", "ARCHIVED"];
+    49→
+    50→const STATUS_BAR_COLORS: Record<VehicleStatus, string> = {
+    51→  PUBLISHED: "bg-emerald-500",
+    52→  PENDING_REVIEW: "bg-amber-400",
+    53→  DRAFT: "bg-slate-300",
+    54→  SOLD: "bg-slate-800",
+    55→  REJECTED: "bg-rose-500",
+    56→  ARCHIVED: "bg-slate-300",
+    57→};
+    58→
+    59→export function AdminDashboard({ me }: { me: SessionDTO }) {
+    60→  const t = useT();
+    61→  const view = useAppStore((s) => s.view);
+    62→  const navigate = useAppStore((s) => s.navigate);
+    63→  const active = (view.name === "dashboard" && view.tab) || "overview";
+    64→  const setTab = (tab: string) => navigate({ name: "dashboard", tab });
+    65→
+    66→  const tabs: DashboardTabDef[] = [
+    67→    { id: "overview", label: t("tabOverview"), icon: LayoutDashboard },
+    68→    { id: "tenants", label: t("tabTenants"), icon: Store },
+    69→    { id: "listings", label: t("tabListings"), icon: Car },
+    70→    { id: "users", label: t("tabUsers"), icon: Users },
+    71→    { id: "payments", label: t("tabPayments"), icon: CreditCard },
+    72→    { id: "ai", label: t("tabAi"), icon: Sparkles },
+    73→    { id: "settings", label: t("tabSettings"), icon: Settings },
+    74→    { id: "audit", label: t("tabAudit"), icon: ScrollText },
+    75→  ];
+    76→
+    77→  return (
+    78→    <DashboardShell
+    79→      greeting={t("dashboardWelcome", { name: me.user.name })}
+    80→      subtitle={t("dashboardAdminSub")}
+    81→      badge={<RoleBadge role={me.user.role} />}
+    82→      tabs={tabs}
+    83→      active={active}
+    84→      onTab={setTab}
+    85→    >
+    86→      {active === "overview" && <AdminOverview />}
+    87→      {active === "tenants" && <AdminTenants />}
+    88→      {active === "listings" && <AdminListings />}
+    89→      {active === "users" && <AdminUsers />}
+    90→      {active === "payments" && <AdminPayments />}
+    91→      {active === "ai" && <AdminAi />}
+    92→      {active === "settings" && <AdminSettings />}
+    93→      {active === "audit" && <AdminAudit />}
+    94→    </DashboardShell>
+    95→  );
+    96→}
+    97→
+    98→// ---------------- overview ----------------
+    99→
+   100→function AdminOverview() {
+   101→  const t = useT();
+   102→  const { data, loading, error, refetch } = useFetch<AdminOverviewDTO>("/api/admin/overview");
+   103→
+   104→  if (loading && !data) {
+   105→    return (
+   106→      <>
+   107→        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+   108→          {Array.from({ length: 8 }).map((_, i) => <StatCardSkeleton key={i} />)}
+   109→        </div>
+   110→        <Skeleton className="h-44 w-full rounded-xl" />
+   111→      </>
+   112→    );
+   113→  }
+   114→  if (error && !data) return <FetchErrorState message={error} onRetry={refetch} />;
+   115→  if (!data) return null;
+   116→
+   117→  const k = data.kpis;
+   118→  const statusTotal = Object.values(data.listingsByStatus).reduce((a, b) => a + b, 0);
+   119→
+   120→  return (
+   121→    <>
+   122→      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+   123→        <StatCard icon={Users} label={t("kpiUsers")} value={k.users} />
+   124→        <StatCard icon={Store} label={t("kpiTenants")} value={k.tenants} />
+   125→        <StatCard icon={Car} label={t("kpiListings")} value={k.listingsPublished} />
+   126→        <StatCard icon={Hourglass} label={t("kpiPending")} value={k.listingsPending} />
+   127→        <StatCard icon={FileCheck2} label={t("kpiReports")} value={k.reportsGenerated} />
+   128→        <StatCard icon={MessageSquare} label={t("kpiConversations")} value={k.conversations} />
+   129→        <StatCard icon={BadgeCheck} label={t("kpiFavorites")} value={k.favorites} />
+   130→        <StatCard icon={DollarSign} label={t("kpiMrr")} value={formatUsd(k.mrrUsd)} />
+   131→      </div>
+   132→
+   133→      <div className="grid gap-5 lg:grid-cols-2">
+   134→        <SectionCard title={t("listingsByStatus")}>
+   135→          <div className="space-y-3">
+   136→            {VEHICLE_STATUSES.map((s) => (
+   137→              <HBar
+   138→                key={s}
+   139→                label={t(`vst${s}` as never)}
+   140→                value={data.listingsByStatus[s] ?? 0}
+   141→                total={statusTotal}
+   142→                colorClass={STATUS_BAR_COLORS[s]}
+   143→              />
+   144→            ))}
+   145→          </div>
+   146→        </SectionCard>
+   147→        <SectionCard title={t("signupTrend")}>
+   148→          {data.signupTrend.length === 0 ? (
+   149→            <EmptyState icon={Gauge} text={t("noResults")} />
+   150→          ) : (
+   151→            <MiniBarChart
+   152→              points={data.signupTrend.map((p) => ({ label: p.label, a: p.users, b: p.listings }))}
+   153→              seriesA="bg-emerald-500"
+   154→              seriesB="bg-amber-400"
+   155→              labelA={t("kpiUsers")}
+   156→              labelB={t("kpiListings")}
+   157→            />
+   158→          )}
+   159→        </SectionCard>
+   160→      </div>
+   161→
+   162→      <div className="grid gap-5 lg:grid-cols-2">
+   163→        <SectionCard title={t("topTenants")}>
+   164→          {data.topTenants.length === 0 ? (
+   165→            <EmptyState icon={Store} text={t("noResults")} />
+   166→          ) : (
+   167→            <ul className="divide-y divide-slate-100">
+   168→              {data.topTenants.map((tt) => (
+   169→                <li key={tt.id} className="flex items-center justify-between gap-3 py-2.5">
+   170→                  <div className="min-w-0">
+   171→                    <p className="truncate text-sm font-medium text-slate-800">{tt.name}</p>
+   172→                    <p className="text-[11px] text-slate-400">
+   173→                      {tt.plan} · {t("kpiListings")} {tt.listings}
+   174→                    </p>
+   175→                  </div>
+   176→                  <span className="shrink-0 text-xs font-semibold text-slate-600 tabular-nums">{tt.views}</span>
+   177→                </li>
+   178→              ))}
+   179→            </ul>
+   180→          )}
+   181→        </SectionCard>
+   182→        <SectionCard title={t("recentActivity")}>
+   183→          {data.recentAudit.length === 0 ? (
+   184→            <EmptyState icon={ScrollText} text={t("auditEmpty")} />
+   185→          ) : (
+   186→            <ul className="divide-y divide-slate-100">
+   187→              {data.recentAudit.slice(0, 6).map((a) => (
+   188→                <li key={a.id} className="flex items-center justify-between gap-2 py-2.5">
+   189→                  <span className="min-w-0 truncate text-xs">
+   190→                    <code className="mr-1.5 rounded bg-slate-100 px-1.5 py-0.5 text-[10px] font-semibold text-slate-700">{a.action}</code>
+   191→                    <span className="text-slate-500">{a.entity}</span>
+   192→                  </span>
+   193→                  <span className="shrink-0 text-[11px] text-slate-400">{timeAgo(a.createdAt, "en")}</span>
+   194→                </li>
+   195→              ))}
+   196→            </ul>
+   197→          )}
+   198→        </SectionCard>
+   199→      </div>
+   200→    </>
+   201→  );
+   202→}
+   203→
+   204→// ---------------- tenants ----------------
+   205→
+   206→function AdminTenants() {
+   207→  const t = useT();
+   208→  const { data, loading, error, refetch } = useFetch<AdminTenantDTO[]>("/api/admin/tenants");
+   209→  const [busyId, setBusyId] = useState<string | null>(null);
+   210→  const [extending, setExtending] = useState<{ id: string; name: string } | null>(null);
+   211→  const [extendMonths, setExtendMonths] = useState("1");
+   212→  const [extendNote, setExtendNote] = useState("");
+   213→  const [extendingBusy, setExtendingBusy] = useState(false);
+   214→
+   215→  const submitExtend = async () => {
+   216→    if (!extending) return;
+   217→    const months = Number(extendMonths);
+   218→    if (!Number.isInteger(months) || months < 1 || months > 36) return;
+   219→    setExtendingBusy(true);
+   220→    try {
+   221→      await apiSend("/api/admin/subscriptions/extend", "POST", {
+   222→        tenantId: extending.id,
+   223→        months,
+   224→        note: extendNote.trim() || undefined,
+   225→      });
+   226→      toast.success(t("subExtendedToast"));
+   227→      setExtending(null);
+   228→      setExtendMonths("1");
+   229→      setExtendNote("");
+   230→      refetch();
+   231→    } catch (e) {
+   232→      toast.error(isForbidden(e) ? t("toastForbidden") : errorText(e));
+   233→    } finally {
+   234→      setExtendingBusy(false);
+   235→    }
+   236→  };
+   237→
+   238→  const patch = async (id: string, body: Record<string, string>) => {
+   239→    setBusyId(id);
+   240→    try {
+   241→      await apiSend(`/api/admin/tenants/${id}`, "PATCH", body);
+   242→      toast.success(t("toastUpdated"));
+   243→      refetch();
+   244→    } catch (e) {
+   245→      toast.error(isForbidden(e) ? t("toastForbidden") : errorText(e));
+   246→    } finally {
+   247→      setBusyId(null);
+   248→    }
+   249→  };
+   250→
+   251→  if (loading && !data) {
+   252→    return <div className="space-y-3">{Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} className="h-24 w-full rounded-xl" />)}</div>;
+   253→  }
+   254→  if (error && !data) return <FetchErrorState message={error} onRetry={refetch} />;
+   255→  if (!data || data.length === 0) return <EmptyState icon={Store} text={t("noResults")} />;
+   256→
+   257→  return (
+   258→    <div className="space-y-3">
+   259→      {data.map((tt) => (
+   260→        <div key={tt.id} className="rounded-xl border border-slate-200 bg-white p-4">
+   261→          <div className="flex flex-wrap items-start justify-between gap-3">
+   262→            <div className="min-w-0">
+   263→              <p className="flex items-center gap-2 text-sm font-semibold text-slate-900">
+   264→                <span className="truncate">{tt.name}</span>
+   265→                <VerificationBadge verification={tt.verification} />
+   266→                <TenantStatusBadge status={tt.status} />
+   267→              </p>
+   268→              <p className="mt-0.5 text-[11px] text-slate-400">
+   269→                {tt.slug} · {tt.city} · {t("sellerSince", { y: new Date(tt.createdAt).getFullYear() })}
+   270→              </p>
+   271→            </div>
+   272→            <DropdownMenu>
+   273→              <DropdownMenuTrigger asChild>
+   274→                <Button variant="outline" size="sm" disabled={busyId === tt.id} aria-label={`${t("actions")} ${tt.name}`}>
+   275→                  {busyId === tt.id ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : <MoreHorizontal className="h-4 w-4" aria-hidden />}
+   276→                  <ChevronDown className="h-3 w-3 opacity-60" aria-hidden />
+   277→                </Button>
+   278→              </DropdownMenuTrigger>
+   279→              <DropdownMenuContent align="end" className="w-44">
+   280→                <DropdownMenuLabel>{t("actions")}</DropdownMenuLabel>
+   281→                <DropdownMenuSeparator />
+   282→                <DropdownMenuItem onClick={() => patch(tt.id, { verification: "VERIFIED" })}>{t("actVerify")}</DropdownMenuItem>
+   283→                <DropdownMenuItem onClick={() => patch(tt.id, { verification: "PENDING" })}>{t("actSetPending")}</DropdownMenuItem>
+   284→                <DropdownMenuItem onClick={() => patch(tt.id, { verification: "REJECTED" })} className="text-rose-600 focus:text-rose-700">
+   285→                  {t("actReject")}
+   286→                </DropdownMenuItem>
+   287→                <DropdownMenuSeparator />
+   288→                <DropdownMenuItem onClick={() => patch(tt.id, { status: "SUSPENDED" })} className="text-rose-600 focus:text-rose-700">
+   289→                  {t("actSuspend")}
+   290→                </DropdownMenuItem>
+   291→                <DropdownMenuItem onClick={() => patch(tt.id, { status: "ACTIVE" })}>{t("actActivate")}</DropdownMenuItem>
+   292→                <DropdownMenuSeparator />
+   293→                <DropdownMenuItem onClick={() => setExtending({ id: tt.id, name: tt.name })}>{t("subManualExtend")}</DropdownMenuItem>
+   294→              </DropdownMenuContent>
+   295→            </DropdownMenu>
+   296→          </div>
+   297→          <div className="mt-3 grid grid-cols-2 gap-2 text-xs sm:grid-cols-4">
+   298→            <div className="rounded-lg bg-slate-50 px-3 py-2">
+   299→              <p className="text-[10px] text-slate-400">{t("tabStaff")}</p>
+   300→              <p className="font-semibold text-slate-700">{tt.memberCount}</p>
+   301→            </div>
+   302→            <div className="rounded-lg bg-slate-50 px-3 py-2">
+   303→              <p className="text-[10px] text-slate-400">{t("kpiListings")}</p>
+   304→              <p className="font-semibold text-slate-700">{tt.listingCount}</p>
+   305→            </div>
+   306→            <div className="rounded-lg bg-slate-50 px-3 py-2">
+   307→              <p className="text-[10px] text-slate-400">{t("tabSubscription")}</p>
+   308→              <p className="font-semibold text-slate-700">{tt.plan ?? "—"}</p>
+   309→            </div>
+   310→            <div className="rounded-lg bg-slate-50 px-3 py-2">
+   311→              <p className="text-[10px] text-slate-400">{t("kpiMrr")}</p>
+   312→              <p className="font-semibold text-slate-700">{formatUsd(tt.mrrUsd)}</p>
+   313→            </div>
+   314→          </div>
+   315→        </div>
+   316→      ))}
+   317→
+   318→      {/* Manual subscription extension dialog */}
+   319→      <Dialog open={Boolean(extending)} onOpenChange={(o) => !o && setExtending(null)}>
+   320→        <DialogContent className="sm:max-w-sm">
+   321→          <DialogHeader>
+   322→            <DialogTitle>{t("subManualExtend")}</DialogTitle>
+   323→          </DialogHeader>
+   324→          <div className="space-y-3">
+   325→            <p className="text-sm text-slate-500">{extending?.name}</p>
+   326→            <div>
+   327→              <Label htmlFor="ext-months" className="text-xs text-slate-500">{t("subExtendMonths")}</Label>
+   328→              <Input id="ext-months" type="number" min={1} max={36} value={extendMonths}
+   329→                onChange={(e) => setExtendMonths(e.target.value)} className="mt-1.5 h-9" />
+   330→            </div>
+   331→            <div>
+   332→              <Label htmlFor="ext-note" className="text-xs text-slate-500">{t("subExtendNote")}</Label>
+   333→              <Textarea id="ext-note" value={extendNote} onChange={(e) => setExtendNote(e.target.value)} rows={2} className="mt-1.5" maxLength={300} />
+   334→            </div>
+   335→          </div>
+   336→          <DialogFooter>
+   337→            <Button variant="outline" size="sm" onClick={() => setExtending(null)}>{t("cancel")}</Button>
+   338→            <Button size="sm" onClick={submitExtend} disabled={extendingBusy} className="bg-amber-500 hover:bg-amber-400 text-slate-950 font-semibold">
+   339→              {extendingBusy && <Loader2 className="h-4 w-4 mr-2 animate-spin" aria-hidden />}
+   340→              {t("subManualExtend")}
+   341→            </Button>
+   342→          </DialogFooter>
+   343→        </DialogContent>
+   344→      </Dialog>
+   345→    </div>
+   346→  );
+   347→}
+   348→
+   349→function AdminListings() {
+   350→  const t = useT();
+   351→  const navigate = useAppStore((s) => s.navigate);
+   352→  const [status, setStatus] = useState<string>("PENDING_REVIEW");
+   353→  const [q, setQ] = useState("");
+   354→  const [debQ, setDebQ] = useState("");
+   355→  const [busyId, setBusyId] = useState<string | null>(null);
+   356→
+   357→  useEffect(() => {
+   358→    const h = setTimeout(() => setDebQ(q.trim()), 350);
+   359→    return () => clearTimeout(h);
+   360→  }, [q]);
+   361→
+   362→  const url = `/api/admin/vehicles${qs({ status: status === "ALL" ? undefined : status, q: debQ || undefined })}`;
+   363→  const { data, loading, error, refetch } = useFetch<AdminVehicleRowDTO[]>(url);
+   364→
+   365→  const patch = async (id: string, body: Record<string, string | boolean>) => {
+   366→    setBusyId(id);
+   367→    try {
+   368→      await apiSend(`/api/admin/vehicles/${id}`, "PATCH", body);
+   369→      toast.success(t("toastUpdated"));
+   370→      refetch();
+   371→    } catch (e) {
+   372→      toast.error(isForbidden(e) ? t("toastForbidden") : errorText(e));
+   373→    } finally {
+   374→      setBusyId(null);
+   375→    }
+   376→  };
+   377→
+   378→  const chips = ["ALL", ...VEHICLE_STATUSES];
+   379→
+   380→  return (
+   381→    <div className="space-y-4">
+   382→      <div className="flex flex-wrap items-center gap-2">
+   383→        <div className="flex w-full items-center gap-2 sm:w-64">
+   384→          <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder={`${t("searchButton")}…`} className="h-9" aria-label={t("searchButton")} />
+   385→        </div>
+   386→        <div className="flex flex-wrap gap-1.5">
+   387→          {chips.map((c) => (
+   388→            <button
+   389→              key={c}
+   390→              onClick={() => setStatus(c)}
+   391→              aria-pressed={status === c}
+   392→              className={cn(
+   393→                "rounded-full border px-3 py-1.5 text-xs font-medium transition-colors cursor-pointer min-h-[32px]",
+   394→                status === c ? "border-amber-500 bg-amber-50 text-amber-800" : "border-slate-200 bg-white text-slate-600 hover:border-slate-300"
+   395→              )}
+   396→            >
+   397→              {t(`vst${c}` as never)}
+   398→            </button>
+   399→          ))}
+   400→        </div>
+   401→      </div>
+   402→
+   403→      {loading && !data ? (
+   404→        <div className="space-y-3">{Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} className="h-20 w-full rounded-xl" />)}</div>
+   405→      ) : error && !data ? (
+   406→        <FetchErrorState message={error} onRetry={refetch} />
+   407→      ) : !data || data.length === 0 ? (
+   408→        <EmptyState icon={Car} text={t("noResults")} />
+   409→      ) : (
+   410→        <div className="space-y-2.5">
+   411→          {data.map((v) => (
+   412→            <div key={v.id} className="flex items-center gap-3 rounded-xl border border-slate-200 bg-white p-3">
+   413→              <button
+   414→                onClick={() => navigate({ name: "detail", vehicleId: v.id })}
+   415→                className="h-14 w-20 shrink-0 overflow-hidden rounded-lg bg-slate-100 cursor-pointer"
+   416→                aria-label={`${v.make} ${v.model} ${v.year}`}
+   417→              >
+   418→                {v.images[0] ? (
+   419→                  <img src={v.images[0]} alt="" className="h-full w-full object-cover" />
+   420→                ) : (
+   421→                  <Car className="mx-auto h-6 w-6 text-slate-300" aria-hidden />
+   422→                )}
+   423→              </button>
+   424→              <div className="min-w-0 flex-1">
+   425→                <p className="truncate text-sm font-medium text-slate-900">
+   426→                  {v.make} {v.model} {v.variant ?? ""} {v.year}
+   427→                </p>
+   428→                <p className="mt-0.5 truncate text-[11px] text-slate-400">
+   429→                  {formatUsd(v.priceUsd)} · {v.sellerName} · {v.city}
+   430→                </p>
+   431→                <div className="mt-1.5 flex items-center gap-2">
+   432→                  <VehicleStatusBadge status={v.status} />
+   433→                  {v.featured && (
+   434→                    <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-amber-600">
+   435→                      <Star className="h-3 w-3 fill-amber-400 text-amber-400" aria-hidden />
+   436→                    </span>
+   437→                  )}
+   438→                </div>
+   439→              </div>
+   440→              <div className="flex shrink-0 items-center gap-1.5">
+   441→                <button
+   442→                  onClick={() => patch(v.id, { featured: !v.featured })}
+   443→                  disabled={busyId === v.id}
+   444→                  className={cn(
+   445→                    "flex h-9 w-9 items-center justify-center rounded-lg border transition-colors cursor-pointer disabled:opacity-50",
+   446→                    v.featured ? "border-amber-300 bg-amber-50 text-amber-500" : "border-slate-200 text-slate-400 hover:text-amber-500"
+   447→                  )}
+   448→                  aria-label={v.featured ? t("actUnfeature") : t("actFeature")}
+   449→                >
+   450→                  <Star className={cn("h-4 w-4", v.featured && "fill-amber-400")} aria-hidden />
+   451→                </button>
+   452→                <Button variant="outline" size="sm" onClick={() => patch(v.id, { status: "PUBLISHED" })} disabled={busyId === v.id}
+   453→                  className="hidden border-emerald-200 text-emerald-700 hover:bg-emerald-50 sm:inline-flex">
+   454→                  {t("actApprove")}
+   455→                </Button>
+   456→                <Button variant="outline" size="sm" onClick={() => patch(v.id, { status: "REJECTED" })} disabled={busyId === v.id}
+   457→                  className="hidden border-rose-200 text-rose-700 hover:bg-rose-50 sm:inline-flex">
+   458→                  {t("actReject")}
+   459→                </Button>
+   460→                {/* mobile compact actions */}
+   461→                <DropdownMenu>
+   462→                  <DropdownMenuTrigger asChild>
+   463→                    <Button variant="outline" size="icon" className="sm:hidden h-9 w-9" aria-label={t("actions")}>
+   464→                      <MoreHorizontal className="h-4 w-4" aria-hidden />
+   465→                    </Button>
+   466→                  </DropdownMenuTrigger>
+   467→                  <DropdownMenuContent align="end">
+   468→                    <DropdownMenuItem onClick={() => patch(v.id, { status: "PUBLISHED" })}>{t("actApprove")}</DropdownMenuItem>
+   469→                    <DropdownMenuItem onClick={() => patch(v.id, { status: "REJECTED" })} className="text-rose-600 focus:text-rose-700">{t("actReject")}</DropdownMenuItem>
+   470→                  </DropdownMenuContent>
+   471→                </DropdownMenu>
+   472→              </div>
+   473→            </div>
+   474→          ))}
+   475→        </div>
+   476→      )}
+   477→    </div>
+   478→  );
+   479→}
+   480→
+   481→// ---------------- users ----------------
+   482→
+   483→const USER_ROLES = ["BUYER", "SELLER", "DEALER", "ADMIN", "SUPER_ADMIN"] as const;
+   484→
+   485→function AdminUsers() {
+   486→  const t = useT();
+   487→  const { data, loading, error, refetch } = useFetch<AdminUserDTO[]>("/api/admin/users");
+   488→  const [busyId, setBusyId] = useState<string | null>(null);
+   489→
+   490→  const patchRole = async (id: string, role: string) => {
+   491→    setBusyId(id);
+   492→    try {
+   493→      await apiSend(`/api/admin/users/${id}`, "PATCH", { role });
+   494→      toast.success(t("toastUpdated"));
+   495→      refetch();
+   496→    } catch (e) {
+   497→      toast.error(isForbidden(e) ? t("toastForbidden") : errorText(e));
+   498→    } finally {
+   499→      setBusyId(null);
+   500→    }
+   501→  };
+   502→
+   503→  if (loading && !data) {
+   504→    return <div className="space-y-3">{Array.from({ length: 5 }).map((_, i) => <Skeleton key={i} className="h-16 w-full rounded-xl" />)}</div>;
+   505→  }
+   506→  if (error && !data) return <FetchErrorState message={error} onRetry={refetch} />;
+   507→  if (!data || data.length === 0) return <EmptyState icon={Users} text={t("noResults")} />;
+   508→
+   509→  return (
+   510→    <div className="space-y-2.5">
+   511→      {data.map((u) => (
+   512→        <div key={u.id} className="flex flex-wrap items-center gap-3 rounded-xl border border-slate-200 bg-white p-3">
+   513→          <AvatarCircle name={u.name} />
+   514→          <div className="min-w-0 flex-1">
+   515→            <p className="flex items-center gap-1.5 truncate text-sm font-medium text-slate-900">
+   516→              {u.name}
+   517→              {u.phoneVerified && <BadgeCheck className="h-3.5 w-3.5 shrink-0 text-emerald-600" aria-label={t("verVERIFIED")} />}
+   518→              <RoleBadge role={u.role} />
+   519→            </p>
+   520→            <p className="mt-0.5 truncate text-[11px] text-slate-400">
+   521→              <span className="font-mono">{u.phone}</span> · {u.locale.toUpperCase()} · {t("kpiListings")} {u.listingCount} · {t("kpiFavorites")} {u.favoriteCount}
+   522→              {u.tenantName ? ` · ${u.tenantName}` : ""}
+   523→            </p>
+   524→          </div>
+   525→          <DropdownMenu>
+   526→            <DropdownMenuTrigger asChild>
+   527→              <Button variant="outline" size="sm" disabled={busyId === u.id} aria-label={`${t("actChangeRole")} ${u.name}`}>
+   528→                {busyId === u.id ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : t("actChangeRole")}
+   529→                <ChevronDown className="h-3 w-3 opacity-60" aria-hidden />
+   530→              </Button>
+   531→            </DropdownMenuTrigger>
+   532→            <DropdownMenuContent align="end">
+   533→              <DropdownMenuLabel>{t("actChangeRole")}</DropdownMenuLabel>
+   534→              <DropdownMenuSeparator />
+   535→              {USER_ROLES.map((r) => (
+   536→                <DropdownMenuItem
+   537→                  key={r}
+   538→                  disabled={r === u.role}
+   539→                  onClick={() => patchRole(u.id, r)}
+   540→                  className={r === "SUPER_ADMIN" || r === "ADMIN" ? "text-amber-700 focus:text-amber-800" : undefined}
+   541→                >
+   542→                  {t(`role${r}` as never)}
+   543→                </DropdownMenuItem>
+   544→              ))}
+   545→            </DropdownMenuContent>
+   546→          </DropdownMenu>
+   547→        </div>
+   548→      ))}
+   549→    </div>
+   550→  );
+   551→}
+   552→
+   553→// ---------------- AI stats ----------------
+   554→
+   555→const AI_STATUSES: { key: string; bar: string }[] = [
+   556→  { key: "VERIFIED", bar: "bg-emerald-500" },
+   557→  { key: "EVIDENCE_FOUND", bar: "bg-teal-500" },
+   558→  { key: "INCONSISTENT", bar: "bg-amber-500" },
+   559→  { key: "NOT_VERIFIED", bar: "bg-slate-400" },
+   560→  { key: "NO_DATA", bar: "bg-slate-300" },
+   561→];
+   562→
+   563→function AdminAi() {
+   564→  const t = useT();
+   565→  const locale = useAppStore((s) => s.locale);
+   566→  const navigate = useAppStore((s) => s.navigate);
+   567→  const { data, loading, error, refetch } = useFetch<AiStatsDTO>("/api/admin/ai");
+   568→
+   569→  if (loading && !data) return <Skeleton className="h-64 w-full rounded-xl" />;
+   570→  if (error && !data) return <FetchErrorState message={error} onRetry={refetch} />;
+   571→  if (!data) return null;
+   572→
+   573→  const breakdownTotal = Object.values(data.statusBreakdown).reduce((a, b) => a + b, 0);
+   574→
+   575→  return (
+   576→    <>
+   577→      <div className="grid gap-5 lg:grid-cols-2">
+   578→        <SectionCard title={t("kpiReports")}>
+   579→          <div className="flex items-center gap-5">
+   580→            <ConfidenceRing value={data.avgConfidence} size={88} />
+   581→            <div>
+   582→              <p className="text-3xl font-bold tracking-tight text-slate-900">{data.totalReports}</p>
+   583→              <p className="text-xs text-slate-500">{t("kpiReports")} · {t("confidence")} {data.avgConfidence}%</p>
+   584→              <p className="mt-1 text-[11px] text-slate-400">{t("reportsEmptyHint")}</p>
+   585→            </div>
+   586→          </div>
+   587→        </SectionCard>
+   588→        <SectionCard title={t("checks", { n: breakdownTotal })}>
+   589→          <div className="space-y-3">
+   590→            {AI_STATUSES.map((s) => (
+   591→              <HBar
+   592→                key={s.key}
+   593→                label={t(`legend${s.key}` as never)}
+   594→                value={data.statusBreakdown[s.key] ?? 0}
+   595→                total={breakdownTotal}
+   596→                colorClass={s.bar}
+   597→              />
+   598→            ))}
+   599→          </div>
+   600→        </SectionCard>
+   601→      </div>
+   602→
+   603→      <SectionCard title={t("recentReports")}>
+   604→        {data.recent.length === 0 ? (
+   605→          <EmptyState icon={FileCheck2} text={t("reportsEmpty")} hint={t("reportsEmptyHint")} />
+   606→        ) : (
+   607→          <ul className="divide-y divide-slate-100">
+   608→            {data.recent.map((r) => {
+   609→              // NOTE: AiStatsDTO.recent has no vehicleId field — `id` is used optimistically;
+   610→              // navigation is only offered when the id matches the platform's vehicle id format.
+   611→              const canOpen = r.id.startsWith("veh_");
+   612→              return (
+   613→                <li key={r.id} className="flex items-center justify-between gap-3 py-2.5">
+   614→                  <div className="min-w-0">
+   615→                    <p className="truncate text-sm font-medium text-slate-800">{r.vehicleLabel}</p>
+   616→                    <p className="text-[11px] text-slate-400">
+   617→                      {t("confidence")} {Math.round(r.confidence)}% · {timeAgo(r.createdAt, locale)}
+   618→                    </p>
+   619→                  </div>
+   620→                  {canOpen && (
+   621→                    <Button variant="outline" size="sm" onClick={() => navigate({ name: "report", vehicleId: r.id })}>
+   622→                      {t("actViewReport")}
+   623→                    </Button>
+   624→                  )}
+   625→                </li>
+   626→              );
+   627→            })}
+   628→          </ul>
+   629→        )}
+   630→      </SectionCard>
+   631→    </>
+   632→  );
+   633→}
+   634→
+   635→// ---------------- platform settings ----------------
+   636→
+   637→function AdminSettings() {
+   638→  const t = useT();
+   639→  const { data, loading, error, refetch } = useFetch<PlatformSettingsDTO>("/api/admin/settings");
+   640→  const [form, setForm] = useState<PlatformSettingsDTO | null>(null);
+   641→  const [saving, setSaving] = useState(false);
+   642→
+   643→  useEffect(() => {
+   644→    if (data) setForm(data);
+   645→  }, [data]);
+   646→
+   647→  const save = async () => {
+   648→    if (!form) return;
+   649→    setSaving(true);
+   650→    try {
+   651→      const saved = await apiSend<PlatformSettingsDTO>("/api/admin/settings", "PUT", {
+   652→        commissionPct: Number(form.commissionPct) || 0,
+   653→        featuredListingPriceUsd: Number(form.featuredListingPriceUsd) || 0,
+   654→        autoApproveListings: form.autoApproveListings,
+   655→        maintenanceMode: form.maintenanceMode,
+   656→      });
+   657→      setForm(saved);
+   658→      toast.success(t("toastUpdated"));
+   659→      refetch();
+   660→    } catch (e) {
+   661→      toast.error(isForbidden(e) ? t("toastForbidden") : errorText(e));
+   662→    } finally {
+   663→      setSaving(false);
+   664→    }
+   665→  };
+   666→
+   667→  if (loading && !data) return <Skeleton className="h-72 w-full rounded-xl" />;
+   668→  if (error && !data) return <FetchErrorState message={error} onRetry={refetch} />;
+   669→  if (!form) return null;
+   670→
+   671→  return (
+   672→    <div className="space-y-5">
+   673→      <SectionCard title={t("platformSettings")}>
+   674→      {form.maintenanceMode && (
+   675→        <Alert className="mb-4 border-amber-300 bg-amber-50 text-amber-900">
+   676→          <TriangleAlert className="h-4 w-4" aria-hidden />
+   677→          <AlertTitle>{t("setMaintenance")}</AlertTitle>
+   678→          <AlertDescription>{t("maintenanceWarning")}</AlertDescription>
+   679→        </Alert>
+   680→      )}
+   681→      <div className="grid gap-4 sm:grid-cols-2">
+   682→        <div>
+   683→          <Label htmlFor="adm-comm" className="text-xs text-slate-500">{t("setCommission")}</Label>
+   684→          <Input
+   685→            id="adm-comm" type="number" min={0} max={100} step={0.1} className="mt-1.5 h-9"
+   686→            value={form.commissionPct}
+   687→            onChange={(e) => setForm({ ...form, commissionPct: Number(e.target.value) })}
+   688→          />
+   689→        </div>
+   690→        <div>
+   691→          <Label htmlFor="adm-feat" className="text-xs text-slate-500">{t("setFeaturedPrice")}</Label>
+   692→          <Input
+   693→            id="adm-feat" type="number" min={0} className="mt-1.5 h-9"
+   694→            value={form.featuredListingPriceUsd}
+   695→            onChange={(e) => setForm({ ...form, featuredListingPriceUsd: Number(e.target.value) })}
+   696→          />
+   697→        </div>
+   698→        <div className="flex items-center justify-between rounded-lg border border-slate-200 p-3">
+   699→          <Label htmlFor="adm-auto" className="text-xs font-medium text-slate-600 cursor-pointer">{t("setAutoApprove")}</Label>
+   700→          <Switch id="adm-auto" checked={form.autoApproveListings} onCheckedChange={(v) => setForm({ ...form, autoApproveListings: v })} />
+   701→        </div>
+   702→        <div className="flex items-center justify-between rounded-lg border border-slate-200 p-3">
+   703→          <Label htmlFor="adm-maint" className="text-xs font-medium text-slate-600 cursor-pointer">{t("setMaintenance")}</Label>
+   704→          <Switch id="adm-maint" checked={form.maintenanceMode} onCheckedChange={(v) => setForm({ ...form, maintenanceMode: v })} />
+   705→        </div>
+   706→      </div>
+   707→      <Button onClick={save} disabled={saving} className="mt-4 bg-amber-500 hover:bg-amber-400 text-slate-950 font-semibold">
+   708→        {saving && <Loader2 className="h-4 w-4 mr-2 animate-spin" aria-hidden />}
+   709→        {t("saveChanges")}
+   710→      </Button>
+   711→    </SectionCard>
+   712→
+   713→      <AdminPaymentConfig />
+   714→    </div>
+   715→  );
+   716→}
+   717→
+   718→// ---------------- audit log ----------------
+   719→
+   720→function AdminAudit() {
+   721→  const t = useT();
+   722→  const { data, loading, error, refetch } = useFetch<AuditEntryDTO[]>("/api/admin/audit?limit=50");
+   723→
+   724→  if (loading && !data) return <Skeleton className="h-72 w-full rounded-xl" />;
+   725→  if (error && !data) return <FetchErrorState message={error} onRetry={refetch} />;
+   726→  if (!data || data.length === 0) return <EmptyState icon={ScrollText} text={t("auditEmpty")} />;
+   727→
+   728→  return (
+   729→    <SectionCard title={t("recentActivity")} contentClassName="">
+   730→      <ul className="max-h-96 divide-y divide-slate-100 overflow-y-auto kl-scroll" aria-label={t("tabAudit")}>
+   731→        {data.map((a) => (
+   732→          <li key={a.id} className="px-0.5 py-2.5">
+   733→            <div className="flex items-center justify-between gap-2">
+   734→              <span className="min-w-0 truncate text-xs">
+   735→                <code className="mr-1.5 rounded bg-slate-100 px-1.5 py-0.5 text-[10px] font-semibold text-slate-700">{a.action}</code>
+   736→                <span className="text-slate-600">{a.entity}</span>
+   737→                {a.actorName && <span className="text-slate-400"> · {a.actorName}</span>}
+   738→              </span>
+   739→              <span className="shrink-0 text-[11px] text-slate-400">{timeAgo(a.createdAt, "en")}</span>
+   740→            </div>
+   741→            {a.meta && Object.keys(a.meta).length > 0 && (
+   742→              <p className="mt-1 truncate text-[10px] text-slate-400" title={JSON.stringify(a.meta)}>
+   743→                {JSON.stringify(a.meta).slice(0, 120)}
+   744→              </p>
+   745→            )}
+   746→          </li>
+   747→        ))}
+   748→      </ul>
+   749→    </SectionCard>
+   750→  );
+   751→}
+   752→
+   753→// ---------------- payments verification ----------------
+   754→
+   755→const PAYMENT_FILTERS = ["AWAITING_VERIFICATION", "VERIFIED", "REJECTED", "CANCELLED", "ALL"] as const;
+   756→
+   757→const PAYMENT_FILTER_LABEL: Record<(typeof PAYMENT_FILTERS)[number], string> = {
+   758→  AWAITING_VERIFICATION: "payStatusAwaiting",
+   759→  VERIFIED: "payStatusVerified",
+   760→  REJECTED: "payStatusRejected",
+   761→  CANCELLED: "payStatusCancelled",
+   762→  ALL: "anyCondition",
+   763→};
+   764→
+   765→function AdminPayments() {
+   766→  const t = useT();
+   767→  const locale = useAppStore((s) => s.locale);
+   768→  const [status, setStatus] = useState<string>("AWAITING_VERIFICATION");
+   769→  const url = `/api/admin/payments${qs({ status: status === "ALL" ? undefined : status })}`;
+   770→  const { data, loading, error, refetch } = useFetch<SubscriptionPaymentDTO[]>(url);
+   771→  const [busyId, setBusyId] = useState<string | null>(null);
+   772→  const [rejecting, setRejecting] = useState<SubscriptionPaymentDTO | null>(null);
+   773→  const [reason, setReason] = useState("");
+   774→
+   775→  const decide = async (p: SubscriptionPaymentDTO, action: "verify" | "reject", reasonText?: string) => {
+   776→    setBusyId(p.id);
+   777→    try {
+   778→      await apiSend(`/api/admin/payments/${p.id}`, "PATCH", { action, reason: reasonText });
+   779→      toast.success(action === "verify" ? t("payVerifiedToast") : t("toastUpdated"));
+   780→      setRejecting(null);
+   781→      setReason("");
+   782→      refetch();
+   783→    } catch (e) {
+   784→      toast.error(isForbidden(e) ? t("toastForbidden") : errorText(e));
+   785→    } finally {
+   786→      setBusyId(null);
+   787→    }
+   788→  };
+   789→
+   790→  return (
+   791→    <div className="space-y-4">
+   792→      <div className="flex flex-wrap gap-1.5">
+   793→        {PAYMENT_FILTERS.map((c) => (
+   794→          <button
+   795→            key={c}
+   796→            onClick={() => setStatus(c)}
+   797→            aria-pressed={status === c}
+   798→            className={cn(
+   799→              "rounded-full border px-3 py-1.5 text-xs font-medium transition-colors cursor-pointer",
+   800→              status === c ? "border-amber-500 bg-amber-50 text-amber-800" : "border-slate-200 bg-white text-slate-600 hover:border-slate-300",
+   801→            )}
+   802→          >
+   803→            {t(PAYMENT_FILTER_LABEL[c] as never)}
+   804→          </button>
+   805→        ))}
+   806→      </div>
+   807→
+   808→      {loading && !data ? (
+   809→        <div className="space-y-3">{Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} className="h-24 w-full rounded-xl" />)}</div>
+   810→      ) : error && !data ? (
+   811→        <FetchErrorState message={error} onRetry={refetch} />
+   812→      ) : !data || data.length === 0 ? (
+   813→        <EmptyState icon={Wallet} text={t("noResults")} />
+   814→      ) : (
+   815→        <div className="space-y-3">
+   816→          {data.map((p) => (
+   817→            <div key={p.id} className="rounded-xl border border-slate-200 bg-white p-4">
+   818→              <div className="flex flex-wrap items-start justify-between gap-3">
+   819→                <div className="min-w-0">
+   820→                  <p className="flex flex-wrap items-center gap-1.5 text-sm font-semibold text-slate-900">
+   821→                    {p.tenantName} · {p.plan} ({p.billingCycle === "MONTHLY" ? t("billingMonthly") : t("billingYearly")})
+   822→                    <PaymentStatusBadge status={p.status} />
+   823→                  </p>
+   824→                  <p className="mt-1 text-xs text-slate-500">
+   825→                    {t("payAmount")}: <span className="font-bold text-amber-700">{formatUsd(p.amountUsd)}</span>
+   826→                    {" · "}{t("payFromTenant")}: <code className="rounded bg-slate-100 px-1.5 py-0.5 text-[10px]">{p.reference}</code>
+   827→                    {p.manualRef ? ` · ${t("payManualRef")}: ${p.manualRef}` : ""}
+   828→                  </p>
+   829→                  <p className="mt-0.5 text-[11px] text-slate-400">
+   830→                    {t("payMethodManual")}
+   831→                    {" · "}{timeAgo(p.createdAt, locale)}
+   832→                    {p.reviewedAt ? ` · ${t("payVerifier")}` : ""}
+   833→                  </p>
+   834→                  {p.note && <p className="mt-1 truncate text-xs italic text-slate-500">“{p.note}”</p>}
+   835→                  {p.rejectionReason && (
+   836→                    <p className="mt-1 text-xs text-rose-600">{t("payRejectedReason")}: {p.rejectionReason}</p>
+   837→                  )}
+   838→                  {p.evidenceUrl && (
+   839→                    <a href={p.evidenceUrl} target="_blank" rel="noreferrer" className="mt-1 inline-block text-xs text-teal-700 hover:underline">
+   840→                      {t("payEvidenceLabel")}
+   841→                    </a>
+   842→                  )}
+   843→                </div>
+   844→                {p.status === "AWAITING_VERIFICATION" && (
+   845→                  <div className="flex shrink-0 items-center gap-2">
+   846→                    <Button
+   847→                      size="sm" disabled={busyId === p.id} onClick={() => decide(p, "verify")}
+   848→                      className="bg-emerald-600 hover:bg-emerald-700 text-white font-semibold"
+   849→                    >
+   850→                      {busyId === p.id ? <Loader2 className="h-4 w-4 mr-1.5 animate-spin" aria-hidden /> : <ShieldCheck className="h-4 w-4 mr-1.5" aria-hidden />}
+   851→                      {t("payVerify")}
+   852→                    </Button>
+   853→                    <Button
+   854→                      variant="outline" size="sm" disabled={busyId === p.id}
+   855→                      onClick={() => { setRejecting(p); setReason(""); }}
+   856→                      className="border-rose-200 text-rose-700 hover:bg-rose-50"
+   857→                    >
+   858→                      {t("payReject")}
+   859→                    </Button>
+   860→                  </div>
+   861→                )}
+   862→              </div>
+   863→            </div>
+   864→          ))}
+   865→        </div>
+   866→      )}
+   867→
+   868→      {/* Reject dialog */}
+   869→      <Dialog open={Boolean(rejecting)} onOpenChange={(o) => !o && setRejecting(null)}>
+   870→        <DialogContent className="sm:max-w-sm">
+   871→          <DialogHeader>
+   872→            <DialogTitle>{t("payRejectTitle")}</DialogTitle>
+   873→          </DialogHeader>
+   874→          <div className="space-y-3">
+   875→            {rejecting && (
+   876→              <p className="text-xs text-slate-500">
+   877→                {rejecting.tenantName} · {formatUsd(rejecting.amountUsd)} · <code>{rejecting.reference}</code>
+   878→              </p>
+   879→            )}
+   880→            <div>
+   881→              <Label htmlFor="rej-reason" className="text-xs text-slate-500">{t("payRejectReasonLabel")} *</Label>
+   882→              <Textarea id="rej-reason" value={reason} onChange={(e) => setReason(e.target.value)} rows={3} className="mt-1.5" maxLength={300} />
+   883→            </div>
+   884→          </div>
+   885→          <DialogFooter>
+   886→            <Button variant="outline" size="sm" onClick={() => setRejecting(null)}>{t("cancel")}</Button>
+   887→            <Button
+   888→              size="sm" disabled={busyId !== null || reason.trim().length < 3}
+   889→              onClick={() => rejecting && decide(rejecting, "reject", reason.trim())}
+   890→              className="bg-rose-600 text-white hover:bg-rose-700 font-semibold"
+   891→            >
+   892→              {t("payReject")}
+   893→            </Button>
+   894→          </DialogFooter>
+   895→        </DialogContent>
+   896→      </Dialog>
+   897→    </div>
+   898→  );
+   899→}
+   900→
+   901→// ---------------- payment configuration (manual KHQR) ----------------
+   902→
+   903→interface ManualConfig {
+   904→  enabled: boolean;
+   905→  accountName: string | null;
+   906→  khqrPayload: string | null;
+   907→  khqrImageUrl: string | null;
+   908→  instructionsEn: string | null;
+   909→  instructionsKm: string | null;
+   910→  telegram: string | null;
+   911→  freePlan: { enabled: boolean; listingsLimit: number; featuredLimit: number; seats: number };
+   912→}
+   913→
+   914→function AdminPaymentConfig() {
+   915→  const t = useT();
+   916→  const locale = useAppStore((s) => s.locale);
+   917→  const { data, loading, error, refetch } = useFetch<ManualConfig>("/api/admin/payment-config");
+   918→  const preview = useFetch<{ dataUrl: string | null }>("/api/admin/payment-config/preview");
+   919→  const [form, setForm] = useState<ManualConfig | null>(null);
+   920→  const [saving, setSaving] = useState(false);
+   921→
+   922→  useEffect(() => {
+   923→    if (data) setForm(data);
+   924→  }, [data]);
+   925→
+   926→  const save = async () => {
+   927→    if (!form) return;
+   928→    setSaving(true);
+   929→    try {
+   930→      await apiSend("/api/admin/payment-config", "PUT", {
+   931→        enabled: form.enabled,
+   932→        accountName: form.accountName || null,
+   933→        khqrPayload: form.khqrPayload || null,
+   934→        khqrImageUrl: form.khqrImageUrl || null,
+   935→        instructionsEn: form.instructionsEn || null,
+   936→        instructionsKm: form.instructionsKm || null,
+   937→        telegram: form.telegram || null,
+   938→        freePlan: {
+   939→          enabled: form.freePlan.enabled,
+   940→          listingsLimit: Number(form.freePlan.listingsLimit) || 0,
+   941→          featuredLimit: Number(form.freePlan.featuredLimit) || 0,
+   942→          seats: Number(form.freePlan.seats) || 1,
+   943→        },
+   944→      });
+   945→      toast.success(t("payConfigSaved"));
+   946→      refetch();
+   947→      preview.refetch();
+   948→    } catch (e) {
+   949→      toast.error(isForbidden(e) ? t("toastForbidden") : errorText(e));
+   950→    } finally {
+   951→      setSaving(false);
+   952→    }
+   953→  };
+   954→
+   955→  if (loading && !data) return <Skeleton className="h-64 w-full rounded-xl" />;
+   956→  if (error && !data) return <FetchErrorState message={error} onRetry={refetch} />;
+   957→  if (!form) return null;
+   958→
+   959→  return (
+   960→    <SectionCard title={t("payConfigTitle")}>
+   961→      <p className="-mt-2 mb-3 text-xs text-slate-400">{t("payConfigSubtitle")}</p>
+   962→
+   963→      {/* master switch */}
+   964→      <div className="mb-4 flex items-start justify-between gap-3 rounded-xl border border-amber-200 bg-amber-50/60 p-3">
+   965→        <div className="min-w-0">
+   966→          <Label htmlFor="pc-enabled" className="text-sm font-semibold text-slate-900">{t("payConfigEnabled")}</Label>
+   967→          <p className="mt-0.5 text-xs text-slate-500">{t("payConfigEnabledDesc")}</p>
+   968→        </div>
+   969→        <Switch
+   970→          id="pc-enabled"
+   971→          checked={form.enabled}
+   972→          onCheckedChange={(v) => setForm({ ...form, enabled: v })}
+   973→          aria-label={t("payConfigEnabled")}
+   974→        />
+   975→      </div>
+   976→
+   977→      <div className="grid gap-4 sm:grid-cols-2">
+   978→        <div>
+   979→          <Label htmlFor="pc-name" className="text-xs text-slate-500">{t("payConfigAccountName")}</Label>
+   980→          <Input id="pc-name" value={form.accountName ?? ""} onChange={(e) => setForm({ ...form, accountName: e.target.value })} className="mt-1.5 h-9" />
+   981→        </div>
+   982→        <div>
+   983→          <Label htmlFor="pc-tg" className="text-xs text-slate-500">{t("payConfigTelegram")}</Label>
+   984→          <Input id="pc-tg" value={form.telegram ?? ""} onChange={(e) => setForm({ ...form, telegram: e.target.value })} placeholder="@khlan_admin" className="mt-1.5 h-9" />
+   985→        </div>
+   986→        <div className="sm:col-span-2">
+   987→          <Label htmlFor="pc-payload" className="text-xs text-slate-500">{t("payConfigKhqrPayload")}</Label>
+   988→          <Textarea id="pc-payload" value={form.khqrPayload ?? ""} onChange={(e) => setForm({ ...form, khqrPayload: e.target.value })} rows={2} className="mt-1.5 font-mono text-xs field-sizing-fixed min-w-0" maxLength={600} />
+   989→        </div>
+   990→        <div className="sm:col-span-2">
+   991→          <Label htmlFor="pc-img" className="text-xs text-slate-500">{t("payConfigKhqrImage")}</Label>
+   992→          <Input id="pc-img" value={form.khqrImageUrl ?? ""} onChange={(e) => setForm({ ...form, khqrImageUrl: e.target.value })} placeholder="https://…" className="mt-1.5 h-9" />
+   993→        </div>
+   994→        <div>
+   995→          <Label htmlFor="pc-inst-en" className="text-xs text-slate-500">{t("payConfigInstructionsEn")}</Label>
+   996→          <Textarea id="pc-inst-en" value={form.instructionsEn ?? ""} onChange={(e) => setForm({ ...form, instructionsEn: e.target.value })} rows={3} className="mt-1.5 field-sizing-fixed min-w-0" />
+   997→        </div>
+   998→        <div>
+   999→          <Label htmlFor="pc-inst-km" className="text-xs text-slate-500">{t("payConfigInstructionsKm")}</Label>
+  1000→          <Textarea id="pc-inst-km" value={form.instructionsKm ?? ""} onChange={(e) => setForm({ ...form, instructionsKm: e.target.value })} rows={3} className={cn("mt-1.5 field-sizing-fixed min-w-0", locale === "km" && "font-khmer")} />
+  1001→        </div>
+  1002→      </div>
+  1003→
+  1004→      {/* free plan configuration */}
+  1005→      <div className="mt-5 rounded-xl border border-slate-200 p-3">
+  1006→        <div className="flex items-start justify-between gap-3">
+  1007→          <div className="min-w-0">
+  1008→            <Label htmlFor="pc-free-enabled" className="text-sm font-semibold text-slate-900">{t("payFreePlanTitle")}</Label>
+  1009→            <p className="mt-0.5 text-xs text-slate-500">{t("payFreePlanDesc")}</p>
+  1010→          </div>
+  1011→          <Switch
+  1012→            id="pc-free-enabled"
+  1013→            checked={form.freePlan.enabled}
+  1014→            onCheckedChange={(v) => setForm({ ...form, freePlan: { ...form.freePlan, enabled: v } })}
+  1015→            aria-label={t("payFreePlanEnabled")}
+  1016→          />
+  1017→        </div>
+  1018→        {form.freePlan.enabled && (
+  1019→          <div className="mt-3 grid grid-cols-3 gap-3">
+  1020→            <div>
+  1021→              <Label htmlFor="pc-free-listings" className="text-xs text-slate-500">{t("kpiListings")}</Label>
+  1022→              <Input id="pc-free-listings" type="number" min={0} max={9999} value={form.freePlan.listingsLimit}
+  1023→                onChange={(e) => setForm({ ...form, freePlan: { ...form.freePlan, listingsLimit: Number(e.target.value) } })}
+  1024→                className="mt-1.5 h-9" />
+  1025→            </div>
+  1026→            <div>
+  1027→              <Label htmlFor="pc-free-featured" className="text-xs text-slate-500">{t("actFeature")}</Label>
+  1028→              <Input id="pc-free-featured" type="number" min={0} max={9999} value={form.freePlan.featuredLimit}
+  1029→                onChange={(e) => setForm({ ...form, freePlan: { ...form.freePlan, featuredLimit: Number(e.target.value) } })}
+  1030→                className="mt-1.5 h-9" />
+  1031→            </div>
+  1032→            <div>
+  1033→              <Label htmlFor="pc-free-seats" className="text-xs text-slate-500">{t("subSeatsLabel")}</Label>
+  1034→              <Input id="pc-free-seats" type="number" min={1} max={9999} value={form.freePlan.seats}
+  1035→                onChange={(e) => setForm({ ...form, freePlan: { ...form.freePlan, seats: Number(e.target.value) } })}
+  1036→                className="mt-1.5 h-9" />
+  1037→            </div>
+  1038→          </div>
+  1039→        )}
+  1040→      </div>
+  1041→
+  1042→      {preview.data?.dataUrl && (
+  1043→        <div className="mt-4 flex items-center gap-3">
+  1044→          <img src={preview.data.dataUrl} alt={t("payConfigPreview")} className="h-24 w-24 rounded-lg border border-slate-200 bg-white p-1" />
+  1045→          <p className="text-xs text-slate-400">{t("payConfigPreview")}</p>
+  1046→        </div>
+  1047→      )}
+  1048→      <Button onClick={save} disabled={saving} className="mt-4 bg-amber-500 hover:bg-amber-400 text-slate-950 font-semibold">
+  1049→        {saving && <Loader2 className="h-4 w-4 mr-2 animate-spin" aria-hidden />}
+  1050→        {t("saveChanges")}
+  1051→      </Button>
+  1052→    </SectionCard>
+  1053→  );
+  1054→}
+  1055→

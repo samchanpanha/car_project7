@@ -27,14 +27,26 @@ export async function GET() {
 
 const limitField = z.coerce.number().int().min(0).max(9999);
 
+/** data URL of an uploaded image (QR photo / screenshot) — hard size cap ~1.2 MB binary */
+const imageDataUrl = z
+  .string()
+  .trim()
+  .max(1_600_000, "Image is too large (max ~1.2 MB)")
+  .regex(/^data:image\/(png|jpe?g|webp|gif);base64,[A-Za-z0-9+/=]+$/, "Must be a base64 image data URL")
+  .nullable()
+  .or(z.literal(""));
+
 const putSchema = z.object({
   enabled: z.boolean(),
   accountName: z.string().trim().max(80).nullable(),
   khqrPayload: z.string().trim().max(600).nullable(),
   khqrImageUrl: z.string().trim().url().max(500).nullable().or(z.literal("")),
+  khqrImage: imageDataUrl,
   instructionsEn: z.string().trim().max(600).nullable(),
   instructionsKm: z.string().trim().max(600).nullable(),
   telegram: z.string().trim().max(60).regex(/^@?[A-Za-z0-9_]{4,32}$/, "Telegram username looks invalid").nullable().or(z.literal("")),
+  telegramBotToken: z.string().trim().max(120).regex(/^[0-9A-Za-z:_-]*$/, "Bot token looks invalid").nullable().or(z.literal("")),
+  telegramChatId: z.string().trim().max(60).regex(/^-?[0-9A-Za-z_@]*$/, "Chat id looks invalid").nullable().or(z.literal("")),
   freePlan: z.object({
     enabled: z.boolean(),
     listingsLimit: limitField,
@@ -49,9 +61,12 @@ function clean(input: z.infer<typeof putSchema>): ManualPaymentConfig {
     accountName: input.accountName || null,
     khqrPayload: input.khqrPayload || null,
     khqrImageUrl: input.khqrImageUrl || null,
+    khqrImage: input.khqrImage || null,
     instructionsEn: input.instructionsEn || null,
     instructionsKm: input.instructionsKm || null,
     telegram: input.telegram ? (input.telegram.startsWith("@") ? input.telegram : `@${input.telegram}`) : null,
+    telegramBotToken: input.telegramBotToken || null,
+    telegramChatId: input.telegramChatId || null,
     freePlan: input.freePlan,
   };
 }

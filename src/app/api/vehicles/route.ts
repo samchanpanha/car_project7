@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { db } from "@/lib/db";
-import { getDemoUser } from "@/lib/session";
+import { getDemoUser, getCurrentUser } from "@/lib/session";
 import { listVehicles } from "@/lib/api/vehicle-filters";
 
 export const dynamic = "force-dynamic";
@@ -67,6 +67,33 @@ export async function POST(req: Request) {
 
     const data = parsed.data;
     const seller = await getDemoUser();
+
+    // plan gate — a signed-in tenant member can only hold as many published
+    // listings as their (admin-configured) subscription allows. Listing
+    // attribution itself keeps the demo-user behaviour; this check only
+    // reads the authenticated actor's tenant membership.
+    const actor = await getCurrentUser();
+    const membership = await db.tenantMember.findFirst({
+      where: { userId: actor.id, status: "ACTIVE" },
+      select: { tenantId: true },
+    });
+    if (membership) {
+      const sub = await db.subscription.findUnique({ where: { tenantId: membership.tenantId } });
+      if (sub && sub.status === "ACTIVE") {
+        const publishedCount = await db.vehicle.count({
+          where: { tenantId: sub.tenantId, status: "PUBLISHED" },
+        });
+        if (publishedCount >= sub.listingsLimit) {
+          return NextResponse.json(
+            {
+              error: `Listing limit reached (${sub.listingsLimit}) on the ${sub.plan} plan — upgrade your subscription to publish more vehicles`,
+              code: "PLAN_LIMIT_LISTINGS",
+            },
+            { status: 402 },
+          );
+        }
+      }
+    }
 
     const vehicle = await db.vehicle.create({
       data: {

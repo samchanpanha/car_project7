@@ -6,7 +6,8 @@
 import { NextResponse } from "next/server";
 import QRCode from "qrcode";
 import { db } from "@/lib/db";
-import { PLAN_BY_KEY, toSubscriptionDTO, type PlanKey } from "@/lib/api/plans";
+import { getPlanPricing, priceForCfg, type PaidPlanKey } from "@/lib/api/plan-config";
+import { toSubscriptionDTO } from "@/lib/api/plans";
 import type { SubscriptionDTO } from "@/lib/dashboard-types";
 import type { Subscription, SubscriptionPayment } from "@prisma/client";
 
@@ -25,9 +26,14 @@ export interface ManualPaymentConfig {
   accountName: string | null;
   khqrPayload: string | null; // EMVCo KHQR string from the admin's banking app
   khqrImageUrl: string | null; // fallback: URL of a QR image
+  /** uploaded QR image (data URL) — what sellers actually scan, takes display precedence */
+  khqrImage: string | null;
   instructionsEn: string | null;
   instructionsKm: string | null;
-  telegram: string | null; // admin Telegram contact, e.g. "@khlan_admin"
+  telegram: string | null; // admin Telegram contact, e.g. "@khlan_admin" (shown to sellers)
+  /** Telegram bot delivery — submissions (with screenshots) are pushed to this chat */
+  telegramBotToken: string | null;
+  telegramChatId: string | null;
   freePlan: FreePlanConfig; // admin-configured FREE tier usage
 }
 
@@ -38,9 +44,12 @@ const DEFAULT_CONFIG: ManualPaymentConfig = {
   accountName: null,
   khqrPayload: null,
   khqrImageUrl: null,
+  khqrImage: null,
   instructionsEn: null,
   instructionsKm: null,
   telegram: null,
+  telegramBotToken: null,
+  telegramChatId: null,
   freePlan: { enabled: true, listingsLimit: 3, featuredLimit: 0, seats: 1 },
 };
 
@@ -99,7 +108,8 @@ export async function saveManualPaymentConfig(
         enabled: config.enabled,
         telegram: config.telegram,
         hasKhqrPayload: Boolean(config.khqrPayload),
-        hasKhqrImage: Boolean(config.khqrImageUrl),
+        hasKhqrImage: Boolean(config.khqrImage || config.khqrImageUrl),
+        hasTelegramBot: Boolean(config.telegramBotToken && config.telegramChatId),
         freePlan: config.freePlan,
       }),
     },
@@ -122,11 +132,6 @@ export async function khqrDataUrl(config: ManualPaymentConfig): Promise<string |
 }
 
 // ---------- Pricing & references ----------
-
-export function priceForCycle(plan: PlanKey, billingCycle: "MONTHLY" | "YEARLY"): number {
-  const row = PLAN_BY_KEY[plan];
-  return billingCycle === "YEARLY" ? row.priceUsdYearly : row.priceUsdMonthly;
-}
 
 export function monthsForCycle(billingCycle: "MONTHLY" | "YEARLY"): number {
   return billingCycle === "YEARLY" ? 12 : 1;
@@ -190,8 +195,10 @@ export async function verifyPaymentAndActivate(
     throw paymentConflict(`This payment is ${payment.status.toLowerCase()} and cannot be verified`);
   }
 
-  const planRow = PLAN_BY_KEY[payment.plan as PlanKey];
-  if (!planRow) throw paymentConflict("Unknown plan on payment record");
+  // numbers come from the admin-configured plan catalog, not code constants
+  const pricing = await getPlanPricing();
+  const cfg = pricing[payment.plan as PaidPlanKey];
+  if (!cfg) throw paymentConflict("Unknown plan on payment record");
 
   const now = new Date();
   const existing = await db.subscription.findUnique({ where: { tenantId: payment.tenantId } });
@@ -204,14 +211,15 @@ export async function verifyPaymentAndActivate(
   const currentPeriodEnd = new Date(base);
   currentPeriodEnd.setMonth(currentPeriodEnd.getMonth() + payment.months);
 
+  const cycle = payment.billingCycle === "YEARLY" ? (("YEARLY") as const) : (("MONTHLY") as const);
   const data = {
     plan: payment.plan,
     status: "ACTIVE" as const,
-    billingCycle: payment.billingCycle === "YEARLY" ? ("YEARLY" as const) : ("MONTHLY" as const),
-    priceUsd: priceForCycle(payment.plan as PlanKey, payment.billingCycle === "YEARLY" ? "YEARLY" : "MONTHLY"),
-    listingsLimit: planRow.listingsLimit,
-    featuredLimit: planRow.featuredLimit,
-    seats: planRow.seats,
+    billingCycle: cycle,
+    priceUsd: priceForCfg(cfg, cycle),
+    listingsLimit: cfg.listingsLimit,
+    featuredLimit: cfg.featuredLimit,
+    seats: cfg.seats,
     currentPeriodEnd,
   };
 

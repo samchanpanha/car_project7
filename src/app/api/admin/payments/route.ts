@@ -30,6 +30,10 @@ export async function GET(req: Request) {
       reference: p.reference,
       manualRef: p.manualRef,
       evidenceUrl: p.evidenceUrl,
+      evidenceImage: p.evidenceImage, // admin queue shows the uploaded screenshot
+      hasEvidenceImage: Boolean(p.evidenceImage),
+      telegramSentAt: p.telegramSentAt?.toISOString() ?? null,
+      telegramError: p.telegramError,
       note: p.note,
       rejectionReason: p.rejectionReason,
       tenantId: p.tenantId,

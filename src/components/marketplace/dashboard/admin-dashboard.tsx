@@ -38,12 +38,15 @@ import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import {
-  BadgeCheck, Car, ChevronDown, CreditCard, DollarSign, FileCheck2, Gauge, Hourglass, LayoutDashboard, Loader2,
-  MessageSquare, MoreHorizontal, ScrollText, Settings, ShieldCheck, Sparkles, Star, Store, TriangleAlert, Users, Wallet,
+  BadgeCheck, Car, ChevronDown, CreditCard, DollarSign, FileCheck2, Gauge, Hourglass, Image as ImageIcon,
+  LayoutDashboard, Loader2, MessageSquare, MoreHorizontal, ScrollText, Send, Settings, ShieldCheck, Sparkles,
+  Star, Store, TriangleAlert, Upload, Users, Wallet,
 } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
+import { fileToDataUrl } from "@/lib/image-client";
+import type { PlanPricingConfig } from "@/lib/api/plan-config";
 
 const VEHICLE_STATUSES: VehicleStatus[] = ["PUBLISHED", "PENDING_REVIEW", "DRAFT", "SOLD", "REJECTED", "ARCHIVED"];
 
@@ -711,6 +714,7 @@ function AdminSettings() {
     </SectionCard>
 
       <AdminPaymentConfig />
+      <AdminPlanPricing />
     </div>
   );
 }
@@ -770,6 +774,7 @@ function AdminPayments() {
   const { data, loading, error, refetch } = useFetch<SubscriptionPaymentDTO[]>(url);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [rejecting, setRejecting] = useState<SubscriptionPaymentDTO | null>(null);
+  const [viewing, setViewing] = useState<SubscriptionPaymentDTO | null>(null);
   const [reason, setReason] = useState("");
 
   const decide = async (p: SubscriptionPaymentDTO, action: "verify" | "reject", reasonText?: string) => {
@@ -829,6 +834,8 @@ function AdminPayments() {
                   <p className="mt-0.5 text-[11px] text-slate-400">
                     {t("payMethodManual")}
                     {" · "}{timeAgo(p.createdAt, locale)}
+                    {p.telegramSentAt ? ` · ${t("payTgSent")} ✓` : ""}
+                    {p.telegramError && p.telegramError !== "not_configured" ? ` · ${t("payTgFailed")}` : ""}
                     {p.reviewedAt ? ` · ${t("payVerifier")}` : ""}
                   </p>
                   {p.note && <p className="mt-1 truncate text-xs italic text-slate-500">“{p.note}”</p>}
@@ -839,6 +846,17 @@ function AdminPayments() {
                     <a href={p.evidenceUrl} target="_blank" rel="noreferrer" className="mt-1 inline-block text-xs text-teal-700 hover:underline">
                       {t("payEvidenceLabel")}
                     </a>
+                  )}
+                  {p.evidenceImage && (
+                    <button
+                      type="button"
+                      onClick={() => setViewing(p)}
+                      className="mt-2 flex cursor-pointer items-center gap-2"
+                      aria-label={t("payEvidenceTitle")}
+                    >
+                      <img src={p.evidenceImage} alt={t("payEvidenceTitle")} className="h-16 w-16 rounded-md border border-slate-200 object-cover" />
+                      <span className="text-[11px] font-medium text-slate-500 underline decoration-dotted">{t("payEvidenceTitle")}</span>
+                    </button>
                   )}
                 </div>
                 {p.status === "AWAITING_VERIFICATION" && (
@@ -864,6 +882,23 @@ function AdminPayments() {
           ))}
         </div>
       )}
+
+      {/* Screenshot viewer */}
+      <Dialog open={Boolean(viewing)} onOpenChange={(o) => !o && setViewing(null)}>
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle>{t("payEvidenceTitle")}</DialogTitle>
+          </DialogHeader>
+          {viewing?.evidenceImage && (
+            <div className="space-y-2">
+              <img src={viewing.evidenceImage} alt={t("payEvidenceTitle")} className="max-h-[60vh] w-full rounded-lg border border-slate-200 object-contain" />
+              <p className="text-center text-xs text-slate-500">
+                {viewing.tenantName} · {formatUsd(viewing.amountUsd)} · <code>{viewing.reference}</code>
+              </p>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
 
       {/* Reject dialog */}
       <Dialog open={Boolean(rejecting)} onOpenChange={(o) => !o && setRejecting(null)}>
@@ -898,16 +933,19 @@ function AdminPayments() {
   );
 }
 
-// ---------------- payment configuration (manual KHQR) ----------------
+// ---------------- payment configuration (manual KHQR + Telegram bot) ----------------
 
 interface ManualConfig {
   enabled: boolean;
   accountName: string | null;
   khqrPayload: string | null;
   khqrImageUrl: string | null;
+  khqrImage: string | null;
   instructionsEn: string | null;
   instructionsKm: string | null;
   telegram: string | null;
+  telegramBotToken: string | null;
+  telegramChatId: string | null;
   freePlan: { enabled: boolean; listingsLimit: number; featuredLimit: number; seats: number };
 }
 
@@ -918,6 +956,9 @@ function AdminPaymentConfig() {
   const preview = useFetch<{ dataUrl: string | null }>("/api/admin/payment-config/preview");
   const [form, setForm] = useState<ManualConfig | null>(null);
   const [saving, setSaving] = useState(false);
+  const [readingQr, setReadingQr] = useState(false);
+  const [testingTg, setTestingTg] = useState(false);
+  const qrInput = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (data) setForm(data);
@@ -932,9 +973,12 @@ function AdminPaymentConfig() {
         accountName: form.accountName || null,
         khqrPayload: form.khqrPayload || null,
         khqrImageUrl: form.khqrImageUrl || null,
+        khqrImage: form.khqrImage || null,
         instructionsEn: form.instructionsEn || null,
         instructionsKm: form.instructionsKm || null,
         telegram: form.telegram || null,
+        telegramBotToken: form.telegramBotToken || null,
+        telegramChatId: form.telegramChatId || null,
         freePlan: {
           enabled: form.freePlan.enabled,
           listingsLimit: Number(form.freePlan.listingsLimit) || 0,
@@ -949,6 +993,35 @@ function AdminPaymentConfig() {
       toast.error(isForbidden(e) ? t("toastForbidden") : errorText(e));
     } finally {
       setSaving(false);
+    }
+  };
+
+  const pickQrImage = async (file: File | undefined) => {
+    if (!file) return;
+    setReadingQr(true);
+    try {
+      const dataUrl = await fileToDataUrl(file, 720, 0.9);
+      setForm((f) => (f ? { ...f, khqrImage: dataUrl } : f));
+    } catch {
+      toast.error(t("errorGeneric"));
+    } finally {
+      setReadingQr(false);
+      if (qrInput.current) qrInput.current.value = "";
+    }
+  };
+
+  const testTelegram = async () => {
+    setTestingTg(true);
+    try {
+      const res = await apiSend<{ ok: boolean; error: string | null }>(
+        "/api/admin/payment-config/test-telegram", "POST",
+      );
+      if (res.ok) toast.success(t("payConfigTgTestOk"));
+      else toast.error(t("payConfigTgTestFail", { err: res.error ?? "?" }));
+    } catch (e) {
+      toast.error(errorText(e));
+    } finally {
+      setTestingTg(false);
     }
   };
 
@@ -983,6 +1056,60 @@ function AdminPaymentConfig() {
           <Label htmlFor="pc-tg" className="text-xs text-slate-500">{t("payConfigTelegram")}</Label>
           <Input id="pc-tg" value={form.telegram ?? ""} onChange={(e) => setForm({ ...form, telegram: e.target.value })} placeholder="@khlan_admin" className="mt-1.5 h-9" />
         </div>
+
+        {/* uploaded QR image — what sellers actually scan */}
+        <div className="sm:col-span-2">
+          <Label className="text-xs text-slate-500">{t("payConfigQrUpload")}</Label>
+          <p className="mt-0.5 text-[11px] text-slate-400">{t("payConfigQrUploadHint")}</p>
+          <div className="mt-2 flex flex-wrap items-center gap-3">
+            {form.khqrImage ? (
+              <div className="flex items-center gap-3">
+                <img src={form.khqrImage} alt={t("payConfigQrUpload")} className="h-28 w-28 rounded-lg border border-slate-200 bg-white object-contain p-1" />
+                <div className="flex flex-col gap-1.5">
+                  <p className="flex items-center gap-1 text-[11px] font-medium text-emerald-700">
+                    <ImageIcon className="h-3.5 w-3.5" aria-hidden />
+                    {t("payConfigQrUploaded")}
+                  </p>
+                  <Button type="button" variant="outline" size="sm" className="h-7 text-[11px]" onClick={() => qrInput.current?.click()}>
+                    {t("payUploadChange")}
+                  </Button>
+                  <Button type="button" variant="ghost" size="sm" className="h-7 text-[11px] text-rose-600 hover:bg-rose-50"
+                    onClick={() => setForm({ ...form, khqrImage: null })}>
+                    {t("payConfigQrRemove")}
+                  </Button>
+                </div>
+              </div>
+            ) : (
+              <button
+                type="button"
+                onClick={() => qrInput.current?.click()}
+                disabled={readingQr}
+                className={cn(
+                  "flex min-h-[44px] cursor-pointer items-center justify-center gap-2 rounded-lg border border-dashed border-slate-300 bg-slate-50 px-4 py-3 text-xs font-medium text-slate-600 transition-colors hover:border-amber-400 hover:bg-amber-50/50",
+                  readingQr && "opacity-60",
+                )}
+              >
+                {readingQr ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : <Upload className="h-4 w-4 text-slate-400" aria-hidden />}
+                {t("payConfigQrUpload")}
+              </button>
+            )}
+            {preview.data?.dataUrl && (
+              <div className="flex items-center gap-2">
+                <img src={preview.data.dataUrl} alt={t("payConfigPreview")} className="h-20 w-20 rounded-lg border border-slate-200 bg-white p-1" />
+                <p className="max-w-[10rem] text-[10px] leading-tight text-slate-400">{t("payConfigPreview")}</p>
+              </div>
+            )}
+          </div>
+          <input
+            ref={qrInput}
+            type="file"
+            accept="image/*"
+            className="hidden"
+            aria-label={t("payConfigQrUpload")}
+            onChange={(e) => pickQrImage(e.target.files?.[0])}
+          />
+        </div>
+
         <div className="sm:col-span-2">
           <Label htmlFor="pc-payload" className="text-xs text-slate-500">{t("payConfigKhqrPayload")}</Label>
           <Textarea id="pc-payload" value={form.khqrPayload ?? ""} onChange={(e) => setForm({ ...form, khqrPayload: e.target.value })} rows={2} className="mt-1.5 font-mono text-xs field-sizing-fixed min-w-0" maxLength={600} />
@@ -991,6 +1118,35 @@ function AdminPaymentConfig() {
           <Label htmlFor="pc-img" className="text-xs text-slate-500">{t("payConfigKhqrImage")}</Label>
           <Input id="pc-img" value={form.khqrImageUrl ?? ""} onChange={(e) => setForm({ ...form, khqrImageUrl: e.target.value })} placeholder="https://…" className="mt-1.5 h-9" />
         </div>
+
+        {/* Telegram bot delivery */}
+        <div className="sm:col-span-2 rounded-xl border border-sky-200 bg-sky-50/50 p-3">
+          <p className="flex items-center gap-1.5 text-sm font-semibold text-slate-900">
+            <Send className="h-4 w-4 text-sky-600" aria-hidden />
+            {t("payConfigTgBotTitle")}
+          </p>
+          <p className="mt-0.5 text-xs text-slate-500">{t("payConfigTgBotDesc")}</p>
+          <div className="mt-3 grid gap-3 sm:grid-cols-2">
+            <div>
+              <Label htmlFor="pc-tg-token" className="text-xs text-slate-500">{t("payConfigTgBotToken")}</Label>
+              <Input id="pc-tg-token" type="password" value={form.telegramBotToken ?? ""}
+                onChange={(e) => setForm({ ...form, telegramBotToken: e.target.value })}
+                placeholder="123456:ABC-DEF…" className="mt-1.5 h-9 font-mono text-xs" autoComplete="off" />
+            </div>
+            <div>
+              <Label htmlFor="pc-tg-chat" className="text-xs text-slate-500">{t("payConfigTgChatId")}</Label>
+              <Input id="pc-tg-chat" value={form.telegramChatId ?? ""}
+                onChange={(e) => setForm({ ...form, telegramChatId: e.target.value })}
+                placeholder="123456789 or @channelname" className="mt-1.5 h-9 font-mono text-xs" />
+            </div>
+          </div>
+          <Button type="button" variant="outline" size="sm" onClick={testTelegram} disabled={testingTg}
+            className="mt-3 border-sky-300 text-sky-800 hover:bg-sky-100">
+            {testingTg ? <Loader2 className="h-4 w-4 mr-1.5 animate-spin" aria-hidden /> : <Send className="h-4 w-4 mr-1.5" aria-hidden />}
+            {testingTg ? t("payConfigTgTesting") : t("payConfigTgTest")}
+          </Button>
+        </div>
+
         <div>
           <Label htmlFor="pc-inst-en" className="text-xs text-slate-500">{t("payConfigInstructionsEn")}</Label>
           <Textarea id="pc-inst-en" value={form.instructionsEn ?? ""} onChange={(e) => setForm({ ...form, instructionsEn: e.target.value })} rows={3} className="mt-1.5 field-sizing-fixed min-w-0" />
@@ -1039,12 +1195,99 @@ function AdminPaymentConfig() {
         )}
       </div>
 
-      {preview.data?.dataUrl && (
-        <div className="mt-4 flex items-center gap-3">
-          <img src={preview.data.dataUrl} alt={t("payConfigPreview")} className="h-24 w-24 rounded-lg border border-slate-200 bg-white p-1" />
-          <p className="text-xs text-slate-400">{t("payConfigPreview")}</p>
-        </div>
-      )}
+      <Button onClick={save} disabled={saving} className="mt-4 bg-amber-500 hover:bg-amber-400 text-slate-950 font-semibold">
+        {saving && <Loader2 className="h-4 w-4 mr-2 animate-spin" aria-hidden />}
+        {t("saveChanges")}
+      </Button>
+    </SectionCard>
+  );
+}
+
+// ---------------- plans & pricing (admin-configured catalog) ----------------
+
+function AdminPlanPricing() {
+  const t = useT();
+  const { data, loading, error, refetch } = useFetch<{ plans: PlanPricingConfig }>("/api/admin/plans");
+  const [form, setForm] = useState<PlanPricingConfig | null>(null);
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    if (data) setForm(data.plans);
+  }, [data]);
+
+  const save = async () => {
+    if (!form) return;
+    setSaving(true);
+    try {
+      await apiSend("/api/admin/plans", "PUT", form);
+      toast.success(t("payPlansSaved"));
+      refetch();
+    } catch (e) {
+      toast.error(isForbidden(e) ? t("toastForbidden") : errorText(e));
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  if (loading && !data) return <Skeleton className="h-64 w-full rounded-xl" />;
+  if (error && !data) return <FetchErrorState message={error} onRetry={refetch} />;
+  if (!form) return null;
+
+  const planKeys = Object.keys(form) as Array<keyof PlanPricingConfig>;
+
+  const num = (plan: keyof PlanPricingConfig, field: keyof PlanPricingConfig["BASIC"], value: string) =>
+    setForm({ ...form, [plan]: { ...form[plan], [field]: Number(value) || 0 } });
+
+  return (
+    <SectionCard title={t("payPlansTitle")}>
+      <p className="-mt-2 mb-3 text-xs text-slate-400">{t("payPlansDesc")}</p>
+      <div className="space-y-3">
+        {planKeys.map((plan) => {
+          const cfg = form[plan];
+          return (
+            <div key={plan} className={cn("rounded-xl border p-3", cfg.enabled ? "border-slate-200" : "border-slate-200 bg-slate-50/60 opacity-75")}>
+              <div className="flex items-center justify-between gap-3">
+                <p className="text-sm font-bold text-slate-900">{plan}</p>
+                <div className="flex items-center gap-2">
+                  <Label htmlFor={`pl-${plan}-enabled`} className="text-[11px] font-medium text-slate-500">{t("payPlansEnabled")}</Label>
+                  <Switch
+                    id={`pl-${plan}-enabled`}
+                    checked={cfg.enabled}
+                    onCheckedChange={(v) => setForm({ ...form, [plan]: { ...cfg, enabled: v } })}
+                  />
+                </div>
+              </div>
+              <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
+                <div>
+                  <Label htmlFor={`pl-${plan}-m`} className="text-xs text-slate-500">{t("payPlansMonthly")}</Label>
+                  <Input id={`pl-${plan}-m`} type="number" min={0} step={1} value={cfg.priceUsdMonthly}
+                    onChange={(e) => num(plan, "priceUsdMonthly", e.target.value)} className="mt-1.5 h-9" />
+                </div>
+                <div>
+                  <Label htmlFor={`pl-${plan}-y`} className="text-xs text-slate-500">{t("payPlansYearly")}</Label>
+                  <Input id={`pl-${plan}-y`} type="number" min={0} step={1} value={cfg.priceUsdYearly}
+                    onChange={(e) => num(plan, "priceUsdYearly", e.target.value)} className="mt-1.5 h-9" />
+                </div>
+                <div>
+                  <Label htmlFor={`pl-${plan}-l`} className="text-xs text-slate-500">{t("payPlansListings")}</Label>
+                  <Input id={`pl-${plan}-l`} type="number" min={0} max={9999} value={cfg.listingsLimit}
+                    onChange={(e) => num(plan, "listingsLimit", e.target.value)} className="mt-1.5 h-9" />
+                </div>
+                <div>
+                  <Label htmlFor={`pl-${plan}-f`} className="text-xs text-slate-500">{t("payPlansFeatured")}</Label>
+                  <Input id={`pl-${plan}-f`} type="number" min={0} max={9999} value={cfg.featuredLimit}
+                    onChange={(e) => num(plan, "featuredLimit", e.target.value)} className="mt-1.5 h-9" />
+                </div>
+                <div>
+                  <Label htmlFor={`pl-${plan}-s`} className="text-xs text-slate-500">{t("subSeatsLabel")}</Label>
+                  <Input id={`pl-${plan}-s`} type="number" min={1} max={9999} value={cfg.seats}
+                    onChange={(e) => num(plan, "seats", e.target.value)} className="mt-1.5 h-9" />
+                </div>
+              </div>
+            </div>
+          );
+        })}
+      </div>
       <Button onClick={save} disabled={saving} className="mt-4 bg-amber-500 hover:bg-amber-400 text-slate-950 font-semibold">
         {saving && <Loader2 className="h-4 w-4 mr-2 animate-spin" aria-hidden />}
         {t("saveChanges")}

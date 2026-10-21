@@ -12,7 +12,7 @@ import type {
 } from "@/lib/dashboard-types";
 import type { VehicleStatus } from "@/lib/types";
 import { DashboardShell, type DashboardTabDef } from "./shell";
-import { RequestSubscriptionDialog, TenantPaymentHistory } from "./payment-flow";
+import { RequestSubscriptionDialog, TenantPaymentHistory, PendingPaymentBanner } from "./payment-flow";
 import { PurchaseRequestList } from "./purchase-list";
 import {
   AppointmentStatusBadge, AvatarCircle, EmptyState, FetchErrorState, SectionCard, StatCard,
@@ -653,6 +653,10 @@ function DealerSubscription() {
           <AlertDescription className="text-xs font-medium text-amber-900">{t("payDisabledNotice")}</AlertDescription>
         </Alert>
       )}
+
+      {/* submitted payments waiting for the Super Admin's manual approval */}
+      <PendingPaymentBanner />
+
       <div className="flex flex-wrap items-center justify-between gap-2">
         <p className="text-sm font-semibold text-slate-900">{t("subCurrentPlan")}</p>
         <div className="flex items-center rounded-full border border-slate-200 bg-white p-0.5" role="group" aria-label={t("tabSubscription")}>

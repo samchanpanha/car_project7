@@ -24,6 +24,13 @@ export interface SubscriptionPaymentDTO {
   reference: string;
   manualRef?: string | null;
   evidenceUrl?: string | null;
+  /** uploaded payment screenshot (data URL) — included for admins / the owner's own submission */
+  evidenceImage?: string | null;
+  /** list views omit the heavy image and flag its presence instead */
+  hasEvidenceImage?: boolean;
+  /** Telegram bot delivery outcome for this submission */
+  telegramSentAt?: string | null;
+  telegramError?: string | null;
   note?: string | null;
   rejectionReason?: string | null;
   tenantId: string;
@@ -44,6 +51,8 @@ export interface PaymentConfigDTO {
     hasKhqr: boolean;
     /** data URL of the admin-configured KHQR payload (null → show fallback) */
     khqrDataUrl: string | null;
+    /** uploaded QR image (data URL) — takes display precedence over khqrDataUrl */
+    khqrImage: string | null;
   };
   /** admin-configured FREE tier */
   freePlan: {

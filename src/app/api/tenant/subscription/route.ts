@@ -6,9 +6,10 @@ import {
   requireTenantMember,
   toErrorResponse,
 } from "@/lib/api/guards";
-import { PLAN_BY_KEY, toSubscriptionDTO } from "@/lib/api/plans";
+import { toSubscriptionDTO } from "@/lib/api/plans";
 import type { PlanDTO } from "@/lib/dashboard-types";
 import { getManualPaymentConfig, refreshExpiredSubscription } from "@/lib/api/payments";
+import { getPlanCatalog } from "@/lib/api/plan-config";
 
 export const dynamic = "force-dynamic";
 
@@ -22,18 +23,9 @@ export async function GET() {
     // auto-expire overdue subscriptions on read
     const subscription = await refreshExpiredSubscription(raw);
 
-    // the FREE plan card reflects the admin-configured free tier
+    // plan cards reflect the admin's configured pricing, limits and availability
     const config = await getManualPaymentConfig();
-    const plans: PlanDTO[] = Object.values(PLAN_BY_KEY).map((p) =>
-      p.plan === "FREE"
-        ? {
-            ...p,
-            listingsLimit: config.freePlan.listingsLimit,
-            featuredLimit: config.freePlan.featuredLimit,
-            seats: config.freePlan.seats,
-          }
-        : p,
-    );
+    const plans: PlanDTO[] = await getPlanCatalog({ freePlan: config.freePlan });
 
     return NextResponse.json({
       subscription: subscription ? toSubscriptionDTO(subscription) : null,

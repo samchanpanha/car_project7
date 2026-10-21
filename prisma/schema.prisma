@@ -170,6 +170,9 @@ model SubscriptionPayment {
   qrPayload       String?   // EMVCo KHQR payload string (Bakong-issued or admin-configured)
   manualRef       String?   // seller-entered bank transaction reference (manual flow)
   evidenceUrl     String?   // optional payment evidence link (manual flow)
+  evidenceImage   String?   // uploaded payment screenshot as a data URL (manual flow)
+  telegramSentAt  DateTime? // when the proof was delivered to the admin's Telegram bot
+  telegramError   String?   // last Telegram delivery error, when delivery failed
   note            String?
   rejectionReason String?
   reviewedById    String?
