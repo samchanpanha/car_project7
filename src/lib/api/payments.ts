@@ -1,0 +1,267 @@
+// Subscription payment engine — plan pricing, payment references,
+// expiry refresh, and the single guarded path that turns a VERIFIED payment
+// into an activated/extended subscription. Payment status and subscription
+// status are separate fields and only meet inside this module.
+
+import { NextResponse } from "next/server";
+import QRCode from "qrcode";
+import { db } from "@/lib/db";
+import { PLAN_BY_KEY, toSubscriptionDTO, type PlanKey } from "@/lib/api/plans";
+import type { SubscriptionDTO } from "@/lib/dashboard-types";
+import type { Subscription, SubscriptionPayment } from "@prisma/client";
+
+// ---------- Manual KHQR configuration (Super Admin settings) ----------
+
+export interface ManualPaymentConfig {
+  accountName: string | null;
+  khqrPayload: string | null; // EMVCo KHQR string from the admin's banking app
+  khqrImageUrl: string | null; // fallback: URL of a QR image
+  instructionsEn: string | null;
+  instructionsKm: string | null;
+  telegram: string | null; // admin Telegram contact, e.g. "@khlan_admin"
+}
+
+const CONFIG_KEY = "payments.manualConfig";
+
+const DEFAULT_CONFIG: ManualPaymentConfig = {
+  accountName: null,
+  khqrPayload: null,
+  khqrImageUrl: null,
+  instructionsEn: null,
+  instructionsKm: null,
+  telegram: null,
+};
+
+export async function getManualPaymentConfig(): Promise<ManualPaymentConfig> {
+  const row = await db.platformSetting.findUnique({ where: { key: CONFIG_KEY } });
+  if (!row) return { ...DEFAULT_CONFIG };
+  try {
+    const parsed = JSON.parse(row.valueJson) as Partial<ManualPaymentConfig>;
+    return { ...DEFAULT_CONFIG, ...parsed };
+  } catch {
+    return { ...DEFAULT_CONFIG };
+  }
+}
+
+export async function saveManualPaymentConfig(
+  config: ManualPaymentConfig,
+  actorId: string,
+): Promise<ManualPaymentConfig> {
+  const valueJson = JSON.stringify(config);
+  await db.platformSetting.upsert({
+    where: { key: CONFIG_KEY },
+    create: { key: CONFIG_KEY, valueJson },
+    update: { valueJson },
+  });
+  await db.auditLog.create({
+    data: {
+      actorId,
+      action: "PAYMENT_CONFIG_UPDATED",
+      entity: "PlatformSetting",
+      entityId: CONFIG_KEY,
+      metaJson: JSON.stringify({
+        telegram: config.telegram,
+        hasKhqrPayload: Boolean(config.khqrPayload),
+        hasKhqrImage: Boolean(config.khqrImageUrl),
+      }),
+    },
+  });
+  return config;
+}
+
+/** Render the configured KHQR payload as a PNG data URL (server-side only). */
+export async function khqrDataUrl(config: ManualPaymentConfig): Promise<string | null> {
+  if (!config.khqrPayload) return null;
+  try {
+    return await QRCode.toDataURL(config.khqrPayload, {
+      errorCorrectionLevel: "M",
+      margin: 1,
+      width: 320,
+    });
+  } catch {
+    return null;
+  }
+}
+
+// ---------- Pricing & references ----------
+
+export function priceForCycle(plan: PlanKey, billingCycle: "MONTHLY" | "YEARLY"): number {
+  const row = PLAN_BY_KEY[plan];
+  return billingCycle === "YEARLY" ? row.priceUsdYearly : row.priceUsdMonthly;
+}
+
+export function monthsForCycle(billingCycle: "MONTHLY" | "YEARLY"): number {
+  return billingCycle === "YEARLY" ? 12 : 1;
+}
+
+export function generatePaymentReference(): string {
+  const d = new Date();
+  const ymd = `${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, "0")}${String(d.getDate()).padStart(2, "0")}`;
+  const rand = Math.random().toString(36).slice(2, 8).toUpperCase();
+  return `PAY-${ymd}-${rand}`;
+}
+
+// ---------- Expiry ----------
+
+/**
+ * Flip an overdue ACTIVE subscription to EXPIRED (idempotent).
+ * Called by tenant-facing subscription readers so restrictions apply
+ * automatically without a cron worker. Listings are retained.
+ */
+export async function refreshExpiredSubscription(
+  subscription: Subscription | null,
+): Promise<Subscription | null> {
+  if (!subscription) return subscription;
+  if (
+    subscription.status === "ACTIVE" &&
+    subscription.currentPeriodEnd.getTime() < Date.now()
+  ) {
+    const updated = await db.subscription.update({
+      where: { id: subscription.id },
+      data: { status: "EXPIRED" },
+    });
+    await db.auditLog.create({
+      data: {
+        action: "SUBSCRIPTION_EXPIRED",
+        entity: "Subscription",
+        entityId: subscription.id,
+        metaJson: JSON.stringify({ tenantId: subscription.tenantId, plan: subscription.plan }),
+      },
+    });
+    return updated;
+  }
+  return subscription;
+}
+
+// ---------- Activation (the only place a payment unlocks a subscription) ----------
+
+/**
+ * Mark a payment VERIFIED and activate/extend the tenant subscription.
+ * Rules:
+ *  - duplicate verification is rejected (409 conflict semantics via HttpError-like Error)
+ *  - extension base = max(now, currentPeriodEnd) so renewals never lose paid days
+ */
+export async function verifyPaymentAndActivate(
+  payment: SubscriptionPayment,
+  actorId: string,
+): Promise<SubscriptionDTO> {
+  if (payment.status === "VERIFIED") {
+    throw paymentConflict("This payment has already been verified");
+  }
+  if (payment.status === "CANCELLED" || payment.status === "REJECTED") {
+    throw paymentConflict(`This payment is ${payment.status.toLowerCase()} and cannot be verified`);
+  }
+
+  const planRow = PLAN_BY_KEY[payment.plan as PlanKey];
+  if (!planRow) throw paymentConflict("Unknown plan on payment record");
+
+  const now = new Date();
+  const existing = await db.subscription.findUnique({ where: { tenantId: payment.tenantId } });
+
+  // extension base: now, or the current period end when still valid
+  const base =
+    existing && existing.status === "ACTIVE" && existing.currentPeriodEnd.getTime() > now.getTime()
+      ? new Date(existing.currentPeriodEnd)
+      : now;
+  const currentPeriodEnd = new Date(base);
+  currentPeriodEnd.setMonth(currentPeriodEnd.getMonth() + payment.months);
+
+  const data = {
+    plan: payment.plan,
+    status: "ACTIVE" as const,
+    billingCycle: payment.billingCycle === "YEARLY" ? ("YEARLY" as const) : ("MONTHLY" as const),
+    priceUsd: priceForCycle(payment.plan as PlanKey, payment.billingCycle === "YEARLY" ? "YEARLY" : "MONTHLY"),
+    listingsLimit: planRow.listingsLimit,
+    featuredLimit: planRow.featuredLimit,
+    seats: planRow.seats,
+    currentPeriodEnd,
+  };
+
+  const [subscription, updatedPayment] = await db.$transaction([
+    existing
+      ? db.subscription.update({ where: { id: existing.id }, data })
+      : db.subscription.create({
+          data: { tenantId: payment.tenantId, startedAt: now, ...data },
+        }),
+    db.subscriptionPayment.update({
+      where: { id: payment.id },
+      data: {
+        status: "VERIFIED",
+        reviewedById: actorId,
+        reviewedAt: now,
+      },
+    }),
+  ]);
+
+  await db.auditLog.create({
+    data: {
+      actorId,
+      action: "PAYMENT_VERIFIED",
+      entity: "SubscriptionPayment",
+      entityId: payment.id,
+      metaJson: JSON.stringify({
+        reference: payment.reference,
+        method: payment.method,
+        plan: payment.plan,
+        amountUsd: payment.amountUsd,
+        tenantId: payment.tenantId,
+        subscriptionId: subscription.id,
+        activated: !existing || existing.status !== "ACTIVE",
+        extendedFrom: base.toISOString(),
+        currentPeriodEnd: currentPeriodEnd.toISOString(),
+      }),
+    },
+  });
+
+  void updatedPayment;
+  return toSubscriptionDTO(subscription);
+}
+
+export async function rejectPayment(
+  payment: SubscriptionPayment,
+  actorId: string,
+  reason: string,
+): Promise<void> {
+  if (payment.status === "VERIFIED") {
+    throw paymentConflict("A verified payment cannot be rejected");
+  }
+  if (payment.status === "REJECTED") return; // idempotent
+  await db.subscriptionPayment.update({
+    where: { id: payment.id },
+    data: {
+      status: "REJECTED",
+      rejectionReason: reason,
+      reviewedById: actorId,
+      reviewedAt: new Date(),
+    },
+  });
+  await db.auditLog.create({
+    data: {
+      actorId,
+      action: "PAYMENT_REJECTED",
+      entity: "SubscriptionPayment",
+      entityId: payment.id,
+      metaJson: JSON.stringify({
+        reference: payment.reference,
+        reason,
+        tenantId: payment.tenantId,
+      }),
+    },
+  });
+}
+
+function paymentConflict(message: string): Error & { status: number } {
+  const err = new Error(message) as Error & { status: number };
+  err.status = 409;
+  return err;
+}
+
+/** Consistent error → response mapping for payment routes. */
+export function toPaymentErrorResponse(err: unknown, tag: string): NextResponse {
+  const e = err as Error & { status?: number };
+  if (e?.status && e.status !== 500) {
+    return NextResponse.json({ error: e.message }, { status: e.status });
+  }
+  console.error(`[${tag}] failed:`, err);
+  return NextResponse.json({ error: "Payment operation failed" }, { status: 500 });
+}

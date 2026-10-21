@@ -58,7 +58,8 @@ export interface PlanDTO {
 export interface SubscriptionDTO {
   id: string;
   plan: PlanDTO["plan"];
-  status: "ACTIVE" | "CANCELLED" | "PAST_DUE";
+  /** EXPIRED added by the payments milestone — set automatically when currentPeriodEnd passes */
+  status: "ACTIVE" | "CANCELLED" | "PAST_DUE" | "EXPIRED";
   billingCycle: "MONTHLY" | "YEARLY";
   priceUsd: number;
   listingsLimit: number;

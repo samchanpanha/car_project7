@@ -1,0 +1,665 @@
+     1→"use client";
+     2→
+     3→import { useAppStore } from "@/lib/store";
+     4→import { useT } from "@/hooks/use-t";
+     5→import { useFetch, apiSend } from "@/lib/client-hooks";
+     6→import type { VehicleCardDTO, VehicleDetailDTO } from "@/lib/types";
+     7→import { VehicleCard, VehicleCardSkeleton } from "@/components/marketplace/vehicle-card";
+     8→import { ContactDialog } from "@/components/marketplace/contact-dialog";
+     9→import { Button } from "@/components/ui/button";
+    10→import { Badge } from "@/components/ui/badge";
+    11→import { Skeleton } from "@/components/ui/skeleton";
+    12→import { Separator } from "@/components/ui/separator";
+    13→import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+    14→import { Label } from "@/components/ui/label";
+    15→import { Textarea } from "@/components/ui/textarea";
+    16→import { ReportStatusBadge } from "@/components/marketplace/status-badge";
+    17→import {
+    18→  ArrowLeft, BadgeCheck, CalendarClock, CarFront, ChevronLeft, ChevronRight, Eye, FileCheck2, FileX2,
+    19→  Flag, Gauge, Heart, Loader2, MapPin, MessageSquare, Phone, RefreshCw, Send, ShieldCheck,
+    20→  ShieldAlert, Star, Timer, TriangleAlert, Users,
+    21→} from "lucide-react";
+    22→import { useState } from "react";
+    23→import { formatKhr, formatMileage, formatUsd, timeAgo } from "@/lib/format";
+    24→import { bodyTypeLabels, drivetrainLabels, fuelLabels, transmissionLabels } from "@/lib/i18n";
+    25→import { toast } from "sonner";
+    26→import { cn } from "@/lib/utils";
+    27→
+    28→const ABUSE_REASONS = ["SCAM", "WRONG_INFO", "DUPLICATE", "OFFENSIVE", "SOLD", "OTHER"] as const;
+    29→
+    30→/** Local "YYYY-MM-DDTHH:mm" for datetime-local min attribute. */
+    31→function localInputValue(d: Date): string {
+    32→  const pad = (n: number) => String(n).padStart(2, "0");
+    33→  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+    34→}
+    35→
+    36→export function DetailView({ vehicleId }: { vehicleId: string }) {
+    37→  const t = useT();
+    38→  const locale = useAppStore((s) => s.locale);
+    39→  const navigate = useAppStore((s) => s.navigate);
+    40→  const favorites = useAppStore((s) => s.favorites);
+    41→  const toggleFavoriteLocal = useAppStore((s) => s.toggleFavoriteLocal);
+    42→  const setFavorites = useAppStore((s) => s.setFavorites);
+    43→
+    44→  const { data, loading, error, refetch } = useFetch<{ vehicle: VehicleDetailDTO; similar: VehicleCardDTO[] }>(
+    45→    `/api/vehicles/${vehicleId}`
+    46→  );
+    47→  const [imgIndex, setImgIndex] = useState(0);
+    48→  const [contactOpen, setContactOpen] = useState(false);
+    49→  const [reportOpen, setReportOpen] = useState(false);
+    50→  const [reportReason, setReportReason] = useState<(typeof ABUSE_REASONS)[number]>("SCAM");
+    51→  const [reportDetails, setReportDetails] = useState("");
+    52→  const [generating, setGenerating] = useState(false);
+    53→  // test drive appointment
+    54→  const [tdOpen, setTdOpen] = useState(false);
+    55→  const [tdWhen, setTdWhen] = useState("");
+    56→  const [tdNotes, setTdNotes] = useState("");
+    57→  const [tdSubmitting, setTdSubmitting] = useState(false);
+    58→
+    59→  if (loading && !data) {
+    60→    return (
+    61→      <div className="mx-auto max-w-7xl px-4 py-6 pb-24 md:pb-10">
+    62→        <Skeleton className="h-8 w-64" />
+    63→        <div className="mt-4 grid gap-6 lg:grid-cols-[1.4fr_1fr]">
+    64→          <Skeleton className="aspect-[4/3] w-full rounded-xl" />
+    65→          <div className="space-y-3">
+    66→            <Skeleton className="h-6 w-3/4" />
+    67→            <Skeleton className="h-8 w-1/2" />
+    68→            <Skeleton className="h-24 w-full" />
+    69→          </div>
+    70→        </div>
+    71→      </div>
+    72→    );
+    73→  }
+    74→  if (error || !data) {
+    75→    return (
+    76→      <div className="mx-auto max-w-7xl px-4 py-16 text-center pb-24 md:pb-10">
+    77→        <TriangleAlert className="mx-auto h-10 w-10 text-slate-300" aria-hidden />
+    78→        <p className="mt-3 text-slate-600">{error || t("errorGeneric")}</p>
+    79→        <Button variant="outline" className="mt-4" onClick={() => navigate({ name: "browse" })}>
+    80→          {t("navBrowse")}
+    81→        </Button>
+    82→      </div>
+    83→    );
+    84→  }
+    85→
+    86→  const v = data.vehicle;
+    87→  const isFav = favorites.includes(v.id);
+    88→  const title = `${v.make} ${v.model} ${v.variant ?? ""} ${v.year}`.trim();
+    89→  const sellerName = v.sellerFull.shopName || v.sellerFull.name;
+    90→  const desc = locale === "km" && v.descriptionKm ? v.descriptionKm : v.description;
+    91→
+    92→  const toggleFavorite = async () => {
+    93→    toggleFavoriteLocal(v.id);
+    94→    try {
+    95→      if (isFav) await apiSend(`/api/favorites?vehicleId=${v.id}`, "DELETE");
+    96→      else await apiSend("/api/favorites", "POST", { vehicleId: v.id });
+    97→      const res = await fetch("/api/favorites");
+    98→      const json = await res.json();
+    99→      setFavorites(json.vehicleIds ?? []);
+   100→    } catch {
+   101→      toggleFavoriteLocal(v.id);
+   102→      toast.error(t("errorGeneric"));
+   103→    }
+   104→  };
+   105→
+   106→  const generateReport = async () => {
+   107→    setGenerating(true);
+   108→    try {
+   109→      await apiSend(`/api/vehicles/${v.id}/report`, "POST");
+   110→      toast.success(locale === "km" ? "បង្កើតរបាយការណ៍បានជោគជ័យ" : "Report generated");
+   111→      refetch();
+   112→      navigate({ name: "report", vehicleId: v.id });
+   113→    } catch (e) {
+   114→      toast.error(e instanceof Error ? e.message : t("errorGeneric"));
+   115→    } finally {
+   116→      setGenerating(false);
+   117→    }
+   118→  };
+   119→
+   120→  const submitAbuse = async () => {
+   121→    try {
+   122→      await apiSend("/api/reports/abuse", "POST", { vehicleId: v.id, reason: reportReason, details: reportDetails || undefined });
+   123→      toast.success(t("reportThanks"));
+   124→      setReportOpen(false);
+   125→      setReportDetails("");
+   126→    } catch (e) {
+   127→      toast.error(e instanceof Error ? e.message : t("errorGeneric"));
+   128→    }
+   129→  };
+   130→
+   131→  const submitTestDrive = async () => {
+   132→    if (!tdWhen) return;
+   133→    setTdSubmitting(true);
+   134→    try {
+   135→      await apiSend("/api/account/appointments", "POST", {
+   136→        vehicleId: v.id,
+   137→        scheduledAt: new Date(tdWhen).toISOString(),
+   138→        notes: tdNotes.trim() || undefined,
+   139→      });
+   140→      toast.success(t("toastAppointmentRequested"));
+   141→      setTdOpen(false);
+   142→      setTdWhen("");
+   143→      setTdNotes("");
+   144→    } catch (e) {
+   145→      toast.error(e instanceof Error ? e.message : t("errorGeneric"));
+   146→    } finally {
+   147→      setTdSubmitting(false);
+   148→    }
+   149→  };
+   150→
+   151→  const specs: Array<{ label: string; value: string }> = [
+   152→    { label: t("specYear"), value: String(v.year) },
+   153→    { label: t("specMileage"), value: formatMileage(v.mileageKm, locale) },
+   154→    { label: t("specTransmission"), value: transmissionLabels[v.transmission]?.[locale] ?? v.transmission },
+   155→    { label: t("specFuel"), value: fuelLabels[v.fuel]?.[locale] ?? v.fuel },
+   156→    ...(v.engineCc ? [{ label: t("specEngine"), value: `${v.engineCc} cc` }] : []),
+   157→    ...(v.drivetrain ? [{ label: t("specDrivetrain"), value: drivetrainLabels[v.drivetrain]?.[locale] ?? v.drivetrain }] : []),
+   158→    { label: t("specBody"), value: bodyTypeLabels[v.bodyType]?.[locale] ?? v.bodyType },
+   159→    ...(v.exteriorColor ? [{ label: t("specColor"), value: v.exteriorColor }] : []),
+   160→    ...(v.ownershipCount != null ? [{ label: t("specOwnerCount"), value: String(v.ownershipCount) }] : []),
+   161→    ...(v.importOrigin ? [{ label: t("specImport"), value: v.importOrigin }] : []),
+   162→    { label: t("specAccident"), value: t(`accident${v.accidentDeclared}` as never) },
+   163→    ...(v.plateNo ? [{ label: t("specPlate"), value: v.plateNo }] : []),
+   164→    ...(v.vinLast6 ? [{ label: t("specVin"), value: `•••${v.vinLast6}` }] : []),
+   165→  ];
+   166→
+   167→  const docIcon = (status: string) =>
+   168→    status === "VERIFIED" ? (
+   169→      <ShieldCheck className="h-4 w-4 text-emerald-600 shrink-0" aria-hidden />
+   170→    ) : status === "MISSING" ? (
+   171→      <FileX2 className="h-4 w-4 text-slate-400 shrink-0" aria-hidden />
+   172→    ) : (
+   173→      <FileCheck2 className="h-4 w-4 text-teal-600 shrink-0" aria-hidden />
+   174→    );
+   175→
+   176→  return (
+   177→    <div className="mx-auto max-w-7xl px-4 py-5 pb-28 md:pb-10">
+   178→      {/* Breadcrumb / back */}
+   179→      <div className="flex items-center justify-between gap-2">
+   180→        <Button variant="ghost" size="sm" onClick={() => navigate({ name: "browse" })} className="-ml-2 text-slate-500 hover:text-slate-800">
+   181→          <ArrowLeft className="h-4 w-4 mr-1.5" aria-hidden />
+   182→          {t("backToResults")}
+   183→        </Button>
+   184→        <button
+   185→          onClick={() => setReportOpen(true)}
+   186→          className="flex items-center gap-1 text-xs text-slate-400 hover:text-rose-600 transition-colors cursor-pointer"
+   187→        >
+   188→          <Flag className="h-3.5 w-3.5" aria-hidden />
+   189→          {t("reportListing")}
+   190→        </button>
+   191→      </div>
+   192→
+   193→      <div className="mt-3 grid gap-8 lg:grid-cols-[1.35fr_1fr]">
+   194→        {/* ------- Left: gallery + specs + docs + description ------- */}
+   195→        <div>
+   196→          {/* Gallery */}
+   197→          <div className="relative rounded-xl overflow-hidden border border-slate-200 bg-slate-100 aspect-[4/3]">
+   198→            {v.images[imgIndex] ? (
+   199→               
+   200→              <img
+   201→                src={v.images[imgIndex]}
+   202→                alt={`${title} — photo ${imgIndex + 1} of ${v.images.length}`}
+   203→                className="h-full w-full object-cover"
+   204→              />
+   205→            ) : (
+   206→              <div className="flex h-full items-center justify-center text-slate-300">
+   207→                <CarFront className="h-16 w-16" aria-hidden />
+   208→              </div>
+   209→            )}
+   210→            {v.images.length > 1 && (
+   211→              <>
+   212→                <button
+   213→                  onClick={() => setImgIndex((i) => (i - 1 + v.images.length) % v.images.length)}
+   214→                  className="absolute left-2 top-1/2 -translate-y-1/2 flex h-9 w-9 items-center justify-center rounded-full bg-white/90 border border-slate-200 shadow hover:bg-white cursor-pointer"
+   215→                  aria-label="Previous photo"
+   216→                >
+   217→                  <ChevronLeft className="h-5 w-5" aria-hidden />
+   218→                </button>
+   219→                <button
+   220→                  onClick={() => setImgIndex((i) => (i + 1) % v.images.length)}
+   221→                  className="absolute right-2 top-1/2 -translate-y-1/2 flex h-9 w-9 items-center justify-center rounded-full bg-white/90 border border-slate-200 shadow hover:bg-white cursor-pointer"
+   222→                  aria-label="Next photo"
+   223→                >
+   224→                  <ChevronRight className="h-5 w-5" aria-hidden />
+   225→                </button>
+   226→                <span className="absolute bottom-2 right-2 rounded-full bg-slate-950/70 px-2.5 py-0.5 text-xs text-white">
+   227→                  {imgIndex + 1} / {v.images.length}
+   228→                </span>
+   229→              </>
+   230→            )}
+   231→            {v.featured && (
+   232→              <Badge className="absolute top-2 left-2 bg-amber-500 text-slate-950 hover:bg-amber-500 gap-1">
+   233→                <Star className="h-3 w-3" aria-hidden />
+   234→                {locale === "km" ? "ពិសេស" : "Featured"}
+   235→              </Badge>
+   236→            )}
+   237→          </div>
+   238→          {v.images.length > 1 && (
+   239→            <div className="mt-2 grid grid-cols-5 gap-2 sm:grid-cols-6">
+   240→              {v.images.map((url, i) => (
+   241→                <button
+   242→                  key={url + i}
+   243→                  onClick={() => setImgIndex(i)}
+   244→                  className={cn(
+   245→                    "relative aspect-[4/3] overflow-hidden rounded-lg border-2 cursor-pointer",
+   246→                    i === imgIndex ? "border-amber-500" : "border-transparent opacity-75 hover:opacity-100"
+   247→                  )}
+   248→                  aria-label={`Photo ${i + 1}`}
+   249→                >
+   250→                  { }
+   251→                  <img src={url} alt="" className="h-full w-full object-cover" />
+   252→                </button>
+   253→              ))}
+   254→            </div>
+   255→          )}
+   256→
+   257→          {/* Specs */}
+   258→          <h2 className="mt-6 text-lg font-bold text-slate-900">{t("specifications")}</h2>
+   259→          <dl className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-3">
+   260→            {specs.map((s) => (
+   261→              <div key={s.label} className="rounded-lg bg-slate-50 border border-slate-100 px-3 py-2">
+   262→                <dt className="text-[11px] text-slate-400">{s.label}</dt>
+   263→                <dd className="text-sm font-medium text-slate-800 mt-0.5">{s.value}</dd>
+   264→              </div>
+   265→            ))}
+   266→          </dl>
+   267→
+   268→          {/* Documents */}
+   269→          <h2 className="mt-6 text-lg font-bold text-slate-900">{t("documents")}</h2>
+   270→          <ul className="mt-3 space-y-2">
+   271→            {v.documents.length === 0 && (
+   272→              <li className="rounded-lg border border-dashed border-slate-200 p-3 text-sm text-slate-400">
+   273→                —
+   274→              </li>
+   275→            )}
+   276→            {v.documents.map((d) => (
+   277→              <li key={d.type} className="flex items-center gap-3 rounded-lg border border-slate-200 bg-white px-3 py-2.5">
+   278→                {docIcon(d.status)}
+   279→                <div className="min-w-0 flex-1">
+   280→                  <p className="text-sm font-medium text-slate-800">{t(`doc${d.type}` as never)}</p>
+   281→                  {d.notes && <p className="text-xs text-slate-400 truncate">{d.notes}</p>}
+   282→                </div>
+   283→                <Badge
+   284→                  variant="outline"
+   285→                  className={cn(
+   286→                    "text-[11px] shrink-0",
+   287→                    d.status === "VERIFIED" && "border-emerald-200 bg-emerald-50 text-emerald-700",
+   288→                    d.status === "PROVIDED" && "border-teal-200 bg-teal-50 text-teal-700",
+   289→                    d.status === "MISSING" && "border-slate-200 bg-slate-50 text-slate-400"
+   290→                  )}
+   291→                >
+   292→                  {t(`doc${d.status}` as never)}
+   293→                </Badge>
+   294→              </li>
+   295→            ))}
+   296→          </ul>
+   297→
+   298→          {/* Description */}
+   299→          {desc && (
+   300→            <>
+   301→              <h2 className="mt-6 text-lg font-bold text-slate-900">{t("description")}</h2>
+   302→              <p className="mt-2 whitespace-pre-line text-sm leading-relaxed text-slate-600">{desc}</p>
+   303→            </>
+   304→          )}
+   305→        </div>
+   306→
+   307→        {/* ------- Right: price, seller, safety, AI report ------- */}
+   308→        <div className="space-y-4">
+   309→          <div className="rounded-xl border border-slate-200 bg-white p-5">
+   310→            <h1 className="text-lg sm:text-xl font-bold leading-snug text-slate-900">{title}</h1>
+   311→            <p className="mt-2 flex flex-wrap items-baseline gap-x-3">
+   312→              <span className="text-2xl sm:text-3xl font-bold text-amber-600">{formatUsd(v.priceUsd)}</span>
+   313→              <span className="text-sm text-slate-400">{formatKhr(v.priceUsd)}</span>
+   314→            </p>
+   315→            <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-slate-500">
+   316→              <span className="flex items-center gap-1">
+   317→                <MapPin className="h-3.5 w-3.5" aria-hidden />
+   318→                {v.district ? `${v.district}, ` : ""}
+   319→                {v.city}
+   320→              </span>
+   321→              <span className="flex items-center gap-1">
+   322→                <Eye className="h-3.5 w-3.5" aria-hidden />
+   323→                {t("views", { n: v.views })}
+   324→              </span>
+   325→              <span className="flex items-center gap-1">
+   326→                <Timer className="h-3.5 w-3.5" aria-hidden />
+   327→                {t("listedAgo", { t: timeAgo(v.createdAt, locale) })}
+   328→              </span>
+   329→            </div>
+   330→            <div className="mt-4 flex flex-wrap gap-2">
+   331→              {v.sellerFull.verified && (
+   332→                <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 border border-emerald-200 px-2.5 py-1 text-xs font-semibold text-emerald-700">
+   333→                  <BadgeCheck className="h-3.5 w-3.5" aria-hidden />
+   334→                  {v.sellerFull.type === "DEALER" ? t("dealerBadge") : locale === "km" ? "អ្នកលក់ផ្ទៀងផ្ទាត់" : "Verified seller"}
+   335→                </span>
+   336→              )}
+   337→              <span className="inline-flex items-center gap-1 rounded-full bg-slate-50 border border-slate-200 px-2.5 py-1 text-xs font-medium text-slate-600">
+   338→                <FileCheck2 className="h-3.5 w-3.5 text-teal-600" aria-hidden />
+   339→                {t("docsProvided", { n: v.trust.docsProvided })}
+   340→              </span>
+   341→              {v.trust.reportAvailable && (
+   342→                <span className="inline-flex items-center gap-1 rounded-full bg-teal-50 border border-teal-200 px-2.5 py-1 text-xs font-semibold text-teal-700">
+   343→                  AI · {t("aiReportReady")}
+   344→                </span>
+   345→              )}
+   346→            </div>
+   347→
+   348→            {/* CTAs */}
+   349→            <div className="mt-4 grid grid-cols-2 gap-2">
+   350→              <Button
+   351→                onClick={() => setContactOpen(true)}
+   352→                className="bg-amber-500 hover:bg-amber-400 text-slate-950 font-semibold h-11"
+   353→              >
+   354→                <MessageSquare className="h-4 w-4 mr-2" aria-hidden />
+   355→                {t("contactSeller")}
+   356→              </Button>
+   357→              <Button onClick={toggleFavorite} variant="outline" className="h-11" aria-pressed={isFav}>
+   358→                <Heart className={cn("h-4 w-4 mr-2", isFav && "fill-rose-500 text-rose-500")} aria-hidden />
+   359→                {isFav ? (locale === "km" ? "រក្សាទុករួច" : "Saved") : t("navFavorites")}
+   360→              </Button>
+   361→            </div>
+   362→            {v.status === "PUBLISHED" && (
+   363→              <Button
+   364→                onClick={() => setTdOpen(true)}
+   365→                variant="outline"
+   366→                className="mt-2 h-11 w-full border-teal-200 text-teal-700 hover:bg-teal-50"
+   367→              >
+   368→                <CalendarClock className="h-4 w-4 mr-2" aria-hidden />
+   369→                {t("requestTestDrive")}
+   370→              </Button>
+   371→            )}
+   372→            {v.sellerFull.phone && (
+   373→              <p className="mt-3 flex items-center gap-2 text-sm text-slate-500">
+   374→                <Phone className="h-3.5 w-3.5" aria-hidden />
+   375→                <span className="font-mono tracking-wide">{v.sellerFull.phone}</span>
+   376→              </p>
+   377→            )}
+   378→          </div>
+   379→
+   380→          {/* Seller card */}
+   381→          <div className="rounded-xl border border-slate-200 bg-white p-5">
+   382→            <div className="flex items-start justify-between gap-3">
+   383→              <div className="flex items-center gap-3 min-w-0">
+   384→                <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-slate-900 text-white text-sm font-bold">
+   385→                  {sellerName.slice(0, 2).toUpperCase()}
+   386→                </span>
+   387→                <div className="min-w-0">
+   388→                  <p className="flex items-center gap-1 font-semibold text-slate-900 truncate">
+   389→                    {sellerName}
+   390→                    {v.sellerFull.verified && <BadgeCheck className="h-4 w-4 text-emerald-600 shrink-0" aria-hidden />}
+   391→                  </p>
+   392→                  <p className="text-xs text-slate-500">
+   393→                    {v.sellerFull.type === "DEALER" ? t("dealerBadge") : t("privateBadge")}
+   394→                  </p>
+   395→                </div>
+   396→              </div>
+   397→              <Button variant="outline" size="sm" onClick={() => navigate({ name: "seller", userId: v.sellerFull.id })}>
+   398→                {t("viewStorefront")}
+   399→              </Button>
+   400→            </div>
+   401→            <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-xs text-slate-500">
+   402→              <span className="flex items-center gap-1">
+   403→                <Star className="h-3.5 w-3.5 fill-amber-400 text-amber-400" aria-hidden />
+   404→                {t("ratingOf", { score: v.sellerFull.ratingAvg.toFixed(1), n: v.sellerFull.ratingCount })}
+   405→              </span>
+   406→              <span className="flex items-center gap-1">
+   407→                <Gauge className="h-3.5 w-3.5" aria-hidden />
+   408→                {t("responseRate", { n: v.sellerFull.responseRate })}
+   409→              </span>
+   410→              <span className="flex items-center gap-1">
+   411→                <Users className="h-3.5 w-3.5" aria-hidden />
+   412→                {t("sellerSince", { y: new Date(v.sellerFull.memberSince).getFullYear() })}
+   413→              </span>
+   414→            </div>
+   415→          </div>
+   416→
+   417→          {/* AI report card */}
+   418→          <div className="rounded-xl border border-teal-200 bg-teal-50/60 p-5">
+   419→            <h2 className="flex items-center gap-2 font-semibold text-slate-900">
+   420→              <FileCheck2 className="h-5 w-5 text-teal-600" aria-hidden />
+   421→              {t("aiReportTitle")}
+   422→            </h2>
+   423→            <p className="mt-1 text-sm text-slate-600">{t("aiReportBody")}</p>
+   424→            {v.report ? (
+   425→              <div className="mt-3">
+   426→                <div className="flex items-center gap-2">
+   427→                  <span className="text-2xl font-bold text-teal-700">{Math.round(v.report.overallConfidence)}%</span>
+   428→                  <span className="text-xs text-slate-500">{t("confidence")}</span>
+   429→                </div>
+   430→                <Button
+   431→                  onClick={() => navigate({ name: "report", vehicleId: v.id })}
+   432→                  className="mt-3 w-full bg-teal-600 hover:bg-teal-700 text-white font-semibold"
+   433→                >
+   434→                  <FileCheck2 className="h-4 w-4 mr-2" aria-hidden />
+   435→                  {t("viewFullReport")}
+   436→                </Button>
+   437→              </div>
+   438→            ) : (
+   439→              <Button
+   440→                onClick={generateReport}
+   441→                disabled={generating}
+   442→                className="mt-3 w-full bg-teal-600 hover:bg-teal-700 text-white font-semibold"
+   443→              >
+   444→                {generating ? (
+   445→                  <>
+   446→                    <Loader2 className="h-4 w-4 mr-2 animate-spin" aria-hidden />
+   447→                    {t("loading")}
+   448→                  </>
+   449→                ) : (
+   450→                  <>
+   451→                    <FileCheck2 className="h-4 w-4 mr-2" aria-hidden />
+   452→                    {t("generateReport")}
+   453→                  </>
+   454→                )}
+   455→              </Button>
+   456→            )}
+   457→          </div>
+   458→
+   459→          {/* Safety */}
+   460→          <div className="rounded-xl border border-amber-200 bg-amber-50 p-5">
+   461→            <h2 className="flex items-center gap-2 font-semibold text-amber-900">
+   462→              <ShieldAlert className="h-4.5 w-4.5" aria-hidden />
+   463→              {t("safetyTitle")}
+   464→            </h2>
+   465→            <p className="mt-1.5 text-sm leading-relaxed text-amber-800">{t("safetyBody")}</p>
+   466→          </div>
+   467→        </div>
+   468→      </div>
+   469→
+   470→      {/* Similar */}
+   471→      {data.similar.length > 0 && (
+   472→        <section className="mt-10" aria-labelledby="similar-title">
+   473→          <h2 id="similar-title" className="text-lg font-bold text-slate-900">{t("similarCars")}</h2>
+   474→          <div className="mt-4 grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-4">
+   475→            {data.similar.map((sv) => (
+   476→              <VehicleCard key={sv.id} vehicle={sv} showCompare={false} />
+   477→            ))}
+   478→          </div>
+   479→        </section>
+   480→      )}
+   481→
+   482→      {/* Contact dialog */}
+   483→      <ContactDialog
+   484→        open={contactOpen}
+   485→        onOpenChange={setContactOpen}
+   486→        vehicleId={v.id}
+   487→        sellerName={sellerName}
+   488→      />
+   489→
+   490→      {/* Abuse report dialog */}
+   491→      <ReportDialog
+   492→        open={reportOpen}
+   493→        onOpenChange={setReportOpen}
+   494→        reason={reportReason}
+   495→        setReason={setReportReason}
+   496→        details={reportDetails}
+   497→        setDetails={setReportDetails}
+   498→        onSubmit={submitAbuse}
+   499→      />
+   500→
+   501→      {/* Test drive appointment dialog */}
+   502→      <Dialog open={tdOpen} onOpenChange={setTdOpen}>
+   503→        <DialogContent className="sm:max-w-sm">
+   504→          <DialogHeader>
+   505→            <DialogTitle className="flex items-center gap-2">
+   506→              <CalendarClock className="h-4 w-4 text-teal-600" aria-hidden />
+   507→              {t("testDriveTitle")}
+   508→            </DialogTitle>
+   509→          </DialogHeader>
+   510→          <div className="space-y-3">
+   511→            <div>
+   512→              <Label htmlFor="td-when" className="text-xs text-slate-500">{t("testDriveWhen")}</Label>
+   513→              <input
+   514→                id="td-when"
+   515→                type="datetime-local"
+   516→                value={tdWhen}
+   517→                min={localInputValue(new Date(Date.now() + 60 * 60 * 1000))}
+   518→                onChange={(e) => setTdWhen(e.target.value)}
+   519→                className="mt-1.5 h-9 w-full rounded-md border border-slate-200 bg-white px-3 text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-amber-500"
+   520→              />
+   521→            </div>
+   522→            <div>
+   523→              <Label htmlFor="td-notes" className="text-xs text-slate-500">{t("testDriveNotes")}</Label>
+   524→              <Textarea id="td-notes" value={tdNotes} onChange={(e) => setTdNotes(e.target.value)} rows={3} maxLength={300} className="mt-1.5" />
+   525→              <p className="mt-1 text-right text-[10px] text-slate-300">{tdNotes.length}/300</p>
+   526→            </div>
+   527→          </div>
+   528→          <DialogFooter>
+   529→            <Button variant="outline" size="sm" onClick={() => setTdOpen(false)}>{t("cancel")}</Button>
+   530→            <Button
+   531→              size="sm"
+   532→              onClick={submitTestDrive}
+   533→              disabled={tdSubmitting || !tdWhen}
+   534→              className="bg-teal-600 hover:bg-teal-700 text-white font-semibold"
+   535→            >
+   536→              {tdSubmitting && <Loader2 className="h-4 w-4 mr-2 animate-spin" aria-hidden />}
+   537→              {t("testDriveSubmit")}
+   538→            </Button>
+   539→          </DialogFooter>
+   540→        </DialogContent>
+   541→      </Dialog>
+   542→
+   543→      {/* Sticky mobile CTA bar */}
+   544→      <div className="fixed bottom-[52px] inset-x-0 z-30 border-t border-slate-200 bg-white/95 backdrop-blur p-2.5 md:hidden">
+   545→        <div className="flex gap-2 max-w-md mx-auto">
+   546→          <Button
+   547→            onClick={() => setContactOpen(true)}
+   548→            className="flex-1 bg-amber-500 hover:bg-amber-400 text-slate-950 font-semibold h-11"
+   549→          >
+   550→            <Send className="h-4 w-4 mr-2" aria-hidden />
+   551→            {t("contactSeller")}
+   552→          </Button>
+   553→          <Button onClick={toggleFavorite} variant="outline" size="icon" className="h-11 w-11" aria-label={t("navFavorites")}>
+   554→            <Heart className={cn("h-5 w-5", isFav && "fill-rose-500 text-rose-500")} aria-hidden />
+   555→          </Button>
+   556→          {v.report && (
+   557→            <Button
+   558→              onClick={() => navigate({ name: "report", vehicleId: v.id })}
+   559→              variant="outline"
+   560→              size="icon"
+   561→              className="h-11 w-11 border-teal-300 text-teal-700"
+   562→              aria-label={t("viewFullReport")}
+   563→            >
+   564→              <RefreshCw className="hidden" aria-hidden />
+   565→              <FileCheck2 className="h-5 w-5" aria-hidden />
+   566→            </Button>
+   567→          )}
+   568→        </div>
+   569→      </div>
+   570→    </div>
+   571→  );
+   572→}
+   573→
+   574→function ReportDialog({
+   575→  open,
+   576→  onOpenChange,
+   577→  reason,
+   578→  setReason,
+   579→  details,
+   580→  setDetails,
+   581→  onSubmit,
+   582→}: {
+   583→  open: boolean;
+   584→  onOpenChange: (v: boolean) => void;
+   585→  reason: (typeof ABUSE_REASONS)[number];
+   586→  setReason: (r: (typeof ABUSE_REASONS)[number]) => void;
+   587→  details: string;
+   588→  setDetails: (d: string) => void;
+   589→  onSubmit: () => void;
+   590→}) {
+   591→  const t = useT();
+   592→  const reasonLabels: Record<string, string> = {
+   593→    SCAM: "Scam / បញ្ឆោត",
+   594→    WRONG_INFO: "Wrong information / ព័ត៌មានខុស",
+   595→    DUPLICATE: "Duplicate / ស្ទួន",
+   596→    OFFENSIVE: "Offensive / មិនសមរម្យ",
+   597→    SOLD: "Already sold / លក់រួច",
+   598→    OTHER: "Other / ផ្សេងៗ",
+   599→  };
+   600→  return (
+   601→    <ReportDialogWrapper open={open} onOpenChange={onOpenChange} onSubmit={onSubmit}>
+   602→      <p className="text-sm font-medium text-slate-700 mb-2">{t("reportReason")}</p>
+   603→      <div className="grid grid-cols-2 gap-1.5">
+   604→        {ABUSE_REASONS.map((r) => (
+   605→          <button
+   606→            key={r}
+   607→            onClick={() => setReason(r)}
+   608→            className={cn(
+   609→              "rounded-lg border px-2.5 py-1.5 text-xs font-medium transition-colors cursor-pointer",
+   610→              reason === r
+   611→                ? "border-rose-400 bg-rose-50 text-rose-700"
+   612→                : "border-slate-200 text-slate-600 hover:border-slate-300"
+   613→            )}
+   614→            aria-pressed={reason === r}
+   615→          >
+   616→            {reasonLabels[r]}
+   617→          </button>
+   618→        ))}
+   619→      </div>
+   620→      <textarea
+   621→        value={details}
+   622→        onChange={(e) => setDetails(e.target.value)}
+   623→        rows={3}
+   624→        placeholder={t("reportDetails")}
+   625→        className="mt-3 w-full rounded-lg border border-slate-200 p-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-amber-500"
+   626→      />
+   627→    </ReportDialogWrapper>
+   628→  );
+   629→}
+   630→
+   631→function ReportDialogWrapper({
+   632→  open,
+   633→  onOpenChange,
+   634→  onSubmit,
+   635→  children,
+   636→}: {
+   637→  open: boolean;
+   638→  onOpenChange: (v: boolean) => void;
+   639→  onSubmit: () => void;
+   640→  children: React.ReactNode;
+   641→}) {
+   642→  const t = useT();
+   643→  return (
+   644→    <Dialog open={open} onOpenChange={onOpenChange}>
+   645→      <DialogContent className="sm:max-w-sm">
+   646→        <DialogHeader>
+   647→          <DialogTitle className="flex items-center gap-2">
+   648→            <Flag className="h-4 w-4 text-rose-500" aria-hidden />
+   649→            {t("reportListing")}
+   650→          </DialogTitle>
+   651→        </DialogHeader>
+   652→        {children}
+   653→        <DialogFooter>
+   654→          <Button variant="outline" size="sm" onClick={() => onOpenChange(false)}>
+   655→            {t("prevStep")}
+   656→          </Button>
+   657→          <Button size="sm" onClick={onSubmit} className="bg-rose-600 hover:bg-rose-700 text-white">
+   658→            {t("reportSubmit")}
+   659→          </Button>
+   660→        </DialogFooter>
+   661→      </DialogContent>
+   662→    </Dialog>
+   663→  );
+   664→}
+   665→

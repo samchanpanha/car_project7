@@ -17,11 +17,12 @@ import type {
   SessionDTO,
 } from "@/lib/dashboard-types";
 import type { VehicleStatus } from "@/lib/types";
+import type { SubscriptionPaymentDTO } from "@/lib/commerce-types";
 import { DashboardShell, type DashboardTabDef } from "./shell";
 import {
-  AvatarCircle, ConfidenceRing, EmptyState, FetchErrorState, HBar, MiniBarChart, RoleBadge,
-  SectionCard, StatCard, StatCardSkeleton, TenantStatusBadge, VehicleStatusBadge, VerificationBadge,
-  errorText, isForbidden,
+  AvatarCircle, ConfidenceRing, EmptyState, FetchErrorState, HBar, MiniBarChart, PaymentStatusBadge,
+  RoleBadge, SectionCard, StatCard, StatCardSkeleton, TenantStatusBadge, VehicleStatusBadge,
+  VerificationBadge, errorText, isForbidden,
 } from "./bits";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -29,12 +30,16 @@ import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { Textarea } from "@/components/ui/textarea";
+import {
+  Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle,
+} from "@/components/ui/dialog";
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import {
-  BadgeCheck, Car, ChevronDown, DollarSign, FileCheck2, Gauge, Hourglass, LayoutDashboard, Loader2,
-  MessageSquare, MoreHorizontal, ScrollText, Settings, ShieldCheck, Sparkles, Star, Store, TriangleAlert, Users,
+  BadgeCheck, Car, ChevronDown, CreditCard, DollarSign, FileCheck2, Gauge, Hourglass, LayoutDashboard, Loader2,
+  MessageSquare, MoreHorizontal, ScrollText, Settings, ShieldCheck, Sparkles, Star, Store, TriangleAlert, Users, Wallet,
 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
@@ -63,6 +68,7 @@ export function AdminDashboard({ me }: { me: SessionDTO }) {
     { id: "tenants", label: t("tabTenants"), icon: Store },
     { id: "listings", label: t("tabListings"), icon: Car },
     { id: "users", label: t("tabUsers"), icon: Users },
+    { id: "payments", label: t("tabPayments"), icon: CreditCard },
     { id: "ai", label: t("tabAi"), icon: Sparkles },
     { id: "settings", label: t("tabSettings"), icon: Settings },
     { id: "audit", label: t("tabAudit"), icon: ScrollText },
@@ -81,6 +87,7 @@ export function AdminDashboard({ me }: { me: SessionDTO }) {
       {active === "tenants" && <AdminTenants />}
       {active === "listings" && <AdminListings />}
       {active === "users" && <AdminUsers />}
+      {active === "payments" && <AdminPayments />}
       {active === "ai" && <AdminAi />}
       {active === "settings" && <AdminSettings />}
       {active === "audit" && <AdminAudit />}
@@ -200,6 +207,33 @@ function AdminTenants() {
   const t = useT();
   const { data, loading, error, refetch } = useFetch<AdminTenantDTO[]>("/api/admin/tenants");
   const [busyId, setBusyId] = useState<string | null>(null);
+  const [extending, setExtending] = useState<{ id: string; name: string } | null>(null);
+  const [extendMonths, setExtendMonths] = useState("1");
+  const [extendNote, setExtendNote] = useState("");
+  const [extendingBusy, setExtendingBusy] = useState(false);
+
+  const submitExtend = async () => {
+    if (!extending) return;
+    const months = Number(extendMonths);
+    if (!Number.isInteger(months) || months < 1 || months > 36) return;
+    setExtendingBusy(true);
+    try {
+      await apiSend("/api/admin/subscriptions/extend", "POST", {
+        tenantId: extending.id,
+        months,
+        note: extendNote.trim() || undefined,
+      });
+      toast.success(t("subExtendedToast"));
+      setExtending(null);
+      setExtendMonths("1");
+      setExtendNote("");
+      refetch();
+    } catch (e) {
+      toast.error(isForbidden(e) ? t("toastForbidden") : errorText(e));
+    } finally {
+      setExtendingBusy(false);
+    }
+  };
 
   const patch = async (id: string, body: Record<string, string>) => {
     setBusyId(id);
@@ -255,6 +289,8 @@ function AdminTenants() {
                   {t("actSuspend")}
                 </DropdownMenuItem>
                 <DropdownMenuItem onClick={() => patch(tt.id, { status: "ACTIVE" })}>{t("actActivate")}</DropdownMenuItem>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem onClick={() => setExtending({ id: tt.id, name: tt.name })}>{t("subManualExtend")}</DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
           </div>
@@ -278,11 +314,37 @@ function AdminTenants() {
           </div>
         </div>
       ))}
+
+      {/* Manual subscription extension dialog */}
+      <Dialog open={Boolean(extending)} onOpenChange={(o) => !o && setExtending(null)}>
+        <DialogContent className="sm:max-w-sm">
+          <DialogHeader>
+            <DialogTitle>{t("subManualExtend")}</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3">
+            <p className="text-sm text-slate-500">{extending?.name}</p>
+            <div>
+              <Label htmlFor="ext-months" className="text-xs text-slate-500">{t("subExtendMonths")}</Label>
+              <Input id="ext-months" type="number" min={1} max={36} value={extendMonths}
+                onChange={(e) => setExtendMonths(e.target.value)} className="mt-1.5 h-9" />
+            </div>
+            <div>
+              <Label htmlFor="ext-note" className="text-xs text-slate-500">{t("subExtendNote")}</Label>
+              <Textarea id="ext-note" value={extendNote} onChange={(e) => setExtendNote(e.target.value)} rows={2} className="mt-1.5" maxLength={300} />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" size="sm" onClick={() => setExtending(null)}>{t("cancel")}</Button>
+            <Button size="sm" onClick={submitExtend} disabled={extendingBusy} className="bg-amber-500 hover:bg-amber-400 text-slate-950 font-semibold">
+              {extendingBusy && <Loader2 className="h-4 w-4 mr-2 animate-spin" aria-hidden />}
+              {t("subManualExtend")}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
-
-// ---------------- listings moderation ----------------
 
 function AdminListings() {
   const t = useT();
@@ -607,7 +669,8 @@ function AdminSettings() {
   if (!form) return null;
 
   return (
-    <SectionCard title={t("platformSettings")}>
+    <div className="space-y-5">
+      <SectionCard title={t("platformSettings")}>
       {form.maintenanceMode && (
         <Alert className="mb-4 border-amber-300 bg-amber-50 text-amber-900">
           <TriangleAlert className="h-4 w-4" aria-hidden />
@@ -646,6 +709,9 @@ function AdminSettings() {
         {t("saveChanges")}
       </Button>
     </SectionCard>
+
+      <AdminPaymentConfig />
+    </div>
   );
 }
 
@@ -680,6 +746,238 @@ function AdminAudit() {
           </li>
         ))}
       </ul>
+    </SectionCard>
+  );
+}
+
+// ---------------- payments verification ----------------
+
+const PAYMENT_FILTERS = ["AWAITING_VERIFICATION", "PENDING", "VERIFIED", "REJECTED", "CANCELLED", "ALL"] as const;
+
+function AdminPayments() {
+  const t = useT();
+  const locale = useAppStore((s) => s.locale);
+  const [status, setStatus] = useState<string>("AWAITING_VERIFICATION");
+  const url = `/api/admin/payments${qs({ status: status === "ALL" ? undefined : status })}`;
+  const { data, loading, error, refetch } = useFetch<SubscriptionPaymentDTO[]>(url);
+  const [busyId, setBusyId] = useState<string | null>(null);
+  const [rejecting, setRejecting] = useState<SubscriptionPaymentDTO | null>(null);
+  const [reason, setReason] = useState("");
+
+  const decide = async (p: SubscriptionPaymentDTO, action: "verify" | "reject", reasonText?: string) => {
+    setBusyId(p.id);
+    try {
+      await apiSend(`/api/admin/payments/${p.id}`, "PATCH", { action, reason: reasonText });
+      toast.success(action === "verify" ? t("payVerifiedToast") : t("toastUpdated"));
+      setRejecting(null);
+      setReason("");
+      refetch();
+    } catch (e) {
+      toast.error(isForbidden(e) ? t("toastForbidden") : errorText(e));
+    } finally {
+      setBusyId(null);
+    }
+  };
+
+  return (
+    <div className="space-y-4">
+      <div className="flex flex-wrap gap-1.5">
+        {PAYMENT_FILTERS.map((c) => (
+          <button
+            key={c}
+            onClick={() => setStatus(c)}
+            aria-pressed={status === c}
+            className={cn(
+              "rounded-full border px-3 py-1.5 text-xs font-medium transition-colors cursor-pointer",
+              status === c ? "border-amber-500 bg-amber-50 text-amber-800" : "border-slate-200 bg-white text-slate-600 hover:border-slate-300",
+            )}
+          >
+            {c === "ALL" ? t("anyCondition") : t(c === "PENDING" ? "payStatusPending" : c === "AWAITING_VERIFICATION" ? "payStatusAwaiting" : `payStatus${c.charAt(0)}${c.slice(1).toLowerCase()}` as never)}
+          </button>
+        ))}
+      </div>
+
+      {loading && !data ? (
+        <div className="space-y-3">{Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} className="h-24 w-full rounded-xl" />)}</div>
+      ) : error && !data ? (
+        <FetchErrorState message={error} onRetry={refetch} />
+      ) : !data || data.length === 0 ? (
+        <EmptyState icon={Wallet} text={t("noResults")} />
+      ) : (
+        <div className="space-y-3">
+          {data.map((p) => (
+            <div key={p.id} className="rounded-xl border border-slate-200 bg-white p-4">
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="flex flex-wrap items-center gap-1.5 text-sm font-semibold text-slate-900">
+                    {p.tenantName} · {p.plan} ({p.billingCycle === "MONTHLY" ? t("billingMonthly") : t("billingYearly")})
+                    <PaymentStatusBadge status={p.status} />
+                  </p>
+                  <p className="mt-1 text-xs text-slate-500">
+                    {t("payAmount")}: <span className="font-bold text-amber-700">{formatUsd(p.amountUsd)}</span>
+                    {" · "}{t("payFromTenant")}: <code className="rounded bg-slate-100 px-1.5 py-0.5 text-[10px]">{p.reference}</code>
+                    {p.manualRef ? ` · ${t("payManualRef")}: ${p.manualRef}` : ""}
+                  </p>
+                  <p className="mt-0.5 text-[11px] text-slate-400">
+                    {p.method === "BAKONG" ? "Bakong KHQR" : t("payMethodManual")}
+                    {" · "}{timeAgo(p.createdAt, locale)}
+                    {p.reviewedAt ? ` · ${t("payVerifier")}` : ""}
+                  </p>
+                  {p.note && <p className="mt-1 truncate text-xs italic text-slate-500">“{p.note}”</p>}
+                  {p.rejectionReason && (
+                    <p className="mt-1 text-xs text-rose-600">{t("payRejectedReason")}: {p.rejectionReason}</p>
+                  )}
+                  {p.evidenceUrl && (
+                    <a href={p.evidenceUrl} target="_blank" rel="noreferrer" className="mt-1 inline-block text-xs text-teal-700 hover:underline">
+                      {t("payEvidenceLabel")}
+                    </a>
+                  )}
+                </div>
+                {(p.status === "AWAITING_VERIFICATION" || p.status === "PENDING") && (
+                  <div className="flex shrink-0 items-center gap-2">
+                    <Button
+                      size="sm" disabled={busyId === p.id} onClick={() => decide(p, "verify")}
+                      className="bg-emerald-600 hover:bg-emerald-700 text-white font-semibold"
+                    >
+                      {busyId === p.id ? <Loader2 className="h-4 w-4 mr-1.5 animate-spin" aria-hidden /> : <ShieldCheck className="h-4 w-4 mr-1.5" aria-hidden />}
+                      {t("payVerify")}
+                    </Button>
+                    <Button
+                      variant="outline" size="sm" disabled={busyId === p.id}
+                      onClick={() => { setRejecting(p); setReason(""); }}
+                      className="border-rose-200 text-rose-700 hover:bg-rose-50"
+                    >
+                      {t("payReject")}
+                    </Button>
+                  </div>
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Reject dialog */}
+      <Dialog open={Boolean(rejecting)} onOpenChange={(o) => !o && setRejecting(null)}>
+        <DialogContent className="sm:max-w-sm">
+          <DialogHeader>
+            <DialogTitle>{t("payRejectTitle")}</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3">
+            {rejecting && (
+              <p className="text-xs text-slate-500">
+                {rejecting.tenantName} · {formatUsd(rejecting.amountUsd)} · <code>{rejecting.reference}</code>
+              </p>
+            )}
+            <div>
+              <Label htmlFor="rej-reason" className="text-xs text-slate-500">{t("payRejectReasonLabel")} *</Label>
+              <Textarea id="rej-reason" value={reason} onChange={(e) => setReason(e.target.value)} rows={3} className="mt-1.5" maxLength={300} />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" size="sm" onClick={() => setRejecting(null)}>{t("cancel")}</Button>
+            <Button
+              size="sm" disabled={busyId !== null || reason.trim().length < 3}
+              onClick={() => rejecting && decide(rejecting, "reject", reason.trim())}
+              className="bg-rose-600 text-white hover:bg-rose-700 font-semibold"
+            >
+              {t("payReject")}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </div>
+  );
+}
+
+// ---------------- payment configuration (manual KHQR) ----------------
+
+interface ManualConfig {
+  accountName: string | null;
+  khqrPayload: string | null;
+  khqrImageUrl: string | null;
+  instructionsEn: string | null;
+  instructionsKm: string | null;
+  telegram: string | null;
+}
+
+function AdminPaymentConfig() {
+  const t = useT();
+  const locale = useAppStore((s) => s.locale);
+  const { data, loading, error, refetch } = useFetch<ManualConfig>("/api/admin/payment-config");
+  const preview = useFetch<{ dataUrl: string | null }>("/api/admin/payment-config/preview");
+  const [form, setForm] = useState<ManualConfig | null>(null);
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    if (data) setForm(data);
+  }, [data]);
+
+  const save = async () => {
+    if (!form) return;
+    setSaving(true);
+    try {
+      await apiSend("/api/admin/payment-config", "PUT", {
+        accountName: form.accountName || null,
+        khqrPayload: form.khqrPayload || null,
+        khqrImageUrl: form.khqrImageUrl || null,
+        instructionsEn: form.instructionsEn || null,
+        instructionsKm: form.instructionsKm || null,
+        telegram: form.telegram || null,
+      });
+      toast.success(t("payConfigSaved"));
+      refetch();
+      preview.refetch();
+    } catch (e) {
+      toast.error(isForbidden(e) ? t("toastForbidden") : errorText(e));
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  if (loading && !data) return <Skeleton className="h-64 w-full rounded-xl" />;
+  if (error && !data) return <FetchErrorState message={error} onRetry={refetch} />;
+  if (!form) return null;
+
+  return (
+    <SectionCard title={t("payConfigTitle")}>
+      <p className="-mt-2 mb-3 text-xs text-slate-400">{t("payConfigSubtitle")}</p>
+      <div className="grid gap-4 sm:grid-cols-2">
+        <div>
+          <Label htmlFor="pc-name" className="text-xs text-slate-500">{t("payConfigAccountName")}</Label>
+          <Input id="pc-name" value={form.accountName ?? ""} onChange={(e) => setForm({ ...form, accountName: e.target.value })} className="mt-1.5 h-9" />
+        </div>
+        <div>
+          <Label htmlFor="pc-tg" className="text-xs text-slate-500">{t("payConfigTelegram")}</Label>
+          <Input id="pc-tg" value={form.telegram ?? ""} onChange={(e) => setForm({ ...form, telegram: e.target.value })} placeholder="@khlan_admin" className="mt-1.5 h-9" />
+        </div>
+        <div className="sm:col-span-2">
+          <Label htmlFor="pc-payload" className="text-xs text-slate-500">{t("payConfigKhqrPayload")}</Label>
+          <Textarea id="pc-payload" value={form.khqrPayload ?? ""} onChange={(e) => setForm({ ...form, khqrPayload: e.target.value })} rows={2} className="mt-1.5 font-mono text-xs" maxLength={600} />
+        </div>
+        <div className="sm:col-span-2">
+          <Label htmlFor="pc-img" className="text-xs text-slate-500">{t("payConfigKhqrImage")}</Label>
+          <Input id="pc-img" value={form.khqrImageUrl ?? ""} onChange={(e) => setForm({ ...form, khqrImageUrl: e.target.value })} placeholder="https://…" className="mt-1.5 h-9" />
+        </div>
+        <div>
+          <Label htmlFor="pc-inst-en" className="text-xs text-slate-500">{t("payConfigInstructionsEn")}</Label>
+          <Textarea id="pc-inst-en" value={form.instructionsEn ?? ""} onChange={(e) => setForm({ ...form, instructionsEn: e.target.value })} rows={3} className="mt-1.5" />
+        </div>
+        <div>
+          <Label htmlFor="pc-inst-km" className="text-xs text-slate-500">{t("payConfigInstructionsKm")}</Label>
+          <Textarea id="pc-inst-km" value={form.instructionsKm ?? ""} onChange={(e) => setForm({ ...form, instructionsKm: e.target.value })} rows={3} className={cn("mt-1.5", locale === "km" && "font-khmer")} />
+        </div>
+      </div>
+      {preview.data?.dataUrl && (
+        <div className="mt-4 flex items-center gap-3">
+          <img src={preview.data.dataUrl} alt={t("payConfigPreview")} className="h-24 w-24 rounded-lg border border-slate-200 bg-white p-1" />
+          <p className="text-xs text-slate-400">{t("payConfigPreview")}</p>
+        </div>
+      )}
+      <Button onClick={save} disabled={saving} className="mt-4 bg-amber-500 hover:bg-amber-400 text-slate-950 font-semibold">
+        {saving && <Loader2 className="h-4 w-4 mr-2 animate-spin" aria-hidden />}
+        {t("saveChanges")}
+      </Button>
     </SectionCard>
   );
 }

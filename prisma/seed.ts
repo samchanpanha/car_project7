@@ -337,6 +337,69 @@ async function seedDashboardData() {
       { key: "featuredListingPriceUsd", valueJson: JSON.stringify(25) },
       { key: "autoApproveListings", valueJson: JSON.stringify(false) },
       { key: "maintenanceMode", valueJson: JSON.stringify(false) },
+      // Manual KHQR payment instructions shown to sellers (KHQR payload intentionally
+      // empty — the Super Admin pastes their own bank-issued KHQR in Settings).
+      {
+        key: "payments.manualConfig",
+        valueJson: JSON.stringify({
+          accountName: "KhLan Payments (Sokha Chan)",
+          khqrPayload: null,
+          khqrImageUrl: null,
+          instructionsEn:
+            "1. Scan the KHQR with your banking app\n2. Transfer the exact USD amount\n3. Include the payment reference in the transfer note\n4. Submit your bank transaction reference here\n5. Contact the admin on Telegram after paying",
+          instructionsKm:
+            "១. ស្កេន KHQR ដោយកម្មវិធីធនាគាររបស់អ្នក\n២. បញ្ជូនចំនួនត្រឹមត្រូវជាដុល្លារ\n៣. ដាក់លេខយោងក្នុងកំណត់សម្គាល់បញ្ជូន\n៤. ដាក់ស្នើលេខយោងប្រតិបត្តិការធនាគារនៅទីនេះ\n៥. ទាក់ទងអ្នកគ្រប់គ្រងតាម Telegram បន្ទាប់ពីបញ្ជូន",
+          telegram: "@khlan_admin",
+        }),
+      },
+    ],
+  });
+
+  // Subscription payment demo — one manual request awaiting admin verification.
+  await prisma.subscriptionPayment.create({
+    data: {
+      id: "pay_demo_manual_1",
+      tenantId: "tenant_ppauto",
+      plan: "BASIC",
+      billingCycle: "MONTHLY",
+      amountUsd: 49,
+      months: 1,
+      method: "MANUAL",
+      status: "AWAITING_VERIFICATION",
+      reference: "PAY-DEMO-000001",
+      manualRef: "FT241118Z8877",
+      note: "Transferred via ACLEDA this morning, receipt attached.",
+      createdAt: daysAgo(1),
+    },
+  });
+
+  // Buyer purchase requests — one pending, one accepted (seller can complete it).
+  await prisma.purchaseRequest.createMany({
+    data: [
+      {
+        id: "pur_demo_prado",
+        vehicleId: "veh_prado_2018",
+        buyerId: "usr_demo_buyer",
+        tenantId: "tenant_sokha",
+        sellerUserId: "usr_dealer_sokha",
+        status: "PENDING",
+        message: "Hi, I inspected the Prado yesterday. I'd like to buy it at the listed price — can we finalize this week?",
+        priceUsd: 52500,
+        createdAt: daysAgo(1),
+      },
+      {
+        id: "pur_demo_crv",
+        vehicleId: "veh_crv_2019",
+        buyerId: "usr_demo_buyer",
+        tenantId: "tenant_ppauto",
+        sellerUserId: "usr_dealer_ppauto",
+        status: "ACCEPTED",
+        message: "Please hold the CR-V for me, my loan approval is nearly done.",
+        priceUsd: 25900,
+        decidedById: "usr_dealer_ppauto",
+        decidedAt: daysAgo(2),
+        createdAt: daysAgo(3),
+      },
     ],
   });
 
@@ -1333,6 +1396,8 @@ async function main() {
   await prisma.vehicleImage.deleteMany();
   await prisma.tenantMember.deleteMany();
   await prisma.subscription.deleteMany();
+  await prisma.subscriptionPayment.deleteMany();
+  await prisma.purchaseRequest.deleteMany();
   await prisma.vehicle.deleteMany();
   await prisma.tenant.deleteMany();
   await prisma.sellerProfile.deleteMany();
@@ -1378,6 +1443,8 @@ async function main() {
     messages: await prisma.message.count(),
     platformSettings: await prisma.platformSetting.count(),
     auditLogs: await prisma.auditLog.count(),
+    subscriptionPayments: await prisma.subscriptionPayment.count(),
+    purchaseRequests: await prisma.purchaseRequest.count(),
   };
   console.log("Seed complete:", counts);
 }

@@ -35,6 +35,7 @@ model User {
   tenantMemberships TenantMember[]
   savedSearches     SavedSearch[]
   buyerAppointments Appointment[]    @relation("BuyerAppointments")
+  purchaseRequests  PurchaseRequest[] @relation("BuyerPurchaseRequests")
 }
 
 model SellerProfile {
@@ -86,6 +87,8 @@ model Tenant {
   profiles     SellerProfile[]
   subscription Subscription?
   appointments Appointment[]
+  payments     SubscriptionPayment[]
+  purchaseRequests PurchaseRequest[]
 }
 
 model TenantMember {
@@ -144,6 +147,65 @@ model Appointment {
   notes       String?
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
+}
+
+// ---------- Subscription Payments (Bakong KHQR / Manual KHQR) ----------
+
+model SubscriptionPayment {
+  id              String    @id @default(cuid())
+  tenantId        String
+  tenant          Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  plan            String // BASIC | PRO | ENTERPRISE
+  billingCycle    String // MONTHLY | YEARLY
+  amountUsd       Float
+  months          Int // 1 (monthly) | 12 (yearly)
+  method          String // BAKONG | MANUAL
+  // PENDING (bakong QR issued, awaiting transfer)
+  // AWAITING_VERIFICATION (manual request or bakong transfer seen, needs admin)
+  // VERIFIED | REJECTED | CANCELLED
+  status          String    @default("PENDING")
+  reference       String    @unique // platform reference, e.g. PAY-20250101-AB12CD
+  bakongMd5       String?   // md5 returned by Bakong generate-qr
+  bakongHash      String?   // transaction hash found by check-by-md5
+  qrPayload       String?   // EMVCo KHQR payload string (Bakong-issued or admin-configured)
+  manualRef       String?   // seller-entered bank transaction reference (manual flow)
+  evidenceUrl     String?   // optional payment evidence link (manual flow)
+  note            String?
+  rejectionReason String?
+  reviewedById    String?
+  reviewedAt      DateTime?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  @@index([tenantId])
+  @@index([status])
+}
+
+// ---------- Buyer Purchase Requests (vehicle sale workflow) ----------
+
+model PurchaseRequest {
+  id           String    @id @default(cuid())
+  vehicleId    String
+  vehicle      Vehicle   @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
+  buyerId      String
+  buyer        User      @relation("BuyerPurchaseRequests", fields: [buyerId], references: [id])
+  tenantId     String? // set when the listing belongs to a tenant
+  tenant       Tenant?   @relation(fields: [tenantId], references: [id])
+  sellerUserId String // vehicle.sellerId — the user who fulfils the sale
+  // PENDING | ACCEPTED | COMPLETED | CANCELLED | REJECTED
+  status       String    @default("PENDING")
+  message      String?
+  priceUsd     Float // vehicle price snapshot at request time
+  decidedById  String?
+  decidedAt    DateTime?
+  decisionNote String?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  @@index([vehicleId])
+  @@index([buyerId])
+  @@index([tenantId])
+  @@index([status])
 }
 
 // ---------- Platform Settings (Super Admin) ----------
@@ -209,6 +271,7 @@ model Vehicle {
   conversations Conversation[]
   reportsAbuse  ReportedContent[]
   appointments  Appointment[]
+  purchaseRequests PurchaseRequest[]
   tenantId      String?
   tenant        Tenant?          @relation(fields: [tenantId], references: [id])
 }

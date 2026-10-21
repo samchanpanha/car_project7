@@ -1,0 +1,686 @@
+     1→"use client";
+     2→
+     3→// Super Admin / Admin dashboard — platform KPIs, moderation, users, AI stats, settings, audit.
+     4→
+     5→import { useAppStore } from "@/lib/store";
+     6→import { useT } from "@/hooks/use-t";
+     7→import { useFetch, apiSend, qs } from "@/lib/client-hooks";
+     8→import { formatUsd, timeAgo } from "@/lib/format";
+     9→import type {
+    10→  AdminOverviewDTO,
+    11→  AdminTenantDTO,
+    12→  AdminVehicleRowDTO,
+    13→  AdminUserDTO,
+    14→  AiStatsDTO,
+    15→  AuditEntryDTO,
+    16→  PlatformSettingsDTO,
+    17→  SessionDTO,
+    18→} from "@/lib/dashboard-types";
+    19→import type { VehicleStatus } from "@/lib/types";
+    20→import { DashboardShell, type DashboardTabDef } from "./shell";
+    21→import {
+    22→  AvatarCircle, ConfidenceRing, EmptyState, FetchErrorState, HBar, MiniBarChart, RoleBadge,
+    23→  SectionCard, StatCard, StatCardSkeleton, TenantStatusBadge, VehicleStatusBadge, VerificationBadge,
+    24→  errorText, isForbidden,
+    25→} from "./bits";
+    26→import { Button } from "@/components/ui/button";
+    27→import { Input } from "@/components/ui/input";
+    28→import { Label } from "@/components/ui/label";
+    29→import { Switch } from "@/components/ui/switch";
+    30→import { Skeleton } from "@/components/ui/skeleton";
+    31→import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+    32→import {
+    33→  DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger,
+    34→} from "@/components/ui/dropdown-menu";
+    35→import {
+    36→  BadgeCheck, Car, ChevronDown, DollarSign, FileCheck2, Gauge, Hourglass, LayoutDashboard, Loader2,
+    37→  MessageSquare, MoreHorizontal, ScrollText, Settings, ShieldCheck, Sparkles, Star, Store, TriangleAlert, Users,
+    38→} from "lucide-react";
+    39→import { useEffect, useState } from "react";
+    40→import { toast } from "sonner";
+    41→import { cn } from "@/lib/utils";
+    42→
+    43→const VEHICLE_STATUSES: VehicleStatus[] = ["PUBLISHED", "PENDING_REVIEW", "DRAFT", "SOLD", "REJECTED", "ARCHIVED"];
+    44→
+    45→const STATUS_BAR_COLORS: Record<VehicleStatus, string> = {
+    46→  PUBLISHED: "bg-emerald-500",
+    47→  PENDING_REVIEW: "bg-amber-400",
+    48→  DRAFT: "bg-slate-300",
+    49→  SOLD: "bg-slate-800",
+    50→  REJECTED: "bg-rose-500",
+    51→  ARCHIVED: "bg-slate-300",
+    52→};
+    53→
+    54→export function AdminDashboard({ me }: { me: SessionDTO }) {
+    55→  const t = useT();
+    56→  const view = useAppStore((s) => s.view);
+    57→  const navigate = useAppStore((s) => s.navigate);
+    58→  const active = (view.name === "dashboard" && view.tab) || "overview";
+    59→  const setTab = (tab: string) => navigate({ name: "dashboard", tab });
+    60→
+    61→  const tabs: DashboardTabDef[] = [
+    62→    { id: "overview", label: t("tabOverview"), icon: LayoutDashboard },
+    63→    { id: "tenants", label: t("tabTenants"), icon: Store },
+    64→    { id: "listings", label: t("tabListings"), icon: Car },
+    65→    { id: "users", label: t("tabUsers"), icon: Users },
+    66→    { id: "ai", label: t("tabAi"), icon: Sparkles },
+    67→    { id: "settings", label: t("tabSettings"), icon: Settings },
+    68→    { id: "audit", label: t("tabAudit"), icon: ScrollText },
+    69→  ];
+    70→
+    71→  return (
+    72→    <DashboardShell
+    73→      greeting={t("dashboardWelcome", { name: me.user.name })}
+    74→      subtitle={t("dashboardAdminSub")}
+    75→      badge={<RoleBadge role={me.user.role} />}
+    76→      tabs={tabs}
+    77→      active={active}
+    78→      onTab={setTab}
+    79→    >
+    80→      {active === "overview" && <AdminOverview />}
+    81→      {active === "tenants" && <AdminTenants />}
+    82→      {active === "listings" && <AdminListings />}
+    83→      {active === "users" && <AdminUsers />}
+    84→      {active === "ai" && <AdminAi />}
+    85→      {active === "settings" && <AdminSettings />}
+    86→      {active === "audit" && <AdminAudit />}
+    87→    </DashboardShell>
+    88→  );
+    89→}
+    90→
+    91→// ---------------- overview ----------------
+    92→
+    93→function AdminOverview() {
+    94→  const t = useT();
+    95→  const { data, loading, error, refetch } = useFetch<AdminOverviewDTO>("/api/admin/overview");
+    96→
+    97→  if (loading && !data) {
+    98→    return (
+    99→      <>
+   100→        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+   101→          {Array.from({ length: 8 }).map((_, i) => <StatCardSkeleton key={i} />)}
+   102→        </div>
+   103→        <Skeleton className="h-44 w-full rounded-xl" />
+   104→      </>
+   105→    );
+   106→  }
+   107→  if (error && !data) return <FetchErrorState message={error} onRetry={refetch} />;
+   108→  if (!data) return null;
+   109→
+   110→  const k = data.kpis;
+   111→  const statusTotal = Object.values(data.listingsByStatus).reduce((a, b) => a + b, 0);
+   112→
+   113→  return (
+   114→    <>
+   115→      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+   116→        <StatCard icon={Users} label={t("kpiUsers")} value={k.users} />
+   117→        <StatCard icon={Store} label={t("kpiTenants")} value={k.tenants} />
+   118→        <StatCard icon={Car} label={t("kpiListings")} value={k.listingsPublished} />
+   119→        <StatCard icon={Hourglass} label={t("kpiPending")} value={k.listingsPending} />
+   120→        <StatCard icon={FileCheck2} label={t("kpiReports")} value={k.reportsGenerated} />
+   121→        <StatCard icon={MessageSquare} label={t("kpiConversations")} value={k.conversations} />
+   122→        <StatCard icon={BadgeCheck} label={t("kpiFavorites")} value={k.favorites} />
+   123→        <StatCard icon={DollarSign} label={t("kpiMrr")} value={formatUsd(k.mrrUsd)} />
+   124→      </div>
+   125→
+   126→      <div className="grid gap-5 lg:grid-cols-2">
+   127→        <SectionCard title={t("listingsByStatus")}>
+   128→          <div className="space-y-3">
+   129→            {VEHICLE_STATUSES.map((s) => (
+   130→              <HBar
+   131→                key={s}
+   132→                label={t(`vst${s}` as never)}
+   133→                value={data.listingsByStatus[s] ?? 0}
+   134→                total={statusTotal}
+   135→                colorClass={STATUS_BAR_COLORS[s]}
+   136→              />
+   137→            ))}
+   138→          </div>
+   139→        </SectionCard>
+   140→        <SectionCard title={t("signupTrend")}>
+   141→          {data.signupTrend.length === 0 ? (
+   142→            <EmptyState icon={Gauge} text={t("noResults")} />
+   143→          ) : (
+   144→            <MiniBarChart
+   145→              points={data.signupTrend.map((p) => ({ label: p.label, a: p.users, b: p.listings }))}
+   146→              seriesA="bg-emerald-500"
+   147→              seriesB="bg-amber-400"
+   148→              labelA={t("kpiUsers")}
+   149→              labelB={t("kpiListings")}
+   150→            />
+   151→          )}
+   152→        </SectionCard>
+   153→      </div>
+   154→
+   155→      <div className="grid gap-5 lg:grid-cols-2">
+   156→        <SectionCard title={t("topTenants")}>
+   157→          {data.topTenants.length === 0 ? (
+   158→            <EmptyState icon={Store} text={t("noResults")} />
+   159→          ) : (
+   160→            <ul className="divide-y divide-slate-100">
+   161→              {data.topTenants.map((tt) => (
+   162→                <li key={tt.id} className="flex items-center justify-between gap-3 py-2.5">
+   163→                  <div className="min-w-0">
+   164→                    <p className="truncate text-sm font-medium text-slate-800">{tt.name}</p>
+   165→                    <p className="text-[11px] text-slate-400">
+   166→                      {tt.plan} · {t("kpiListings")} {tt.listings}
+   167→                    </p>
+   168→                  </div>
+   169→                  <span className="shrink-0 text-xs font-semibold text-slate-600 tabular-nums">{tt.views}</span>
+   170→                </li>
+   171→              ))}
+   172→            </ul>
+   173→          )}
+   174→        </SectionCard>
+   175→        <SectionCard title={t("recentActivity")}>
+   176→          {data.recentAudit.length === 0 ? (
+   177→            <EmptyState icon={ScrollText} text={t("auditEmpty")} />
+   178→          ) : (
+   179→            <ul className="divide-y divide-slate-100">
+   180→              {data.recentAudit.slice(0, 6).map((a) => (
+   181→                <li key={a.id} className="flex items-center justify-between gap-2 py-2.5">
+   182→                  <span className="min-w-0 truncate text-xs">
+   183→                    <code className="mr-1.5 rounded bg-slate-100 px-1.5 py-0.5 text-[10px] font-semibold text-slate-700">{a.action}</code>
+   184→                    <span className="text-slate-500">{a.entity}</span>
+   185→                  </span>
+   186→                  <span className="shrink-0 text-[11px] text-slate-400">{timeAgo(a.createdAt, "en")}</span>
+   187→                </li>
+   188→              ))}
+   189→            </ul>
+   190→          )}
+   191→        </SectionCard>
+   192→      </div>
+   193→    </>
+   194→  );
+   195→}
+   196→
+   197→// ---------------- tenants ----------------
+   198→
+   199→function AdminTenants() {
+   200→  const t = useT();
+   201→  const { data, loading, error, refetch } = useFetch<AdminTenantDTO[]>("/api/admin/tenants");
+   202→  const [busyId, setBusyId] = useState<string | null>(null);
+   203→
+   204→  const patch = async (id: string, body: Record<string, string>) => {
+   205→    setBusyId(id);
+   206→    try {
+   207→      await apiSend(`/api/admin/tenants/${id}`, "PATCH", body);
+   208→      toast.success(t("toastUpdated"));
+   209→      refetch();
+   210→    } catch (e) {
+   211→      toast.error(isForbidden(e) ? t("toastForbidden") : errorText(e));
+   212→    } finally {
+   213→      setBusyId(null);
+   214→    }
+   215→  };
+   216→
+   217→  if (loading && !data) {
+   218→    return <div className="space-y-3">{Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} className="h-24 w-full rounded-xl" />)}</div>;
+   219→  }
+   220→  if (error && !data) return <FetchErrorState message={error} onRetry={refetch} />;
+   221→  if (!data || data.length === 0) return <EmptyState icon={Store} text={t("noResults")} />;
+   222→
+   223→  return (
+   224→    <div className="space-y-3">
+   225→      {data.map((tt) => (
+   226→        <div key={tt.id} className="rounded-xl border border-slate-200 bg-white p-4">
+   227→          <div className="flex flex-wrap items-start justify-between gap-3">
+   228→            <div className="min-w-0">
+   229→              <p className="flex items-center gap-2 text-sm font-semibold text-slate-900">
+   230→                <span className="truncate">{tt.name}</span>
+   231→                <VerificationBadge verification={tt.verification} />
+   232→                <TenantStatusBadge status={tt.status} />
+   233→              </p>
+   234→              <p className="mt-0.5 text-[11px] text-slate-400">
+   235→                {tt.slug} · {tt.city} · {t("sellerSince", { y: new Date(tt.createdAt).getFullYear() })}
+   236→              </p>
+   237→            </div>
+   238→            <DropdownMenu>
+   239→              <DropdownMenuTrigger asChild>
+   240→                <Button variant="outline" size="sm" disabled={busyId === tt.id} aria-label={`${t("actions")} ${tt.name}`}>
+   241→                  {busyId === tt.id ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : <MoreHorizontal className="h-4 w-4" aria-hidden />}
+   242→                  <ChevronDown className="h-3 w-3 opacity-60" aria-hidden />
+   243→                </Button>
+   244→              </DropdownMenuTrigger>
+   245→              <DropdownMenuContent align="end" className="w-44">
+   246→                <DropdownMenuLabel>{t("actions")}</DropdownMenuLabel>
+   247→                <DropdownMenuSeparator />
+   248→                <DropdownMenuItem onClick={() => patch(tt.id, { verification: "VERIFIED" })}>{t("actVerify")}</DropdownMenuItem>
+   249→                <DropdownMenuItem onClick={() => patch(tt.id, { verification: "PENDING" })}>{t("actSetPending")}</DropdownMenuItem>
+   250→                <DropdownMenuItem onClick={() => patch(tt.id, { verification: "REJECTED" })} className="text-rose-600 focus:text-rose-700">
+   251→                  {t("actReject")}
+   252→                </DropdownMenuItem>
+   253→                <DropdownMenuSeparator />
+   254→                <DropdownMenuItem onClick={() => patch(tt.id, { status: "SUSPENDED" })} className="text-rose-600 focus:text-rose-700">
+   255→                  {t("actSuspend")}
+   256→                </DropdownMenuItem>
+   257→                <DropdownMenuItem onClick={() => patch(tt.id, { status: "ACTIVE" })}>{t("actActivate")}</DropdownMenuItem>
+   258→              </DropdownMenuContent>
+   259→            </DropdownMenu>
+   260→          </div>
+   261→          <div className="mt-3 grid grid-cols-2 gap-2 text-xs sm:grid-cols-4">
+   262→            <div className="rounded-lg bg-slate-50 px-3 py-2">
+   263→              <p className="text-[10px] text-slate-400">{t("tabStaff")}</p>
+   264→              <p className="font-semibold text-slate-700">{tt.memberCount}</p>
+   265→            </div>
+   266→            <div className="rounded-lg bg-slate-50 px-3 py-2">
+   267→              <p className="text-[10px] text-slate-400">{t("kpiListings")}</p>
+   268→              <p className="font-semibold text-slate-700">{tt.listingCount}</p>
+   269→            </div>
+   270→            <div className="rounded-lg bg-slate-50 px-3 py-2">
+   271→              <p className="text-[10px] text-slate-400">{t("tabSubscription")}</p>
+   272→              <p className="font-semibold text-slate-700">{tt.plan ?? "—"}</p>
+   273→            </div>
+   274→            <div className="rounded-lg bg-slate-50 px-3 py-2">
+   275→              <p className="text-[10px] text-slate-400">{t("kpiMrr")}</p>
+   276→              <p className="font-semibold text-slate-700">{formatUsd(tt.mrrUsd)}</p>
+   277→            </div>
+   278→          </div>
+   279→        </div>
+   280→      ))}
+   281→    </div>
+   282→  );
+   283→}
+   284→
+   285→// ---------------- listings moderation ----------------
+   286→
+   287→function AdminListings() {
+   288→  const t = useT();
+   289→  const navigate = useAppStore((s) => s.navigate);
+   290→  const [status, setStatus] = useState<string>("PENDING_REVIEW");
+   291→  const [q, setQ] = useState("");
+   292→  const [debQ, setDebQ] = useState("");
+   293→  const [busyId, setBusyId] = useState<string | null>(null);
+   294→
+   295→  useEffect(() => {
+   296→    const h = setTimeout(() => setDebQ(q.trim()), 350);
+   297→    return () => clearTimeout(h);
+   298→  }, [q]);
+   299→
+   300→  const url = `/api/admin/vehicles${qs({ status: status === "ALL" ? undefined : status, q: debQ || undefined })}`;
+   301→  const { data, loading, error, refetch } = useFetch<AdminVehicleRowDTO[]>(url);
+   302→
+   303→  const patch = async (id: string, body: Record<string, string | boolean>) => {
+   304→    setBusyId(id);
+   305→    try {
+   306→      await apiSend(`/api/admin/vehicles/${id}`, "PATCH", body);
+   307→      toast.success(t("toastUpdated"));
+   308→      refetch();
+   309→    } catch (e) {
+   310→      toast.error(isForbidden(e) ? t("toastForbidden") : errorText(e));
+   311→    } finally {
+   312→      setBusyId(null);
+   313→    }
+   314→  };
+   315→
+   316→  const chips = ["ALL", ...VEHICLE_STATUSES];
+   317→
+   318→  return (
+   319→    <div className="space-y-4">
+   320→      <div className="flex flex-wrap items-center gap-2">
+   321→        <div className="flex w-full items-center gap-2 sm:w-64">
+   322→          <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder={`${t("searchButton")}…`} className="h-9" aria-label={t("searchButton")} />
+   323→        </div>
+   324→        <div className="flex flex-wrap gap-1.5">
+   325→          {chips.map((c) => (
+   326→            <button
+   327→              key={c}
+   328→              onClick={() => setStatus(c)}
+   329→              aria-pressed={status === c}
+   330→              className={cn(
+   331→                "rounded-full border px-3 py-1.5 text-xs font-medium transition-colors cursor-pointer min-h-[32px]",
+   332→                status === c ? "border-amber-500 bg-amber-50 text-amber-800" : "border-slate-200 bg-white text-slate-600 hover:border-slate-300"
+   333→              )}
+   334→            >
+   335→              {t(`vst${c}` as never)}
+   336→            </button>
+   337→          ))}
+   338→        </div>
+   339→      </div>
+   340→
+   341→      {loading && !data ? (
+   342→        <div className="space-y-3">{Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} className="h-20 w-full rounded-xl" />)}</div>
+   343→      ) : error && !data ? (
+   344→        <FetchErrorState message={error} onRetry={refetch} />
+   345→      ) : !data || data.length === 0 ? (
+   346→        <EmptyState icon={Car} text={t("noResults")} />
+   347→      ) : (
+   348→        <div className="space-y-2.5">
+   349→          {data.map((v) => (
+   350→            <div key={v.id} className="flex items-center gap-3 rounded-xl border border-slate-200 bg-white p-3">
+   351→              <button
+   352→                onClick={() => navigate({ name: "detail", vehicleId: v.id })}
+   353→                className="h-14 w-20 shrink-0 overflow-hidden rounded-lg bg-slate-100 cursor-pointer"
+   354→                aria-label={`${v.make} ${v.model} ${v.year}`}
+   355→              >
+   356→                {v.images[0] ? (
+   357→                  <img src={v.images[0]} alt="" className="h-full w-full object-cover" />
+   358→                ) : (
+   359→                  <Car className="mx-auto h-6 w-6 text-slate-300" aria-hidden />
+   360→                )}
+   361→              </button>
+   362→              <div className="min-w-0 flex-1">
+   363→                <p className="truncate text-sm font-medium text-slate-900">
+   364→                  {v.make} {v.model} {v.variant ?? ""} {v.year}
+   365→                </p>
+   366→                <p className="mt-0.5 truncate text-[11px] text-slate-400">
+   367→                  {formatUsd(v.priceUsd)} · {v.sellerName} · {v.city}
+   368→                </p>
+   369→                <div className="mt-1.5 flex items-center gap-2">
+   370→                  <VehicleStatusBadge status={v.status} />
+   371→                  {v.featured && (
+   372→                    <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-amber-600">
+   373→                      <Star className="h-3 w-3 fill-amber-400 text-amber-400" aria-hidden />
+   374→                    </span>
+   375→                  )}
+   376→                </div>
+   377→              </div>
+   378→              <div className="flex shrink-0 items-center gap-1.5">
+   379→                <button
+   380→                  onClick={() => patch(v.id, { featured: !v.featured })}
+   381→                  disabled={busyId === v.id}
+   382→                  className={cn(
+   383→                    "flex h-9 w-9 items-center justify-center rounded-lg border transition-colors cursor-pointer disabled:opacity-50",
+   384→                    v.featured ? "border-amber-300 bg-amber-50 text-amber-500" : "border-slate-200 text-slate-400 hover:text-amber-500"
+   385→                  )}
+   386→                  aria-label={v.featured ? t("actUnfeature") : t("actFeature")}
+   387→                >
+   388→                  <Star className={cn("h-4 w-4", v.featured && "fill-amber-400")} aria-hidden />
+   389→                </button>
+   390→                <Button variant="outline" size="sm" onClick={() => patch(v.id, { status: "PUBLISHED" })} disabled={busyId === v.id}
+   391→                  className="hidden border-emerald-200 text-emerald-700 hover:bg-emerald-50 sm:inline-flex">
+   392→                  {t("actApprove")}
+   393→                </Button>
+   394→                <Button variant="outline" size="sm" onClick={() => patch(v.id, { status: "REJECTED" })} disabled={busyId === v.id}
+   395→                  className="hidden border-rose-200 text-rose-700 hover:bg-rose-50 sm:inline-flex">
+   396→                  {t("actReject")}
+   397→                </Button>
+   398→                {/* mobile compact actions */}
+   399→                <DropdownMenu>
+   400→                  <DropdownMenuTrigger asChild>
+   401→                    <Button variant="outline" size="icon" className="sm:hidden h-9 w-9" aria-label={t("actions")}>
+   402→                      <MoreHorizontal className="h-4 w-4" aria-hidden />
+   403→                    </Button>
+   404→                  </DropdownMenuTrigger>
+   405→                  <DropdownMenuContent align="end">
+   406→                    <DropdownMenuItem onClick={() => patch(v.id, { status: "PUBLISHED" })}>{t("actApprove")}</DropdownMenuItem>
+   407→                    <DropdownMenuItem onClick={() => patch(v.id, { status: "REJECTED" })} className="text-rose-600 focus:text-rose-700">{t("actReject")}</DropdownMenuItem>
+   408→                  </DropdownMenuContent>
+   409→                </DropdownMenu>
+   410→              </div>
+   411→            </div>
+   412→          ))}
+   413→        </div>
+   414→      )}
+   415→    </div>
+   416→  );
+   417→}
+   418→
+   419→// ---------------- users ----------------
+   420→
+   421→const USER_ROLES = ["BUYER", "SELLER", "DEALER", "ADMIN", "SUPER_ADMIN"] as const;
+   422→
+   423→function AdminUsers() {
+   424→  const t = useT();
+   425→  const { data, loading, error, refetch } = useFetch<AdminUserDTO[]>("/api/admin/users");
+   426→  const [busyId, setBusyId] = useState<string | null>(null);
+   427→
+   428→  const patchRole = async (id: string, role: string) => {
+   429→    setBusyId(id);
+   430→    try {
+   431→      await apiSend(`/api/admin/users/${id}`, "PATCH", { role });
+   432→      toast.success(t("toastUpdated"));
+   433→      refetch();
+   434→    } catch (e) {
+   435→      toast.error(isForbidden(e) ? t("toastForbidden") : errorText(e));
+   436→    } finally {
+   437→      setBusyId(null);
+   438→    }
+   439→  };
+   440→
+   441→  if (loading && !data) {
+   442→    return <div className="space-y-3">{Array.from({ length: 5 }).map((_, i) => <Skeleton key={i} className="h-16 w-full rounded-xl" />)}</div>;
+   443→  }
+   444→  if (error && !data) return <FetchErrorState message={error} onRetry={refetch} />;
+   445→  if (!data || data.length === 0) return <EmptyState icon={Users} text={t("noResults")} />;
+   446→
+   447→  return (
+   448→    <div className="space-y-2.5">
+   449→      {data.map((u) => (
+   450→        <div key={u.id} className="flex flex-wrap items-center gap-3 rounded-xl border border-slate-200 bg-white p-3">
+   451→          <AvatarCircle name={u.name} />
+   452→          <div className="min-w-0 flex-1">
+   453→            <p className="flex items-center gap-1.5 truncate text-sm font-medium text-slate-900">
+   454→              {u.name}
+   455→              {u.phoneVerified && <BadgeCheck className="h-3.5 w-3.5 shrink-0 text-emerald-600" aria-label={t("verVERIFIED")} />}
+   456→              <RoleBadge role={u.role} />
+   457→            </p>
+   458→            <p className="mt-0.5 truncate text-[11px] text-slate-400">
+   459→              <span className="font-mono">{u.phone}</span> · {u.locale.toUpperCase()} · {t("kpiListings")} {u.listingCount} · {t("kpiFavorites")} {u.favoriteCount}
+   460→              {u.tenantName ? ` · ${u.tenantName}` : ""}
+   461→            </p>
+   462→          </div>
+   463→          <DropdownMenu>
+   464→            <DropdownMenuTrigger asChild>
+   465→              <Button variant="outline" size="sm" disabled={busyId === u.id} aria-label={`${t("actChangeRole")} ${u.name}`}>
+   466→                {busyId === u.id ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : t("actChangeRole")}
+   467→                <ChevronDown className="h-3 w-3 opacity-60" aria-hidden />
+   468→              </Button>
+   469→            </DropdownMenuTrigger>
+   470→            <DropdownMenuContent align="end">
+   471→              <DropdownMenuLabel>{t("actChangeRole")}</DropdownMenuLabel>
+   472→              <DropdownMenuSeparator />
+   473→              {USER_ROLES.map((r) => (
+   474→                <DropdownMenuItem
+   475→                  key={r}
+   476→                  disabled={r === u.role}
+   477→                  onClick={() => patchRole(u.id, r)}
+   478→                  className={r === "SUPER_ADMIN" || r === "ADMIN" ? "text-amber-700 focus:text-amber-800" : undefined}
+   479→                >
+   480→                  {t(`role${r}` as never)}
+   481→                </DropdownMenuItem>
+   482→              ))}
+   483→            </DropdownMenuContent>
+   484→          </DropdownMenu>
+   485→        </div>
+   486→      ))}
+   487→    </div>
+   488→  );
+   489→}
+   490→
+   491→// ---------------- AI stats ----------------
+   492→
+   493→const AI_STATUSES: { key: string; bar: string }[] = [
+   494→  { key: "VERIFIED", bar: "bg-emerald-500" },
+   495→  { key: "EVIDENCE_FOUND", bar: "bg-teal-500" },
+   496→  { key: "INCONSISTENT", bar: "bg-amber-500" },
+   497→  { key: "NOT_VERIFIED", bar: "bg-slate-400" },
+   498→  { key: "NO_DATA", bar: "bg-slate-300" },
+   499→];
+   500→
+   501→function AdminAi() {
+   502→  const t = useT();
+   503→  const locale = useAppStore((s) => s.locale);
+   504→  const navigate = useAppStore((s) => s.navigate);
+   505→  const { data, loading, error, refetch } = useFetch<AiStatsDTO>("/api/admin/ai");
+   506→
+   507→  if (loading && !data) return <Skeleton className="h-64 w-full rounded-xl" />;
+   508→  if (error && !data) return <FetchErrorState message={error} onRetry={refetch} />;
+   509→  if (!data) return null;
+   510→
+   511→  const breakdownTotal = Object.values(data.statusBreakdown).reduce((a, b) => a + b, 0);
+   512→
+   513→  return (
+   514→    <>
+   515→      <div className="grid gap-5 lg:grid-cols-2">
+   516→        <SectionCard title={t("kpiReports")}>
+   517→          <div className="flex items-center gap-5">
+   518→            <ConfidenceRing value={data.avgConfidence} size={88} />
+   519→            <div>
+   520→              <p className="text-3xl font-bold tracking-tight text-slate-900">{data.totalReports}</p>
+   521→              <p className="text-xs text-slate-500">{t("kpiReports")} · {t("confidence")} {data.avgConfidence}%</p>
+   522→              <p className="mt-1 text-[11px] text-slate-400">{t("reportsEmptyHint")}</p>
+   523→            </div>
+   524→          </div>
+   525→        </SectionCard>
+   526→        <SectionCard title={t("checks", { n: breakdownTotal })}>
+   527→          <div className="space-y-3">
+   528→            {AI_STATUSES.map((s) => (
+   529→              <HBar
+   530→                key={s.key}
+   531→                label={t(`legend${s.key}` as never)}
+   532→                value={data.statusBreakdown[s.key] ?? 0}
+   533→                total={breakdownTotal}
+   534→                colorClass={s.bar}
+   535→              />
+   536→            ))}
+   537→          </div>
+   538→        </SectionCard>
+   539→      </div>
+   540→
+   541→      <SectionCard title={t("recentReports")}>
+   542→        {data.recent.length === 0 ? (
+   543→          <EmptyState icon={FileCheck2} text={t("reportsEmpty")} hint={t("reportsEmptyHint")} />
+   544→        ) : (
+   545→          <ul className="divide-y divide-slate-100">
+   546→            {data.recent.map((r) => {
+   547→              // NOTE: AiStatsDTO.recent has no vehicleId field — `id` is used optimistically;
+   548→              // navigation is only offered when the id matches the platform's vehicle id format.
+   549→              const canOpen = r.id.startsWith("veh_");
+   550→              return (
+   551→                <li key={r.id} className="flex items-center justify-between gap-3 py-2.5">
+   552→                  <div className="min-w-0">
+   553→                    <p className="truncate text-sm font-medium text-slate-800">{r.vehicleLabel}</p>
+   554→                    <p className="text-[11px] text-slate-400">
+   555→                      {t("confidence")} {Math.round(r.confidence)}% · {timeAgo(r.createdAt, locale)}
+   556→                    </p>
+   557→                  </div>
+   558→                  {canOpen && (
+   559→                    <Button variant="outline" size="sm" onClick={() => navigate({ name: "report", vehicleId: r.id })}>
+   560→                      {t("actViewReport")}
+   561→                    </Button>
+   562→                  )}
+   563→                </li>
+   564→              );
+   565→            })}
+   566→          </ul>
+   567→        )}
+   568→      </SectionCard>
+   569→    </>
+   570→  );
+   571→}
+   572→
+   573→// ---------------- platform settings ----------------
+   574→
+   575→function AdminSettings() {
+   576→  const t = useT();
+   577→  const { data, loading, error, refetch } = useFetch<PlatformSettingsDTO>("/api/admin/settings");
+   578→  const [form, setForm] = useState<PlatformSettingsDTO | null>(null);
+   579→  const [saving, setSaving] = useState(false);
+   580→
+   581→  useEffect(() => {
+   582→    if (data) setForm(data);
+   583→  }, [data]);
+   584→
+   585→  const save = async () => {
+   586→    if (!form) return;
+   587→    setSaving(true);
+   588→    try {
+   589→      const saved = await apiSend<PlatformSettingsDTO>("/api/admin/settings", "PUT", {
+   590→        commissionPct: Number(form.commissionPct) || 0,
+   591→        featuredListingPriceUsd: Number(form.featuredListingPriceUsd) || 0,
+   592→        autoApproveListings: form.autoApproveListings,
+   593→        maintenanceMode: form.maintenanceMode,
+   594→      });
+   595→      setForm(saved);
+   596→      toast.success(t("toastUpdated"));
+   597→      refetch();
+   598→    } catch (e) {
+   599→      toast.error(isForbidden(e) ? t("toastForbidden") : errorText(e));
+   600→    } finally {
+   601→      setSaving(false);
+   602→    }
+   603→  };
+   604→
+   605→  if (loading && !data) return <Skeleton className="h-72 w-full rounded-xl" />;
+   606→  if (error && !data) return <FetchErrorState message={error} onRetry={refetch} />;
+   607→  if (!form) return null;
+   608→
+   609→  return (
+   610→    <SectionCard title={t("platformSettings")}>
+   611→      {form.maintenanceMode && (
+   612→        <Alert className="mb-4 border-amber-300 bg-amber-50 text-amber-900">
+   613→          <TriangleAlert className="h-4 w-4" aria-hidden />
+   614→          <AlertTitle>{t("setMaintenance")}</AlertTitle>
+   615→          <AlertDescription>{t("maintenanceWarning")}</AlertDescription>
+   616→        </Alert>
+   617→      )}
+   618→      <div className="grid gap-4 sm:grid-cols-2">
+   619→        <div>
+   620→          <Label htmlFor="adm-comm" className="text-xs text-slate-500">{t("setCommission")}</Label>
+   621→          <Input
+   622→            id="adm-comm" type="number" min={0} max={100} step={0.1} className="mt-1.5 h-9"
+   623→            value={form.commissionPct}
+   624→            onChange={(e) => setForm({ ...form, commissionPct: Number(e.target.value) })}
+   625→          />
+   626→        </div>
+   627→        <div>
+   628→          <Label htmlFor="adm-feat" className="text-xs text-slate-500">{t("setFeaturedPrice")}</Label>
+   629→          <Input
+   630→            id="adm-feat" type="number" min={0} className="mt-1.5 h-9"
+   631→            value={form.featuredListingPriceUsd}
+   632→            onChange={(e) => setForm({ ...form, featuredListingPriceUsd: Number(e.target.value) })}
+   633→          />
+   634→        </div>
+   635→        <div className="flex items-center justify-between rounded-lg border border-slate-200 p-3">
+   636→          <Label htmlFor="adm-auto" className="text-xs font-medium text-slate-600 cursor-pointer">{t("setAutoApprove")}</Label>
+   637→          <Switch id="adm-auto" checked={form.autoApproveListings} onCheckedChange={(v) => setForm({ ...form, autoApproveListings: v })} />
+   638→        </div>
+   639→        <div className="flex items-center justify-between rounded-lg border border-slate-200 p-3">
+   640→          <Label htmlFor="adm-maint" className="text-xs font-medium text-slate-600 cursor-pointer">{t("setMaintenance")}</Label>
+   641→          <Switch id="adm-maint" checked={form.maintenanceMode} onCheckedChange={(v) => setForm({ ...form, maintenanceMode: v })} />
+   642→        </div>
+   643→      </div>
+   644→      <Button onClick={save} disabled={saving} className="mt-4 bg-amber-500 hover:bg-amber-400 text-slate-950 font-semibold">
+   645→        {saving && <Loader2 className="h-4 w-4 mr-2 animate-spin" aria-hidden />}
+   646→        {t("saveChanges")}
+   647→      </Button>
+   648→    </SectionCard>
+   649→  );
+   650→}
+   651→
+   652→// ---------------- audit log ----------------
+   653→
+   654→function AdminAudit() {
+   655→  const t = useT();
+   656→  const { data, loading, error, refetch } = useFetch<AuditEntryDTO[]>("/api/admin/audit?limit=50");
+   657→
+   658→  if (loading && !data) return <Skeleton className="h-72 w-full rounded-xl" />;
+   659→  if (error && !data) return <FetchErrorState message={error} onRetry={refetch} />;
+   660→  if (!data || data.length === 0) return <EmptyState icon={ScrollText} text={t("auditEmpty")} />;
+   661→
+   662→  return (
+   663→    <SectionCard title={t("recentActivity")} contentClassName="">
+   664→      <ul className="max-h-96 divide-y divide-slate-100 overflow-y-auto kl-scroll" aria-label={t("tabAudit")}>
+   665→        {data.map((a) => (
+   666→          <li key={a.id} className="px-0.5 py-2.5">
+   667→            <div className="flex items-center justify-between gap-2">
+   668→              <span className="min-w-0 truncate text-xs">
+   669→                <code className="mr-1.5 rounded bg-slate-100 px-1.5 py-0.5 text-[10px] font-semibold text-slate-700">{a.action}</code>
+   670→                <span className="text-slate-600">{a.entity}</span>
+   671→                {a.actorName && <span className="text-slate-400"> · {a.actorName}</span>}
+   672→              </span>
+   673→              <span className="shrink-0 text-[11px] text-slate-400">{timeAgo(a.createdAt, "en")}</span>
+   674→            </div>
+   675→            {a.meta && Object.keys(a.meta).length > 0 && (
+   676→              <p className="mt-1 truncate text-[10px] text-slate-400" title={JSON.stringify(a.meta)}>
+   677→                {JSON.stringify(a.meta).slice(0, 120)}
+   678→              </p>
+   679→            )}
+   680→          </li>
+   681→        ))}
+   682→      </ul>
+   683→    </SectionCard>
+   684→  );
+   685→}
+   686→

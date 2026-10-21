@@ -16,7 +16,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { ReportStatusBadge } from "@/components/marketplace/status-badge";
 import {
   ArrowLeft, BadgeCheck, CalendarClock, CarFront, ChevronLeft, ChevronRight, Eye, FileCheck2, FileX2,
-  Flag, Gauge, Heart, Loader2, MapPin, MessageSquare, Phone, RefreshCw, Send, ShieldCheck,
+  Flag, Gauge, Handshake, Heart, Loader2, MapPin, MessageSquare, Phone, RefreshCw, Send, ShieldCheck,
   ShieldAlert, Star, Timer, TriangleAlert, Users,
 } from "lucide-react";
 import { useState } from "react";
@@ -37,6 +37,7 @@ export function DetailView({ vehicleId }: { vehicleId: string }) {
   const t = useT();
   const locale = useAppStore((s) => s.locale);
   const navigate = useAppStore((s) => s.navigate);
+  const me = useAppStore((s) => s.me);
   const favorites = useAppStore((s) => s.favorites);
   const toggleFavoriteLocal = useAppStore((s) => s.toggleFavoriteLocal);
   const setFavorites = useAppStore((s) => s.setFavorites);
@@ -55,6 +56,10 @@ export function DetailView({ vehicleId }: { vehicleId: string }) {
   const [tdWhen, setTdWhen] = useState("");
   const [tdNotes, setTdNotes] = useState("");
   const [tdSubmitting, setTdSubmitting] = useState(false);
+  // purchase request
+  const [buyOpen, setBuyOpen] = useState(false);
+  const [buyMessage, setBuyMessage] = useState("");
+  const [buySubmitting, setBuySubmitting] = useState(false);
 
   if (loading && !data) {
     return (
@@ -145,6 +150,33 @@ export function DetailView({ vehicleId }: { vehicleId: string }) {
       toast.error(e instanceof Error ? e.message : t("errorGeneric"));
     } finally {
       setTdSubmitting(false);
+    }
+  };
+
+  const openBuyDialog = () => {
+    if (!me) return;
+    if (!me.authed) {
+      toast.info(t("buyLoginRequired"));
+      navigate({ name: "auth" });
+      return;
+    }
+    setBuyOpen(true);
+  };
+
+  const submitBuyRequest = async () => {
+    setBuySubmitting(true);
+    try {
+      await apiSend("/api/purchases", "POST", {
+        vehicleId: v.id,
+        message: buyMessage.trim() || undefined,
+      });
+      toast.success(t("buyRequestedToast"));
+      setBuyOpen(false);
+      setBuyMessage("");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : t("errorGeneric"));
+    } finally {
+      setBuySubmitting(false);
     }
   };
 
@@ -361,6 +393,15 @@ export function DetailView({ vehicleId }: { vehicleId: string }) {
             </div>
             {v.status === "PUBLISHED" && (
               <Button
+                onClick={openBuyDialog}
+                className="mt-2 h-11 w-full bg-emerald-600 hover:bg-emerald-700 text-white font-semibold"
+              >
+                <Handshake className="h-4 w-4 mr-2" aria-hidden />
+                {t("buyRequestBtn")}
+              </Button>
+            )}
+            {v.status === "PUBLISHED" && (
+              <Button
                 onClick={() => setTdOpen(true)}
                 variant="outline"
                 className="mt-2 h-11 w-full border-teal-200 text-teal-700 hover:bg-teal-50"
@@ -412,6 +453,17 @@ export function DetailView({ vehicleId }: { vehicleId: string }) {
                 {t("sellerSince", { y: new Date(v.sellerFull.memberSince).getFullYear() })}
               </span>
             </div>
+            {v.sellerFull.telegram && (
+              <a
+                href={`https://t.me/${v.sellerFull.telegram.replace(/^@/, "")}`}
+                target="_blank"
+                rel="noreferrer"
+                className="mt-3 flex items-center justify-center gap-1.5 rounded-lg border border-sky-200 bg-sky-50 px-3 py-2 text-xs font-semibold text-sky-700 hover:bg-sky-100 transition-colors"
+              >
+                <Send className="h-3.5 w-3.5" aria-hidden />
+                Telegram · {v.sellerFull.telegram}
+              </a>
+            )}
           </div>
 
           {/* AI report card */}
@@ -535,6 +587,37 @@ export function DetailView({ vehicleId }: { vehicleId: string }) {
             >
               {tdSubmitting && <Loader2 className="h-4 w-4 mr-2 animate-spin" aria-hidden />}
               {t("testDriveSubmit")}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Purchase request dialog */}
+      <Dialog open={buyOpen} onOpenChange={setBuyOpen}>
+        <DialogContent className="sm:max-w-sm">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Handshake className="h-4 w-4 text-emerald-600" aria-hidden />
+              {t("buyRequestTitle")}
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3">
+            <p className="text-sm text-slate-500">{t("buyRequestBody")}</p>
+            <p className="rounded-lg bg-slate-50 border border-slate-100 px-3 py-2 text-sm font-semibold text-slate-700">
+              {title} · <span className="text-amber-600">{formatUsd(v.priceUsd)}</span>
+            </p>
+            <div>
+              <Label htmlFor="buy-msg" className="text-xs text-slate-500">{t("buyMessageLabel")}</Label>
+              <Textarea id="buy-msg" value={buyMessage} onChange={(e) => setBuyMessage(e.target.value)}
+                placeholder={t("buyMessagePlaceholder")} rows={3} maxLength={500} className="mt-1.5" />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" size="sm" onClick={() => setBuyOpen(false)}>{t("cancel")}</Button>
+            <Button size="sm" onClick={submitBuyRequest} disabled={buySubmitting}
+              className="bg-emerald-600 hover:bg-emerald-700 text-white font-semibold">
+              {buySubmitting && <Loader2 className="h-4 w-4 mr-2 animate-spin" aria-hidden />}
+              {t("buyRequestBtn")}
             </Button>
           </DialogFooter>
         </DialogContent>

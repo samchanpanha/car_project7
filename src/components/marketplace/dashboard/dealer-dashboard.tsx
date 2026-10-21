@@ -12,6 +12,8 @@ import type {
 } from "@/lib/dashboard-types";
 import type { VehicleStatus } from "@/lib/types";
 import { DashboardShell, type DashboardTabDef } from "./shell";
+import { RequestSubscriptionDialog, TenantPaymentHistory } from "./payment-flow";
+import { PurchaseRequestList } from "./purchase-list";
 import {
   AppointmentStatusBadge, AvatarCircle, EmptyState, FetchErrorState, SectionCard, StatCard,
   StatCardSkeleton, TenantRoleBadge, VerificationBadge, VehicleStatusBadge, errorText,
@@ -343,47 +345,55 @@ function DealerLeads() {
   const navigate = useAppStore((s) => s.navigate);
   const { data, loading, error, refetch } = useFetch<TenantLeadDTO[]>("/api/tenant/leads");
 
-  if (loading && !data) return <div className="space-y-3">{Array.from({ length: 3 }).map((_, i) => <Skeleton key={i} className="h-24 w-full rounded-xl" />)}</div>;
-  if (error && !data) return <FetchErrorState message={error} onRetry={refetch} />;
-  if (!data || data.length === 0) return <EmptyState icon={MessageSquare} text={t("leadsEmpty")} hint={t("leadsEmptyHint")} />;
-
   return (
-    <div className="space-y-3">
-      {data.map((l) => (
-        <div key={l.conversationId} className="rounded-xl border border-slate-200 bg-white p-4">
-          <div className="flex items-start justify-between gap-3">
-            <div className="flex min-w-0 items-start gap-3">
-              <div className="h-12 w-16 shrink-0 overflow-hidden rounded-lg bg-slate-100">
-                {l.vehicle.thumbnail ? (
-                  <img src={l.vehicle.thumbnail} alt="" className="h-full w-full object-cover" />
-                ) : (
-                  <Car className="mx-auto h-5 w-5 text-slate-300" aria-hidden />
-                )}
-              </div>
-              <div className="min-w-0">
-                <p className="truncate text-sm font-semibold text-slate-900">{l.buyer.name}</p>
-                <p className="truncate text-xs text-slate-500">
-                  {l.vehicle.make} {l.vehicle.model} {l.vehicle.year} · {formatUsd(l.vehicle.priceUsd)}
-                </p>
-                {l.lastMessage && (
-                  <p className="mt-1.5 truncate rounded-lg bg-slate-50 border border-slate-100 px-2.5 py-1 text-xs text-slate-600">
-                    <span className="text-[10px] font-semibold text-slate-400">{l.lastMessage.isMine ? "↗" : "↙"} </span>
-                    {l.lastMessage.body}
-                  </p>
-                )}
+    <div className="space-y-5">
+      <PurchaseRequestList url="/api/tenant/purchase-requests" mode="seller" />
+
+      <div>
+        <h2 className="mb-3 text-sm font-semibold text-slate-900">{t("recentLeads")}</h2>
+        {loading && !data ? <div className="space-y-3">{Array.from({ length: 3 }).map((_, i) => <Skeleton key={i} className="h-24 w-full rounded-xl" />)}</div>
+        : error && !data ? <FetchErrorState message={error} onRetry={refetch} />
+        : !data || data.length === 0 ? <EmptyState icon={MessageSquare} text={t("leadsEmpty")} hint={t("leadsEmptyHint")} />
+        : (
+        <div className="space-y-3">
+          {data.map((l) => (
+            <div key={l.conversationId} className="rounded-xl border border-slate-200 bg-white p-4">
+              <div className="flex items-start justify-between gap-3">
+                <div className="flex min-w-0 items-start gap-3">
+                  <div className="h-12 w-16 shrink-0 overflow-hidden rounded-lg bg-slate-100">
+                    {l.vehicle.thumbnail ? (
+                      <img src={l.vehicle.thumbnail} alt="" className="h-full w-full object-cover" />
+                    ) : (
+                      <Car className="mx-auto h-5 w-5 text-slate-300" aria-hidden />
+                    )}
+                  </div>
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-semibold text-slate-900">{l.buyer.name}</p>
+                    <p className="truncate text-xs text-slate-500">
+                      {l.vehicle.make} {l.vehicle.model} {l.vehicle.year} · {formatUsd(l.vehicle.priceUsd)}
+                    </p>
+                    {l.lastMessage && (
+                      <p className="mt-1.5 truncate rounded-lg bg-slate-50 border border-slate-100 px-2.5 py-1 text-xs text-slate-600">
+                        <span className="text-[10px] font-semibold text-slate-400">{l.lastMessage.isMine ? "↗" : "↙"} </span>
+                        {l.lastMessage.body}
+                      </p>
+                    )}
+                  </div>
+                </div>
+                <div className="flex shrink-0 flex-col items-end gap-1.5">
+                  <span className="text-[10px] text-slate-400">{timeAgo(l.updatedAt, locale)}</span>
+                  <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-semibold text-slate-600">{l.messageCount}</span>
+                  <Button variant="outline" size="sm" onClick={() => navigate({ name: "messages", conversationId: l.conversationId })}>
+                    <MessageSquare className="h-3.5 w-3.5 mr-1" aria-hidden />
+                    {t("actOpenChat")}
+                  </Button>
+                </div>
               </div>
             </div>
-            <div className="flex shrink-0 flex-col items-end gap-1.5">
-              <span className="text-[10px] text-slate-400">{timeAgo(l.updatedAt, locale)}</span>
-              <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-semibold text-slate-600">{l.messageCount}</span>
-              <Button variant="outline" size="sm" onClick={() => navigate({ name: "messages", conversationId: l.conversationId })}>
-                <MessageSquare className="h-3.5 w-3.5 mr-1" aria-hidden />
-                {t("actOpenChat")}
-              </Button>
-            </div>
-          </div>
+          ))}
         </div>
-      ))}
+        )}
+      </div>
     </div>
   );
 }
@@ -602,22 +612,23 @@ function DealerSubscription() {
   const locale = useAppStore((s) => s.locale);
   const { data, loading, error, refetch } = useFetch<{ subscription: SubscriptionDTO | null; plans: PlanDTO[] }>("/api/tenant/subscription");
   const [cycle, setCycle] = useState<"MONTHLY" | "YEARLY">("MONTHLY");
-  const [switching, setSwitching] = useState<string | null>(null);
+  const [requesting, setRequesting] = useState<PlanDTO | null>(null);
+  const [downgrading, setDowngrading] = useState(false);
 
   useEffect(() => {
     if (data?.subscription) setCycle(data.subscription.billingCycle);
   }, [data?.subscription?.billingCycle]);
 
-  const switchPlan = async (plan: string) => {
-    setSwitching(plan);
+  const downgrade = async () => {
+    setDowngrading(true);
     try {
-      await apiSend("/api/tenant/subscription", "POST", { plan, billingCycle: cycle });
-      toast.success(t("toastPlanSwitched"));
+      await apiSend("/api/tenant/subscription", "POST", { plan: "FREE" });
+      toast.success(t("toastUpdated"));
       refetch();
     } catch (e) {
       toast.error(isForbidden(e) ? t("toastForbidden") : errorText(e));
     } finally {
-      setSwitching(null);
+      setDowngrading(false);
     }
   };
 
@@ -625,6 +636,7 @@ function DealerSubscription() {
   if (error && !data) return <FetchErrorState message={error} onRetry={refetch} />;
   const plans = data?.plans ?? [];
   const current = data?.subscription ?? null;
+  const expired = current?.status === "EXPIRED";
 
   return (
     <div className="space-y-4">
@@ -648,21 +660,25 @@ function DealerSubscription() {
       </div>
 
       {current && (
-        <div className="rounded-xl border border-amber-200 bg-amber-50/60 p-4 text-sm">
-          <p className="font-semibold text-amber-900">
+        <div className={cn("rounded-xl border p-4 text-sm", expired ? "border-rose-200 bg-rose-50/60" : "border-amber-200 bg-amber-50/60")}>
+          <p className={cn("font-semibold", expired ? "text-rose-900" : "text-amber-900")}>
             {current.plan} · {formatUsd(current.priceUsd)} / {current.billingCycle === "MONTHLY" ? t("billingMonthly").toLowerCase() : t("billingYearly").toLowerCase()}
+            {expired && <span className="ml-2 rounded-full bg-rose-100 px-2 py-0.5 text-[10px] font-bold text-rose-800">{t("subExpiresBadge")}</span>}
           </p>
-          <p className="mt-0.5 text-xs text-amber-800/80">
+          <p className={cn("mt-0.5 text-xs", expired ? "text-rose-800/80" : "text-amber-800/80")}>
             {t("subRenews", { d: formatDateTime(current.currentPeriodEnd, locale) })} · {t("subSeats", { n: current.seats })}
           </p>
+          {(expired || current.status === "PAST_DUE") && (
+            <p className="mt-1.5 text-xs font-medium text-rose-800">{t("subPayFirst")}</p>
+          )}
         </div>
       )}
 
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         {plans.map((p) => {
-          const isCurrent = current?.plan === p.plan;
+          const isCurrent = current?.plan === p.plan && !expired;
           const price = cycle === "MONTHLY" ? p.priceUsdMonthly : p.priceUsdYearly;
-          const disabled = isCurrent || (p.plan === "FREE" && current?.plan === "FREE") || switching !== null;
+          const isPaid = p.plan !== "FREE";
           return (
             <div
               key={p.plan}
@@ -691,17 +707,28 @@ function DealerSubscription() {
                 size="sm"
                 className="mt-4 w-full"
                 variant={isCurrent ? "secondary" : "default"}
-                disabled={disabled}
-                onClick={() => switchPlan(p.plan)}
-                aria-label={t("subSwitchTo", { plan: p.plan })}
+                disabled={isCurrent || downgrading || (p.plan === "FREE" && (!current || current.plan === "FREE"))}
+                onClick={() => (isPaid ? setRequesting(p) : downgrade())}
+                aria-label={isPaid ? t("payOpen") : t("subFreeDowngrade")}
               >
-                {switching === p.plan && <Loader2 className="h-4 w-4 mr-1.5 animate-spin" aria-hidden />}
-                {isCurrent ? t("subCurrentBadge") : t("subSwitchTo", { plan: p.plan })}
+                {downgrading && !isPaid && <Loader2 className="h-4 w-4 mr-1.5 animate-spin" aria-hidden />}
+                {isCurrent ? t("subCurrentBadge") : isPaid ? (current && current.plan !== "FREE" ? t("payRenew") : t("payOpen")) : t("subFreeDowngrade")}
               </Button>
             </div>
           );
         })}
       </div>
+
+      <TenantPaymentHistory onChanged={refetch} />
+
+      <RequestSubscriptionDialog
+        open={requesting !== null}
+        onOpenChange={(o) => !o && setRequesting(null)}
+        plan={requesting}
+        cycle={cycle}
+        priceUsd={requesting ? (cycle === "MONTHLY" ? requesting.priceUsdMonthly : requesting.priceUsdYearly) : 0}
+        onDone={() => { refetch(); setRequesting(null); }}
+      />
     </div>
   );
 }

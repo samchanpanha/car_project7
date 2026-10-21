@@ -7,6 +7,7 @@ import {
   toErrorResponse,
 } from "@/lib/api/guards";
 import { PLAN_BY_KEY, toSubscriptionDTO } from "@/lib/api/plans";
+import { refreshExpiredSubscription } from "@/lib/api/payments";
 
 export const dynamic = "force-dynamic";
 
@@ -14,9 +15,11 @@ export async function GET() {
   try {
     const { tenant } = await requireTenantMember();
 
-    const subscription = await db.subscription.findUnique({
+    const raw = await db.subscription.findUnique({
       where: { tenantId: tenant.id },
     });
+    // auto-expire overdue subscriptions on read
+    const subscription = await refreshExpiredSubscription(raw);
 
     return NextResponse.json({
       subscription: subscription ? toSubscriptionDTO(subscription) : null,
@@ -28,13 +31,18 @@ export async function GET() {
 }
 
 const subscribeSchema = z.object({
-  plan: z.enum(["BASIC", "PRO", "ENTERPRISE"]),
-  billingCycle: z.enum(["MONTHLY", "YEARLY"]),
+  plan: z.enum(["FREE", "BASIC", "PRO", "ENTERPRISE"]),
+  billingCycle: z.enum(["MONTHLY", "YEARLY"]).optional(),
 });
 
+/**
+ * Paid plans can NO LONGER be activated directly — they require a verified
+ * payment (Bakong KHQR or manual admin verification) via
+ * POST /api/tenant/payments. Only the FREE downgrade is applied instantly.
+ */
 export async function POST(req: Request) {
   try {
-    const { member, tenant } = await requireTenantMember();
+    const { user, member, tenant } = await requireTenantMember();
     if (!canManageTenant(member.role)) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
@@ -55,18 +63,16 @@ export async function POST(req: Request) {
       );
     }
 
-    const { plan, billingCycle } = parsed.data;
-    const planRow = PLAN_BY_KEY[plan];
-    const priceUsd =
-      billingCycle === "YEARLY" ? planRow.priceUsdYearly : planRow.priceUsdMonthly;
-
-    const now = new Date();
-    const currentPeriodEnd = new Date(now);
-    if (billingCycle === "YEARLY") {
-      currentPeriodEnd.setFullYear(currentPeriodEnd.getFullYear() + 1);
-    } else {
-      currentPeriodEnd.setMonth(currentPeriodEnd.getMonth() + 1);
+    const plan = parsed.data.plan;
+    if (plan !== "FREE") {
+      return NextResponse.json(
+        { error: "Paid plans require a verified payment — submit a subscription payment request first" },
+        { status: 402 },
+      );
     }
+
+    const planRow = PLAN_BY_KEY.FREE;
+    const now = new Date();
 
     const subscription = await db.subscription.upsert({
       where: { tenantId: tenant.id },
@@ -74,34 +80,33 @@ export async function POST(req: Request) {
         tenantId: tenant.id,
         plan,
         status: "ACTIVE",
-        billingCycle,
-        priceUsd,
+        billingCycle: "MONTHLY",
+        priceUsd: 0,
         listingsLimit: planRow.listingsLimit,
         featuredLimit: planRow.featuredLimit,
         seats: planRow.seats,
         startedAt: now,
-        currentPeriodEnd,
+        currentPeriodEnd: now,
       },
       update: {
         plan,
         status: "ACTIVE",
-        billingCycle,
-        priceUsd,
+        billingCycle: "MONTHLY",
+        priceUsd: 0,
         listingsLimit: planRow.listingsLimit,
         featuredLimit: planRow.featuredLimit,
         seats: planRow.seats,
-        startedAt: now,
-        currentPeriodEnd,
+        currentPeriodEnd: now,
       },
     });
 
     await db.auditLog.create({
       data: {
-        actorId: member.userId,
-        action: "SUBSCRIPTION_CHANGED",
+        actorId: user.id,
+        action: "SUBSCRIPTION_DOWNGRADED",
         entity: "Subscription",
         entityId: subscription.id,
-        metaJson: JSON.stringify({ plan, billingCycle, priceUsd }),
+        metaJson: JSON.stringify({ plan: "FREE" }),
       },
     });
 

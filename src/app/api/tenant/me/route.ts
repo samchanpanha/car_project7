@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { requireTenantMember, toErrorResponse } from "@/lib/api/guards";
 import { PLAN_CATALOG, toSubscriptionDTO } from "@/lib/api/plans";
+import { refreshExpiredSubscription } from "@/lib/api/payments";
 import type { TenantDashboardDTO, TenantMemberDTO, TenantRole } from "@/lib/dashboard-types";
 
 export const dynamic = "force-dynamic";
@@ -10,7 +11,7 @@ export async function GET() {
   try {
     const { member, tenant } = await requireTenantMember();
 
-    const [subscription, members, statusGroups, viewAgg, totalLeads, activeFavorites, appointmentsRequested] =
+    const [rawSubscription, members, statusGroups, viewAgg, totalLeads, activeFavorites, appointmentsRequested] =
       await Promise.all([
         db.subscription.findUnique({ where: { tenantId: tenant.id } }),
         db.tenantMember.findMany({
@@ -33,6 +34,9 @@ export async function GET() {
           where: { vehicle: { tenantId: tenant.id }, status: { not: "CANCELLED" } },
         }),
       ]);
+
+    // auto-expire overdue subscriptions so restrictions apply without a cron job
+    const subscription = await refreshExpiredSubscription(rawSubscription);
 
     const countFor = (status: string) =>
       statusGroups.find((g) => g.status === status)?._count._all ?? 0;

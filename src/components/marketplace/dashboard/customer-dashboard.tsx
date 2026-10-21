@@ -11,6 +11,7 @@ import type { AccountOverviewDTO, AppointmentDTO, SavedSearchDTO, SessionDTO } f
 import type { VehiclesResponseDTO } from "@/lib/types";
 import { VehicleCard, VehicleCardSkeleton } from "@/components/marketplace/vehicle-card";
 import { DashboardShell, type DashboardTabDef } from "./shell";
+import { PurchaseRequestList } from "./purchase-list";
 import {
   AppointmentStatusBadge, ConfidenceRing, EmptyState, FetchErrorState, SectionCard, StatCard,
   StatCardSkeleton, errorText, formatDateTime, isForbidden,
@@ -23,7 +24,7 @@ import {
   AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import {
-  CalendarDays, Car, FileCheck2, Heart, LayoutDashboard, MessageSquare, Play, Search,
+  CalendarDays, Car, FileCheck2, Handshake, Heart, LayoutDashboard, MessageSquare, Play, Search,
   Trash2, TriangleAlert, X,
 } from "lucide-react";
 import { useState } from "react";
@@ -39,10 +40,15 @@ export function CustomerDashboard({ me }: { me: SessionDTO }) {
 
   const tabs: DashboardTabDef[] = [
     { id: "overview", label: t("tabOverview"), icon: LayoutDashboard },
+    { id: "purchases", label: t("tabPurchases"), icon: Handshake },
     { id: "favorites", label: t("navFavorites"), icon: Heart },
     { id: "saved-searches", label: t("tabSavedSearches"), icon: Search },
     { id: "appointments", label: t("tabAppointments"), icon: CalendarDays },
     { id: "reports", label: t("tabMyReports"), icon: FileCheck2 },
+    // private sellers also manage purchase requests on their own listings
+    ...(me.user.role === "SELLER"
+      ? [{ id: "sales", label: t("tabSalesRequests"), icon: Car } as DashboardTabDef]
+      : []),
   ];
 
   return (
@@ -55,10 +61,14 @@ export function CustomerDashboard({ me }: { me: SessionDTO }) {
       onTab={setTab}
     >
       {active === "overview" && <CustomerOverview />}
+      {active === "purchases" && <PurchaseRequestList url="/api/account/purchases" mode="buyer" />}
       {active === "favorites" && <CustomerFavorites />}
       {active === "saved-searches" && <CustomerSavedSearches />}
       {active === "appointments" && <CustomerAppointments />}
       {active === "reports" && <CustomerReports />}
+      {active === "sales" && me.user.role === "SELLER" && (
+        <PurchaseRequestList url="/api/seller/purchase-requests" mode="seller" />
+      )}
     </DashboardShell>
   );
 }

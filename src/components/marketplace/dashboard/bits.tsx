@@ -106,6 +106,48 @@ export function AppointmentStatusBadge({ status }: { status: AppointmentStatus }
   );
 }
 
+const PAYMENT_STATUS_STYLES: Record<string, string> = {
+  PENDING: "bg-amber-100 text-amber-900 border-amber-300",
+  AWAITING_VERIFICATION: "bg-sky-100 text-sky-900 border-sky-300",
+  VERIFIED: "bg-emerald-100 text-emerald-800 border-emerald-200",
+  REJECTED: "bg-rose-100 text-rose-800 border-rose-200",
+  CANCELLED: "bg-slate-100 text-slate-500 border-slate-200",
+};
+
+const PAYMENT_STATUS_LABELS: Record<string, string> = {
+  PENDING: "payStatusPending",
+  AWAITING_VERIFICATION: "payStatusAwaiting",
+  VERIFIED: "payStatusVerified",
+  REJECTED: "payStatusRejected",
+  CANCELLED: "payStatusCancelled",
+};
+
+export function PaymentStatusBadge({ status }: { status: string }) {
+  const t = useT();
+  return (
+    <Badge variant="outline" className={cn("text-[10px] font-semibold", PAYMENT_STATUS_STYLES[status] ?? "")}>
+      {t((PAYMENT_STATUS_LABELS[status] ?? status) as never)}
+    </Badge>
+  );
+}
+
+const PURCHASE_STATUS_STYLES: Record<string, string> = {
+  PENDING: "bg-amber-100 text-amber-900 border-amber-300",
+  ACCEPTED: "bg-emerald-100 text-emerald-800 border-emerald-200",
+  COMPLETED: "bg-teal-100 text-teal-800 border-teal-200",
+  CANCELLED: "bg-slate-100 text-slate-500 border-slate-200",
+  REJECTED: "bg-rose-100 text-rose-800 border-rose-200",
+};
+
+export function PurchaseStatusBadge({ status }: { status: string }) {
+  const t = useT();
+  return (
+    <Badge variant="outline" className={cn("text-[10px] font-semibold", PURCHASE_STATUS_STYLES[status] ?? "")}>
+      {t(`purchaseStatus${status}` as never)}
+    </Badge>
+  );
+}
+
 export function PlanBadge({ plan }: { plan: string }) {
   const t = useT();
   return (
