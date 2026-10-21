@@ -20,7 +20,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
-  CarFront, ImagePlus, Link2, Loader2, Star, TriangleAlert, X,
+  CarFront, FileText, FileUp, ImagePlus, Link2, Loader2, Plus, Star, TriangleAlert, X,
 } from "lucide-react";
 import { fuelLabels, transmissionLabels } from "@/lib/i18n";
 import { toast } from "sonner";
@@ -33,6 +33,253 @@ const DRIVETRAINS = ["FWD", "RWD", "AWD", "4WD"];
 const IMPORTS = ["USA", "KOREA", "JAPAN", "THAILAND", "DUBAI", "LOCAL"];
 const ACCIDENTS = ["NONE_DECLARED", "MINOR_DECLARED", "MAJOR_DECLARED", "UNKNOWN"];
 const EDIT_STATUSES = ["PUBLISHED", "DRAFT", "SOLD", "ARCHIVED"];
+
+// ---------------- Documents editor (Task 17) ----------------
+
+const DOC_TYPES = ["REGISTRATION_BOOK", "IMPORT_DECLARATION", "SERVICE_RECORD", "INSPECTION_CERT", "INSURANCE"];
+const ALL_DOC_STATUSES = ["PROVIDED", "MISSING", "VERIFIED", "REJECTED"];
+const SELLER_DOC_STATUSES = ["PROVIDED", "MISSING"];
+
+/** Client-side document row — `id` present = already stored on the server. */
+export interface DocumentRow {
+  id?: string;
+  type: string;
+  status: string;
+  notes: string;
+  fileUrl: string | null;
+}
+
+/** Read a file as a raw data URL — used for PDFs (no canvas downscale). */
+function rawFileToDataUrl(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result));
+    reader.onerror = () => reject(new Error("read-failed"));
+    reader.readAsDataURL(file);
+  });
+}
+
+const isPdfUrl = (url: string) => url.toLowerCase().endsWith(".pdf");
+
+/**
+ * Optional vehicle-papers manager: one row per document (type + status +
+ * optional note + optional uploaded photo/PDF). Rows are fully client-side
+ * until the parent form saves — then the PATCH diffs them by id.
+ */
+export function DocumentsEditor({
+  documents,
+  onChange,
+  disabled,
+  canVerify,
+}: {
+  documents: DocumentRow[];
+  onChange: (next: DocumentRow[]) => void;
+  disabled?: boolean;
+  canVerify?: boolean;
+}) {
+  const t = useT();
+  const inputRef = useRef<HTMLInputElement | null>(null);
+  // Which row is currently uploading its file (keyed like the row list).
+  const [uploadingKey, setUploadingKey] = useState<string | null>(null);
+  // The row the shared file picker was opened for.
+  const pendingKeyRef = useRef<string | null>(null);
+
+  const rowKey = (d: DocumentRow, i: number) => d.id ?? `new-${i}`;
+
+  const update = (key: string, patch: Partial<DocumentRow>) =>
+    onChange(documents.map((d, i) => (rowKey(d, i) === key ? { ...d, ...patch } : d)));
+
+  const removeAt = (idx: number) => onChange(documents.filter((_, i) => i !== idx));
+
+  const addRow = () =>
+    onChange([...documents, { type: "REGISTRATION_BOOK", status: "PROVIDED", notes: "", fileUrl: null }]);
+
+  const uploadFile = async (key: string, file: File) => {
+    const isPdf = file.type === "application/pdf" || file.name.toLowerCase().endsWith(".pdf");
+    const isImage = file.type.startsWith("image/");
+    if (!isPdf && !isImage) {
+      toast.warning(t("docUnsupported"));
+      return;
+    }
+    // PDFs cannot be downscaled client-side — enforce the server cap early.
+    if (file.size > 3 * 1024 * 1024) {
+      toast.warning(t("docTooLarge"));
+      return;
+    }
+    setUploadingKey(key);
+    try {
+      const dataUrl = isPdf ? await rawFileToDataUrl(file) : await fileToDataUrl(file, 1600, 0.85);
+      const res = await apiSend<{ url: string }>("/api/uploads", "POST", { dataUrl });
+      update(key, { fileUrl: res.url });
+    } catch {
+      toast.error(t("uploadFailedCount", { n: 1 }));
+    } finally {
+      setUploadingKey(null);
+    }
+  };
+
+  const statusOptions = (canVerify ? ALL_DOC_STATUSES : SELLER_DOC_STATUSES).map((s) => ({
+    value: s,
+    label: t(`doc${s}` as never),
+    disabled: false,
+  }));
+
+  return (
+    <div>
+      {/* One shared file picker — pendingKeyRef routes the chosen file to the
+          row whose "Upload file" button was clicked. */}
+      <input
+        ref={inputRef}
+        type="file"
+        accept="image/*,application/pdf"
+        className="hidden"
+        aria-label={t("docUploadFile")}
+        onChange={(e) => {
+          const key = pendingKeyRef.current;
+          const f = e.target.files?.[0];
+          if (f && key) void uploadFile(key, f);
+          e.target.value = "";
+        }}
+      />
+      {documents.length > 0 && (
+        <div className="space-y-2">
+          {documents.map((d, idx) => {
+            const key = rowKey(d, idx);
+            // Sellers see admin-set VERIFIED/REJECTED as read-only options.
+            const options =
+              !canVerify && !SELLER_DOC_STATUSES.includes(d.status)
+                ? [...statusOptions, { value: d.status, label: t(`doc${d.status}` as never), disabled: true }]
+                : statusOptions;
+            return (
+              <div key={key} className="rounded-xl border border-slate-200 bg-slate-50/60 p-3">
+                <div className="flex items-start gap-2">
+                  <div className="min-w-0 flex-1">
+                    <Select value={d.type} onValueChange={(v) => update(key, { type: v })}>
+                      <SelectTrigger className="h-9 w-full" aria-label={t("docTypeLabel")}>
+                        <SelectValue placeholder={t("docTypeLabel")} />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {DOC_TYPES.map((tp) => (
+                          <SelectItem key={tp} value={tp}>
+                            {t(`doc${tp}` as never)}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="w-32 shrink-0">
+                    <Select value={d.status} onValueChange={(v) => update(key, { status: v })}>
+                      <SelectTrigger className="h-9 w-full" aria-label={t("docStatusLabel")}>
+                        <SelectValue placeholder={t("docStatusLabel")} />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {options.map((o) => (
+                          <SelectItem key={o.value} value={o.value} disabled={o.disabled}>
+                            {o.label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => removeAt(idx)}
+                    disabled={disabled}
+                    className="flex h-9 w-9 shrink-0 cursor-pointer items-center justify-center rounded-lg border border-slate-200 text-slate-400 transition hover:border-red-200 hover:bg-red-50 hover:text-red-600"
+                    aria-label={t("removeDocument")}
+                  >
+                    <X className="h-4 w-4" aria-hidden />
+                  </button>
+                </div>
+
+                <Input
+                  value={d.notes}
+                  onChange={(e) => update(key, { notes: e.target.value })}
+                  placeholder={t("docNotesLabel")}
+                  className="mt-2 h-9 text-xs"
+                  aria-label={t("docNotesLabel")}
+                />
+
+                <div className="mt-2 flex flex-wrap items-center gap-2">
+                  {d.fileUrl ? (
+                    <>
+                      {isPdfUrl(d.fileUrl) ? (
+                        <a
+                          href={d.fileUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-medium text-slate-600 transition hover:border-amber-300 hover:text-amber-700"
+                        >
+                          <FileText className="h-4 w-4 text-rose-600" aria-hidden />
+                          PDF
+                        </a>
+                      ) : (
+                        <a
+                          href={d.fileUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="block overflow-hidden rounded-lg border border-slate-200"
+                          aria-label={t("docViewFile")}
+                        >
+                          <img src={d.fileUrl} alt="" className="h-10 w-14 object-cover" loading="lazy" />
+                        </a>
+                      )}
+                      <button
+                        type="button"
+                        onClick={() => update(key, { fileUrl: null })}
+                        disabled={disabled}
+                        className="cursor-pointer text-[11px] font-medium text-slate-400 underline-offset-2 transition hover:text-red-600 hover:underline"
+                      >
+                        {t("docRemoveFile")}
+                      </button>
+                    </>
+                  ) : (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="h-8"
+                      disabled={disabled || uploadingKey === key}
+                      onClick={() => {
+                        pendingKeyRef.current = key;
+                        inputRef.current?.click();
+                      }}
+                    >
+                      {uploadingKey === key ? (
+                        <>
+                          <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" aria-hidden />
+                          {t("loading")}
+                        </>
+                      ) : (
+                        <>
+                          <FileUp className="h-3.5 w-3.5 mr-1.5" aria-hidden />
+                          {t("docUploadFile")}
+                        </>
+                      )}
+                    </Button>
+                  )}
+                  <span className="text-[11px] text-slate-400">{t("docFileHint")}</span>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      <Button
+        type="button"
+        variant="outline"
+        size="sm"
+        className="mt-2 h-9 border-dashed border-slate-300 text-slate-500 hover:border-amber-300 hover:bg-amber-50 hover:text-amber-800"
+        disabled={disabled}
+        onClick={addRow}
+      >
+        <Plus className="h-4 w-4 mr-1.5" aria-hidden />
+        {t("addDocument")}
+      </Button>
+    </div>
+  );
+}
 
 // ---------------- PhotoUploader ----------------
 
@@ -224,6 +471,7 @@ interface EditorForm {
   descriptionKm: string;
   status: string;
   images: string[];
+  documents: DocumentRow[];
 }
 
 function toForm(v: ManageableVehicleDetailDTO): EditorForm {
@@ -252,6 +500,13 @@ function toForm(v: ManageableVehicleDetailDTO): EditorForm {
     descriptionKm: v.descriptionKm ?? "",
     status: v.status,
     images: v.images,
+    documents: (v.documents ?? []).map((d) => ({
+      id: d.id,
+      type: d.type,
+      status: d.status,
+      notes: d.notes ?? "",
+      fileUrl: d.fileUrl,
+    })),
   };
 }
 
@@ -344,6 +599,13 @@ export function ListingEditorDialog({
         descriptionKm: form.descriptionKm.trim() || null,
         status: form.status,
         images: form.images, // full ordered list — add/remove/reorder in one call
+        documents: form.documents.map((d) => ({
+          ...(d.id ? { id: d.id } : {}),
+          type: d.type,
+          status: d.status,
+          notes: d.notes.trim() || null,
+          fileUrl: d.fileUrl,
+        })),
       });
       toast.success(t("listingUpdated"));
       onOpenChange(false);
@@ -385,6 +647,25 @@ export function ListingEditorDialog({
               <p className="mt-1.5 text-[11px] text-slate-400">
                 {t("photosCount", { n: form.images.length })} · {t("coverHint")}
               </p>
+            </section>
+
+            {/* Documents — optional vehicle papers (Task 17) */}
+            <section>
+              <div className="flex items-center justify-between">
+                <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">{t("sectionDocuments")}</p>
+                {form.documents.length > 0 && (
+                  <span className="text-[11px] text-slate-400">{t("documentsCount", { n: form.documents.length })}</span>
+                )}
+              </div>
+              <p className="mt-1 text-[11px] text-slate-400">{t("docsOptionalHint")}</p>
+              <div className="mt-2">
+                <DocumentsEditor
+                  documents={form.documents}
+                  onChange={(documents) => set({ documents })}
+                  disabled={saving}
+                  canVerify={vehicle.canVerifyDocuments ?? false}
+                />
+              </div>
             </section>
 
             {/* Car details */}

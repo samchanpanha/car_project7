@@ -1,32 +1,34 @@
-// Uploaded image storage — car photos live on disk under <project>/uploads and
-// are served back through GET /api/uploads/[file]. Data-URL payloads are
-// decoded and validated server-side (magic-byte sniffing) so only real
-// JPEG/PNG/WebP images ever reach the disk.
+// Uploaded file storage — car photos AND vehicle documents (PDF) live on disk
+// under <project>/uploads and are served back through GET /api/uploads/[file].
+// Data-URL payloads are decoded and validated server-side (magic-byte
+// sniffing) so only real JPEG/PNG/WebP images and real PDFs ever reach the disk.
 
 import fs from "node:fs/promises";
 import path from "node:path";
 import crypto from "node:crypto";
 
-/** Directory where uploaded images are stored. */
+/** Directory where uploaded files (images + PDFs) are stored. */
 export const UPLOAD_DIR = path.join(process.cwd(), "uploads");
 
 const EXT_BY_MIME: Record<string, string> = {
   "image/jpeg": "jpg",
   "image/png": "png",
   "image/webp": "webp",
+  "application/pdf": "pdf",
 };
 
 const MIME_BY_EXT: Record<string, string> = {
   jpg: "image/jpeg",
   png: "image/png",
   webp: "image/webp",
+  pdf: "application/pdf",
 };
 
-/** 3 MB decoded ceiling per image (the client downscales before uploading). */
+/** 3 MB decoded ceiling per file (the client downscales images before uploading). */
 const MAX_BYTES = 3 * 1024 * 1024;
 
 /** Parse a data URL into { mime, bytes } — null when malformed/unsupported/oversized. */
-export function parseImageDataUrl(dataUrl: string): { mime: string; bytes: Buffer } | null {
+export function parseFileDataUrl(dataUrl: string): { mime: string; bytes: Buffer } | null {
   const m = /^data:([a-z]+\/[a-z0-9.+-]+);base64,([A-Za-z0-9+/=\s]+)$/.exec(dataUrl.trim());
   if (!m) return null;
   const mime = m[1].toLowerCase();
@@ -42,10 +44,12 @@ export function parseImageDataUrl(dataUrl: string): { mime: string; bytes: Buffe
   ) {
     return null;
   }
+  // PDFs start with "%PDF-".
+  if (mime === "application/pdf" && bytes.subarray(0, 5).toString("ascii") !== "%PDF-") return null;
   return { mime, bytes };
 }
 
-/** Persist an uploaded image; returns the public URL that serves it. */
+/** Persist an uploaded file (image or PDF); returns the public URL that serves it. */
 export async function saveUploadImage(bytes: Buffer, mime: string): Promise<string> {
   await fs.mkdir(UPLOAD_DIR, { recursive: true });
   const name = `${crypto.randomUUID()}.${EXT_BY_MIME[mime]}`;
@@ -53,9 +57,9 @@ export async function saveUploadImage(bytes: Buffer, mime: string): Promise<stri
   return `/api/uploads/${name}`;
 }
 
-/** True when `file` is a safe stored-image filename (blocks path traversal). */
+/** True when `file` is a safe stored-file filename (blocks path traversal). */
 export function isSafeUploadName(file: string): boolean {
-  return /^[a-f0-9-]{36}\.(jpg|png|webp)$/.test(file);
+  return /^[a-f0-9-]{36}\.(jpg|png|webp|pdf)$/.test(file);
 }
 
 /** Content-Type for a stored filename (falls back to octet-stream). */

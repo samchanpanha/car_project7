@@ -4,6 +4,7 @@ import { useAppStore, isGuest } from "@/lib/store";
 import { useT } from "@/hooks/use-t";
 import { useFetch, apiSend } from "@/lib/client-hooks";
 import type { VehicleCardDTO, VehicleDetailDTO } from "@/lib/types";
+import type { VehicleDetailWithFilesDTO } from "@/lib/listing-types";
 import { VehicleCard, VehicleCardSkeleton } from "@/components/marketplace/vehicle-card";
 import { ContactDialog } from "@/components/marketplace/contact-dialog";
 import { Button } from "@/components/ui/button";
@@ -15,7 +16,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { ReportStatusBadge } from "@/components/marketplace/status-badge";
 import {
-  ArrowLeft, BadgeCheck, CalendarClock, CarFront, ChevronLeft, ChevronRight, Eye, FileCheck2, FileX2,
+  ArrowLeft, BadgeCheck, CalendarClock, CarFront, ChevronLeft, ChevronRight, Eye, FileCheck2, FileText, FileX2,
   Flag, Gauge, Handshake, Heart, Loader2, MapPin, MessageSquare, Phone, RefreshCw, Send, ShieldCheck,
   ShieldAlert, Star, Timer, TriangleAlert, Users,
 } from "lucide-react";
@@ -42,7 +43,7 @@ export function DetailView({ vehicleId }: { vehicleId: string }) {
   const toggleFavoriteLocal = useAppStore((s) => s.toggleFavoriteLocal);
   const setFavorites = useAppStore((s) => s.setFavorites);
 
-  const { data, loading, error, refetch } = useFetch<{ vehicle: VehicleDetailDTO; similar: VehicleCardDTO[] }>(
+  const { data, loading, error, refetch } = useFetch<{ vehicle: VehicleDetailWithFilesDTO; similar: VehicleCardDTO[] }>(
     `/api/vehicles/${vehicleId}`
   );
   const [imgIndex, setImgIndex] = useState(0);
@@ -216,6 +217,8 @@ export function DetailView({ vehicleId }: { vehicleId: string }) {
       <ShieldCheck className="h-4 w-4 text-emerald-600 shrink-0" aria-hidden />
     ) : status === "MISSING" ? (
       <FileX2 className="h-4 w-4 text-slate-400 shrink-0" aria-hidden />
+    ) : status === "REJECTED" ? (
+      <FileX2 className="h-4 w-4 text-rose-600 shrink-0" aria-hidden />
     ) : (
       <FileCheck2 className="h-4 w-4 text-teal-600 shrink-0" aria-hidden />
     );
@@ -321,19 +324,31 @@ export function DetailView({ vehicleId }: { vehicleId: string }) {
               </li>
             )}
             {v.documents.map((d) => (
-              <li key={d.type} className="flex items-center gap-3 rounded-lg border border-slate-200 bg-white px-3 py-2.5">
+              <li key={d.id ?? d.type} className="flex items-center gap-3 rounded-lg border border-slate-200 bg-white px-3 py-2.5">
                 {docIcon(d.status)}
                 <div className="min-w-0 flex-1">
                   <p className="text-sm font-medium text-slate-800">{t(`doc${d.type}` as never)}</p>
                   {d.notes && <p className="text-xs text-slate-400 truncate">{d.notes}</p>}
                 </div>
+                {d.fileUrl && (
+                  <a
+                    href={d.fileUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex shrink-0 items-center gap-1 rounded-md border border-slate-200 px-2 py-1 text-[11px] font-medium text-slate-600 transition hover:border-amber-300 hover:text-amber-700"
+                  >
+                    <FileText className="h-3 w-3" aria-hidden />
+                    {t("docViewFile")}
+                  </a>
+                )}
                 <Badge
                   variant="outline"
                   className={cn(
                     "text-[11px] shrink-0",
                     d.status === "VERIFIED" && "border-emerald-200 bg-emerald-50 text-emerald-700",
                     d.status === "PROVIDED" && "border-teal-200 bg-teal-50 text-teal-700",
-                    d.status === "MISSING" && "border-slate-200 bg-slate-50 text-slate-400"
+                    d.status === "MISSING" && "border-slate-200 bg-slate-50 text-slate-400",
+                    d.status === "REJECTED" && "border-rose-200 bg-rose-50 text-rose-700"
                   )}
                 >
                   {t(`doc${d.status}` as never)}

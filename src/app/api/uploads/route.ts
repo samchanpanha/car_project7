@@ -2,18 +2,19 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { isGuestRequest } from "@/lib/session";
 import { rateLimit } from "@/lib/rate-limit";
-import { parseImageDataUrl, saveUploadImage } from "@/lib/uploads";
+import { parseFileDataUrl, saveUploadImage } from "@/lib/uploads";
 
 export const dynamic = "force-dynamic";
 
 const bodySchema = z.object({
-  // Downscaled JPEG/PNG/WebP data URL produced client-side by lib/image-client.
+  // Downscaled image / raw PDF data URL produced client-side (lib/image-client
+  // for photos, FileReader for document PDFs).
   dataUrl: z.string().min(30).max(5_500_000),
 });
 
 /**
- * POST /api/uploads — store one image (car photo, etc.) and return its
- * permanent public URL. Signed-in users only; guests get 401.
+ * POST /api/uploads — store one file (car photo or vehicle-document PDF) and
+ * return its permanent public URL. Signed-in users only; guests get 401.
  */
 export async function POST(req: Request) {
   try {
@@ -34,15 +35,15 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Invalid upload payload" }, { status: 400 });
     }
 
-    const img = parseImageDataUrl(parsed.data.dataUrl);
-    if (!img) {
+    const file = parseFileDataUrl(parsed.data.dataUrl);
+    if (!file) {
       return NextResponse.json(
-        { error: "Unsupported or oversized image — use JPEG/PNG/WebP up to 3MB" },
+        { error: "Unsupported or oversized file — use JPEG/PNG/WebP/PDF up to 3MB" },
         { status: 400 },
       );
     }
 
-    const url = await saveUploadImage(img.bytes, img.mime);
+    const url = await saveUploadImage(file.bytes, file.mime);
     return NextResponse.json({ url }, { status: 201 });
   } catch (err) {
     const status = (err as { status?: number })?.status;

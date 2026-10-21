@@ -20,7 +20,27 @@ export interface MyListingRowDTO {
   images: string[]; // urls sorted by sortOrder (first = cover)
 }
 
+/** Vehicle document row as served by the detail endpoints — adds the row id
+ * and the uploaded file URL on top of the public VehicleDocumentDTO. */
+export interface VehicleDocumentRowDTO {
+  id: string;
+  type: string; // REGISTRATION_BOOK | IMPORT_DECLARATION | SERVICE_RECORD | INSPECTION_CERT | INSURANCE
+  status: string; // PROVIDED | MISSING | VERIFIED | REJECTED
+  notes: string | null;
+  fileUrl: string | null; // /api/uploads/<file> when a file was attached
+}
+
 /** VehicleDetailDTO + manage flag: true when the caller may edit this listing. */
 export interface ManageableVehicleDetailDTO extends VehicleDetailDTO {
   manage: boolean;
+  // Narrowed: the detail endpoints return document rows with id + fileUrl.
+  documents: VehicleDocumentRowDTO[];
+  /** True when the caller may set VERIFIED/REJECTED statuses (platform admin). */
+  canVerifyDocuments?: boolean;
+}
+
+/** Public detail payload — document rows carry the uploaded file URL so
+ * buyers can open the actual paper (trust signal). */
+export interface VehicleDetailWithFilesDTO extends VehicleDetailDTO {
+  documents: VehicleDocumentRowDTO[];
 }

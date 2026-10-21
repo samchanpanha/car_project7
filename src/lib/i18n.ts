@@ -645,6 +645,21 @@ const en = {
   myListingsEmpty: "You haven't published any listings yet — create one above.",
   photosCount: "{n} photo(s)",
   editListingNote: "The first photo is the cover. All changes appear on the marketplace immediately.",
+  sectionDocuments: "Vehicle documents",
+  docsOptionalHint: "Optional — add papers such as the registration book so buyers can trust the listing.",
+  addDocument: "Add document",
+  docTypeLabel: "Document type",
+  docStatusLabel: "Status",
+  docNotesLabel: "Notes (optional)",
+  docUploadFile: "Upload file",
+  docFileHint: "Photo or PDF · up to 3 MB",
+  docViewFile: "View file",
+  docRemoveFile: "Remove file",
+  removeDocument: "Remove document",
+  docREJECTED: "Rejected",
+  docTooLarge: "File is too large — the maximum is 3 MB",
+  docUnsupported: "Only photos (JPEG/PNG/WebP) and PDF files are allowed",
+  documentsCount: "{n} document(s)",
 };
 
 const km: Record<keyof typeof en, string> = {
@@ -1276,6 +1291,21 @@ const km: Record<keyof typeof en, string> = {
   myListingsEmpty: "អ្នកមិនទាន់មានប្រកាសនៅឡើយទេ — បង្កើតនៅខាងលើ។",
   photosCount: "រូបភាព {n}",
   editListingNote: "រូបភាពដំបូងគឺជារូបគម្រប។ ការផ្លាស់ប្តូរទាំងអស់នឹងបង្ហាញភ្លាមៗនៅលើផ្សារ។",
+  sectionDocuments: "ឯកសារឡាន",
+  docsOptionalHint: "ស្រេចចិត្ត — បន្ថែមឯកសារដូចជា សៀវភៅចុះបញ្ជី ដើម្បីឱ្យអ្នកទិញទុកចិត្តលើប្រកាស។",
+  addDocument: "បន្ថែមឯកសារ",
+  docTypeLabel: "ប្រភេទឯកសារ",
+  docStatusLabel: "ស្ថានភាព",
+  docNotesLabel: "ចំណាំ (ស្រេចចិត្ត)",
+  docUploadFile: "បញ្ចូលឯកសារ",
+  docFileHint: "រូបភាព ឬ PDF · អតិបរមា ៣MB",
+  docViewFile: "មើលឯកសារ",
+  docRemoveFile: "លុបឯកសារភ្ជាប់",
+  removeDocument: "លុបឯកសារចេញ",
+  docREJECTED: "បដិសេធ",
+  docTooLarge: "ឯកសារធំពេក — អតិបរមា ៣MB",
+  docUnsupported: "អនុញ្ញាតតែរូបភាព (JPEG/PNG/WebP) និង PDF ប៉ុណ្ណោះ",
+  documentsCount: "ឯកសារ {n}",
 };
 
 export const dictionaries = { en, km };

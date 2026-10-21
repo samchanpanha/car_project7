@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { db } from "@/lib/db";
 import { getDemoUser, getCurrentUser, isGuestRequest } from "@/lib/session";
+import { documentInputSchema, isSellerWritableStatus } from "@/lib/api/documents";
 import { listVehicles } from "@/lib/api/vehicle-filters";
 
 export const dynamic = "force-dynamic";
@@ -45,6 +46,8 @@ const createVehicleSchema = z.object({
     .default("UNKNOWN"),
   importOrigin: z.enum(["USA", "KOREA", "JAPAN", "THAILAND", "DUBAI", "LOCAL"]).optional().nullable(),
   images: z.array(z.string().min(1)).optional(),
+  // Optional vehicle papers — sellers declare them at creation time too.
+  documents: z.array(documentInputSchema.omit({ id: true })).max(30).optional(),
 });
 
 export async function POST(req: Request) {
@@ -133,6 +136,15 @@ export async function POST(req: Request) {
         importOrigin: data.importOrigin ?? null,
         images: {
           create: (data.images ?? []).map((url, idx) => ({ url, sortOrder: idx })),
+        },
+        documents: {
+          create: (data.documents ?? []).map((d) => ({
+            type: d.type,
+            // Creation is a seller action — verification statuses are clamped.
+            status: isSellerWritableStatus(d.status) ? d.status : "PROVIDED",
+            notes: d.notes?.trim() || null,
+            fileUrl: d.fileUrl?.trim() || null,
+          })),
         },
       },
       select: { id: true },

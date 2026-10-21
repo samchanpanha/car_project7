@@ -6,7 +6,9 @@ import { useFetch, apiSend } from "@/lib/client-hooks";
 import type { MetaDTO } from "@/lib/types";
 import type { MyListingRowDTO } from "@/lib/listing-types";
 import { GuestPanel } from "@/components/marketplace/guest-panel";
-import { PhotoUploader, ListingEditorDialog } from "@/components/marketplace/listing-editor";
+import {
+  PhotoUploader, DocumentsEditor, ListingEditorDialog, type DocumentRow,
+} from "@/components/marketplace/listing-editor";
 import { VehicleStatusBadge } from "@/components/marketplace/dashboard/bits";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -50,6 +52,7 @@ interface SellForm {
   engineCc: string;
   drivetrain: string;
   images: string[];
+  documents: DocumentRow[];
   condition: string;
   accidentDeclared: string;
   ownershipCount: string;
@@ -65,7 +68,7 @@ interface SellForm {
 
 const EMPTY: SellForm = {
   make: "", model: "", variant: "", year: "", mileageKm: "", bodyType: "", fuel: "", transmission: "",
-  engineCc: "", drivetrain: "", images: [], condition: "USED", accidentDeclared: "UNKNOWN",
+  engineCc: "", drivetrain: "", images: [], documents: [], condition: "USED", accidentDeclared: "UNKNOWN",
   ownershipCount: "", vinLast6: "", plateNo: "", importOrigin: "", priceUsd: "", city: "Phnom Penh",
   district: "", description: "", descriptionKm: "",
 };
@@ -151,6 +154,16 @@ export function SellView() {
         ownershipCount: form.ownershipCount ? Number(form.ownershipCount) : undefined,
         importOrigin: form.importOrigin || undefined,
         images: form.images,
+        ...(form.documents.length > 0
+          ? {
+              documents: form.documents.map((d) => ({
+                type: d.type,
+                status: d.status,
+                notes: d.notes.trim() || null,
+                fileUrl: d.fileUrl,
+              })),
+            }
+          : {}),
       });
       toast.success(t("sellSuccess"));
       navigate({ name: "detail", vehicleId: res.vehicle.id });
@@ -307,6 +320,14 @@ export function SellView() {
                   );
                 })}
               </div>
+            </Field>
+            {/* Vehicle papers — optional, can also be added later from "Your listings" */}
+            <Field label={t("sectionDocuments")} hint={t("docsOptionalHint")}>
+              <DocumentsEditor
+                documents={form.documents}
+                onChange={(documents) => set({ documents })}
+                disabled={submitting}
+              />
             </Field>
             <div className="grid grid-cols-2 gap-3">
               <Field label={t("formCondition")}>

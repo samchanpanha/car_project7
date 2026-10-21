@@ -2,8 +2,8 @@ import type {
   SellerSummaryDTO,
   VehicleCardDTO,
   VehicleDetailDTO,
-  VehicleDocumentDTO,
 } from "@/lib/types";
+import type { VehicleDocumentRowDTO } from "@/lib/listing-types";
 import type { Prisma, SellerProfile, User } from "@prisma/client";
 
 /** Vehicle row with the relations needed to build a VehicleCardDTO. */
@@ -61,9 +61,15 @@ export function toSellerFullDTO(user: UserWithSellerProfile): SellerFullDTO {
 }
 
 export function toDocumentDTOs(
-  documents: { type: string; status: string; notes: string | null }[],
-): VehicleDocumentDTO[] {
-  return documents.map((d) => ({ type: d.type, status: d.status, notes: d.notes }));
+  documents: { id: string; type: string; status: string; notes: string | null; fileUrl: string | null }[],
+): VehicleDocumentRowDTO[] {
+  return documents.map((d) => ({
+    id: d.id,
+    type: d.type,
+    status: d.status,
+    notes: d.notes,
+    fileUrl: d.fileUrl,
+  }));
 }
 
 /** Base fields shared by card + detail DTOs. */

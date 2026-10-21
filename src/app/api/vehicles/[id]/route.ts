@@ -3,6 +3,7 @@ import { z } from "zod";
 import { db } from "@/lib/db";
 import { getCurrentUser } from "@/lib/session";
 import { canWriteTenant, toErrorResponse } from "@/lib/api/guards";
+import { documentsInputSchema, isSellerWritableStatus } from "@/lib/api/documents";
 import { toCardDTO, toDetailDTO, vehicleCardInclude } from "@/lib/api/mappers";
 import type { VehicleCardDTO } from "@/lib/types";
 import type { DemoUser } from "@/lib/session";
@@ -95,7 +96,16 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
 
     const similar: VehicleCardDTO[] = similarRows.map(toCardDTO);
 
-    return NextResponse.json({ vehicle: { ...detail, manage }, similar });
+    return NextResponse.json({
+      vehicle: {
+        ...detail,
+        manage,
+        // Only platform admins may set VERIFIED/REJECTED on documents — the
+        // editor uses this to decide which status options to offer.
+        ...(manage ? { canVerifyDocuments: actor.role === "ADMIN" || actor.role === "SUPER_ADMIN" } : {}),
+      },
+      similar,
+    });
   } catch (err) {
     console.error("[api/vehicles/[id]] GET failed:", err);
     return NextResponse.json({ error: "Failed to load vehicle" }, { status: 500 });
@@ -133,6 +143,9 @@ const patchSchema = z
     // replaces the stored rows with this list — covers add / remove / reorder
     // in one idempotent call. Unlimited photo count (sane abuse cap below).
     images: z.array(z.string().min(1).max(200_000)).max(500),
+    // Full desired document list — rows with `id` are updated, rows without
+    // `id` are created, stored rows missing from the list are deleted.
+    documents: documentsInputSchema,
   })
   .partial()
   .refine((v) => Object.keys(v).length > 0, { message: "At least one field is required" });
@@ -214,6 +227,49 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
       changed.push("images");
     }
 
+    // Document management — id-keyed diff (update / create / delete).
+    let docsAdded = 0;
+    let docsUpdated = 0;
+    let docsRemoved = 0;
+    if (data.documents !== undefined) {
+      const isPlatformAdmin = actor.role === "ADMIN" || actor.role === "SUPER_ADMIN";
+      const existing = await db.vehicleDocument.findMany({ where: { vehicleId: id } });
+      const existingById = new Map(existing.map((d) => [d.id, d]));
+      const keepIds = new Set<string>();
+
+      for (const doc of data.documents) {
+        const notes = doc.notes?.trim() || null;
+        const fileUrl = doc.fileUrl?.trim() || null;
+        let status = doc.status;
+
+        const row = doc.id ? existingById.get(doc.id) : undefined;
+        if (row) {
+          keepIds.add(row.id);
+          // Sellers cannot grant or revoke verification — an admin-set
+          // VERIFIED/REJECTED survives seller edits untouched.
+          if (!isPlatformAdmin && !isSellerWritableStatus(status)) status = row.status;
+          await db.vehicleDocument.update({
+            where: { id: row.id },
+            data: { type: doc.type, status, notes, fileUrl },
+          });
+          docsUpdated += 1;
+        } else {
+          if (!isPlatformAdmin && !isSellerWritableStatus(status)) status = "PROVIDED";
+          await db.vehicleDocument.create({
+            data: { vehicleId: id, type: doc.type, status, notes, fileUrl },
+          });
+          docsAdded += 1;
+        }
+      }
+
+      const removeIds = existing.filter((d) => !keepIds.has(d.id)).map((d) => d.id);
+      if (removeIds.length > 0) {
+        await db.vehicleDocument.deleteMany({ where: { id: { in: removeIds }, vehicleId: id } });
+      }
+      docsRemoved = removeIds.length;
+      changed.push("documents");
+    }
+
     if (changed.length > 0) {
       await db.auditLog.create({
         data: {
@@ -221,7 +277,12 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
           action: "LISTING_UPDATED",
           entity: "Vehicle",
           entityId: id,
-          metaJson: JSON.stringify({ fields: changed, imagesAdded, imagesRemoved }),
+          metaJson: JSON.stringify({
+            fields: changed,
+            imagesAdded,
+            imagesRemoved,
+            ...(data.documents !== undefined ? { documents: { added: docsAdded, updated: docsUpdated, removed: docsRemoved } } : {}),
+          }),
         },
       });
     }
