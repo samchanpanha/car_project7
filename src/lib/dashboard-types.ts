@@ -149,6 +149,24 @@ export interface PlatformSettingsDTO {
   featuredListingPriceUsd: number;
   autoApproveListings: boolean;
   maintenanceMode: boolean;
+  /** free-trial length (days) for non-paying seller/dealer accounts, admin-configurable */
+  freeTrialDays: number;
+}
+
+/** Virtual subscription for non-tenant SELLER/DEALER accounts — a free trial
+ *  computed from the account's registration date + the admin-configured
+ *  freeTrialDays platform setting (no Subscription row is stored). */
+export interface SellerSubscriptionDTO {
+  plan: "FREE_TRIAL";
+  status: "ACTIVE" | "EXPIRED";
+  /** account registration date = trial start */
+  startedAt: string;
+  /** startedAt + freeTrialDays */
+  currentPeriodEnd: string;
+  /** whole days remaining (0 when expired) */
+  daysLeft: number;
+  /** the admin-configured trial length used for the computation */
+  freeTrialDays: number;
 }
 
 // ---------- Tenant / Dealer ----------
@@ -269,6 +287,7 @@ export interface AppointmentDTO {
 // POST   /api/tenant/subscription { plan, billingCycle } → { subscription: SubscriptionDTO }
 //
 // GET    /api/account/overview                 → AccountOverviewDTO
+// GET    /api/seller/subscription              → SellerSubscriptionDTO (free trial for non-tenant SELLER/DEALER)
 // GET    /api/account/saved-searches           → SavedSearchDTO[]
 // POST   /api/account/saved-searches { name, query, alertsEnabled? } → SavedSearchDTO
 // DELETE /api/account/saved-searches/[id]      → { ok: true }

@@ -2,51 +2,15 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { db } from "@/lib/db";
 import { requireAdmin, toErrorResponse } from "@/lib/api/guards";
+import { SETTING_KEYS, readPlatformSettings } from "@/lib/platform-settings";
 import type { PlatformSettingsDTO } from "@/lib/dashboard-types";
 
 export const dynamic = "force-dynamic";
 
-const SETTING_KEYS = [
-  "commissionPct",
-  "featuredListingPriceUsd",
-  "autoApproveListings",
-  "maintenanceMode",
-] as const;
-
-type SettingKey = (typeof SETTING_KEYS)[number];
-
-const DEFAULT_SETTINGS: PlatformSettingsDTO = {
-  commissionPct: 2.5,
-  featuredListingPriceUsd: 25,
-  autoApproveListings: false,
-  maintenanceMode: false,
-};
-
-async function readSettings(): Promise<PlatformSettingsDTO> {
-  const rows = await db.platformSetting.findMany({
-    where: { key: { in: [...SETTING_KEYS] } },
-  });
-  const byKey = new Map(rows.map((r) => [r.key, r.valueJson]));
-  const settings: PlatformSettingsDTO = { ...DEFAULT_SETTINGS };
-  for (const key of SETTING_KEYS) {
-    const raw = byKey.get(key);
-    if (raw == null) continue;
-    try {
-      const parsed = JSON.parse(raw) as unknown;
-      if (parsed != null) {
-        (settings as Record<SettingKey, unknown>)[key] = parsed;
-      }
-    } catch {
-      // Malformed stored value — keep default.
-    }
-  }
-  return settings;
-}
-
 export async function GET() {
   try {
     await requireAdmin();
-    return NextResponse.json(await readSettings());
+    return NextResponse.json(await readPlatformSettings());
   } catch (err) {
     return toErrorResponse(err, "api/admin/settings GET", "Failed to load settings");
   }
@@ -57,6 +21,7 @@ const putSchema = z.object({
   featuredListingPriceUsd: z.number().min(0),
   autoApproveListings: z.boolean(),
   maintenanceMode: z.boolean(),
+  freeTrialDays: z.number().int().min(0).max(365),
 });
 
 export async function PUT(req: Request) {

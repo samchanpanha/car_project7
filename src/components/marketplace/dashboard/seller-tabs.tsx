@@ -1,0 +1,272 @@
+"use client";
+
+// Seller / dealer (non-tenant) dashboard tabs — inventory ("add car for sell")
+// and the virtual FREE-trial subscription. Tenant dealerships use the
+// DealerDashboard instead; these tabs give individually-registered
+// sellers/dealers the same core capabilities inside the CustomerDashboard.
+
+import { useAppStore } from "@/lib/store";
+import { useT } from "@/hooks/use-t";
+import { useFetch } from "@/lib/client-hooks";
+import { formatUsd, timeAgo } from "@/lib/format";
+import type { MyListingRowDTO } from "@/lib/listing-types";
+import type { SellerSubscriptionDTO } from "@/lib/dashboard-types";
+import { ListingEditorDialog } from "@/components/marketplace/listing-editor";
+import { Pagination } from "@/components/marketplace/pagination";
+import {
+  EmptyState, FetchErrorState, SectionCard, StatCard, VehicleStatusBadge, formatDateTime,
+} from "./bits";
+import { Button } from "@/components/ui/button";
+import { Progress } from "@/components/ui/progress";
+import { Skeleton } from "@/components/ui/skeleton";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { Badge } from "@/components/ui/badge";
+import {
+  CalendarClock, CarFront, CreditCard, Eye, Pencil, Plus, ShieldCheck, Sparkles, TriangleAlert,
+} from "lucide-react";
+import { useState } from "react";
+import { cn } from "@/lib/utils";
+
+// ---------------- inventory ----------------
+
+const INVENTORY_PAGE_SIZE = 8;
+
+export function SellerInventory() {
+  const t = useT();
+  const locale = useAppStore((s) => s.locale);
+  const navigate = useAppStore((s) => s.navigate);
+  const [editorId, setEditorId] = useState<string | null>(null);
+  const [editorOpen, setEditorOpen] = useState(false);
+  const [page, setPage] = useState(1); // 1-based client-side pagination
+  const { data, loading, error, refetch } = useFetch<MyListingRowDTO[]>("/api/vehicles/mine");
+
+  const rows0 = data ?? [];
+  const published = rows0.filter((v) => v.status === "PUBLISHED").length;
+  const sold = rows0.filter((v) => v.status === "SOLD").length;
+  const totalViews = rows0.reduce((sum, v) => sum + v.views, 0);
+
+  const pageCount = Math.max(1, Math.ceil(rows0.length / INVENTORY_PAGE_SIZE));
+  const currentPage = Math.min(page, pageCount);
+  const rows = rows0.slice((currentPage - 1) * INVENTORY_PAGE_SIZE, currentPage * INVENTORY_PAGE_SIZE);
+
+  return (
+    <>
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+        <StatCard icon={CarFront} label={t("kpiListings")} value={published} />
+        <StatCard icon={Eye} label={t("kpiTotalViews")} value={totalViews} />
+        <StatCard icon={Sparkles} label={t("kpiSold")} value={sold} />
+      </div>
+
+      <SectionCard
+        title={t("tabInventoryMine")}
+        action={
+          <Button
+            size="sm"
+            onClick={() => navigate({ name: "sell" })}
+            className="bg-amber-500 text-slate-950 hover:bg-amber-400 font-semibold"
+          >
+            <Plus className="h-4 w-4 mr-1" aria-hidden />
+            {t("invAddCar")}
+          </Button>
+        }
+      >
+        {loading && !data ? (
+          <div className="space-y-2">
+            {Array.from({ length: 3 }).map((_, i) => (
+              <Skeleton key={i} className="h-16 w-full animate-pulse rounded-xl" />
+            ))}
+          </div>
+        ) : error && !data ? (
+          <FetchErrorState message={error} onRetry={refetch} />
+        ) : rows0.length === 0 ? (
+          <EmptyState
+            icon={CarFront}
+            text={t("invEmpty")}
+            hint={t("invEmptyHint")}
+            className="p-10"
+            action={
+              <Button
+                onClick={() => navigate({ name: "sell" })}
+                className="bg-amber-500 text-slate-950 hover:bg-amber-400 font-semibold"
+              >
+                <Plus className="h-4 w-4 mr-1.5" aria-hidden />
+                {t("invAddCar")}
+              </Button>
+            }
+          />
+        ) : (
+          <>
+            <p className="mb-2 text-xs text-slate-400">
+              {t("invPublishedCount", { published })} · {t("myListingsHint")}
+            </p>
+            <ul className="divide-y divide-slate-100">
+              {rows.map((v) => (
+                <li key={v.id} className="flex items-center gap-3 py-2.5">
+                  <div className="h-12 w-16 shrink-0 overflow-hidden rounded-lg bg-slate-100">
+                    {v.images[0] ? (
+                      <img src={v.images[0]} alt="" className="h-full w-full object-cover" loading="lazy" />
+                    ) : (
+                      <div className="flex h-full w-full items-center justify-center">
+                        <CarFront className="h-5 w-5 text-slate-300" aria-hidden />
+                      </div>
+                    )}
+                  </div>
+                  <button
+                    onClick={() => navigate({ name: "detail", vehicleId: v.id })}
+                    className="min-w-0 flex-1 text-left cursor-pointer"
+                  >
+                    <p className="truncate text-sm font-medium text-slate-900 hover:text-amber-700">
+                      {v.make} {v.model} {v.variant ?? ""} {v.year}
+                    </p>
+                    <p className="mt-0.5 flex items-center gap-2 text-[11px] text-slate-400">
+                      <span>{formatUsd(v.priceUsd)}</span>
+                      <span>· <Eye className="inline h-3 w-3" aria-hidden /> {v.views}</span>
+                      <span className="hidden sm:inline">· {timeAgo(v.createdAt, locale)}</span>
+                    </p>
+                  </button>
+                  <VehicleStatusBadge status={v.status} />
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="h-8 shrink-0"
+                    onClick={() => {
+                      setEditorId(v.id);
+                      setEditorOpen(true);
+                    }}
+                    aria-label={`${t("actEditListing")} — ${v.make} ${v.model}`}
+                  >
+                    <Pencil className="h-3.5 w-3.5" aria-hidden />
+                    <span className="ml-1.5 hidden sm:inline">{t("actEditListing")}</span>
+                  </Button>
+                </li>
+              ))}
+            </ul>
+            {rows0.length > INVENTORY_PAGE_SIZE && (
+              <div className="mt-3 space-y-1.5">
+                <p className="text-center text-xs text-slate-400">
+                  {t("paginationShowing", {
+                    from: (currentPage - 1) * INVENTORY_PAGE_SIZE + 1,
+                    to: Math.min(currentPage * INVENTORY_PAGE_SIZE, rows0.length),
+                    n: rows0.length,
+                  })}
+                </p>
+                <Pagination page={currentPage} pageCount={pageCount} onPageChange={setPage} />
+              </div>
+            )}
+          </>
+        )}
+      </SectionCard>
+
+      <ListingEditorDialog
+        vehicleId={editorId}
+        open={editorOpen}
+        onOpenChange={(o) => {
+          setEditorOpen(o);
+          if (!o) refetch();
+        }}
+      />
+    </>
+  );
+}
+
+// ---------------- subscription (free trial) ----------------
+
+export function SellerSubscription() {
+  const t = useT();
+  const locale = useAppStore((s) => s.locale);
+  const sub = useFetch<SellerSubscriptionDTO>("/api/seller/subscription");
+
+  if (sub.loading && !sub.data) {
+    return (
+      <div className="space-y-3">
+        <Skeleton className="h-28 w-full rounded-xl" />
+        <Skeleton className="h-20 w-full rounded-xl" />
+      </div>
+    );
+  }
+  if (sub.error && !sub.data) return <FetchErrorState message={sub.error} onRetry={sub.refetch} />;
+  const s = sub.data;
+  if (!s) return null;
+
+  const usedPct = Math.max(
+    0,
+    Math.min(100, Math.round(((s.freeTrialDays - s.daysLeft) / Math.max(1, s.freeTrialDays)) * 100)),
+  );
+  const active = s.status === "ACTIVE";
+
+  return (
+    <>
+      <SectionCard
+        title={t("tabSubscription")}
+        action={
+          <Badge
+            className={cn(
+              "font-semibold",
+              active ? "border-emerald-200 bg-emerald-50 text-emerald-700" : "border-rose-200 bg-rose-50 text-rose-700",
+            )}
+            variant="outline"
+          >
+            {active ? t("subTrialActive") : t("subTrialExpired")}
+          </Badge>
+        }
+      >
+        <div className="flex flex-wrap items-start justify-between gap-4">
+          <div className="min-w-0">
+            <p className="flex items-center gap-2 text-lg font-bold text-slate-900">
+              <CreditCard className="h-5 w-5 text-amber-600" aria-hidden />
+              {t("subFreeTrialTitle")}
+            </p>
+            <p className="mt-1 text-xs text-slate-500">{t("subTrialPlanHint")}</p>
+          </div>
+          <div className="text-right">
+            <p className={cn("text-2xl font-bold", active ? "text-emerald-600" : "text-rose-600")}>
+              {active ? t("subTrialDaysLeft", { n: s.daysLeft }) : t("subTrialExpiredShort")}
+            </p>
+            <p className="mt-0.5 flex items-center justify-end gap-1 text-[11px] text-slate-400">
+              <CalendarClock className="h-3 w-3" aria-hidden />
+              {t("subTrialEnds", { date: formatDateTime(s.currentPeriodEnd, locale) })}
+            </p>
+          </div>
+        </div>
+
+        <div className="mt-4">
+          <div className="mb-1.5 flex items-center justify-between text-[11px] font-medium text-slate-400">
+            <span>{t("subTrialProgress")}</span>
+            <span>{usedPct}%</span>
+          </div>
+          <Progress value={usedPct} aria-label={t("subTrialProgress")} className="h-2" />
+          <div className="mt-1.5 flex justify-between text-[11px] text-slate-400">
+            <span>{t("subTrialStarted", { date: formatDateTime(s.startedAt, locale) })}</span>
+            <span>{t("subTrialLength", { n: s.freeTrialDays })}</span>
+          </div>
+        </div>
+      </SectionCard>
+
+      {!active && (
+        <Alert className="border-rose-200 bg-rose-50 text-rose-900">
+          <TriangleAlert className="h-4 w-4" aria-hidden />
+          <AlertTitle>{t("subTrialExpiredTitle")}</AlertTitle>
+          <AlertDescription>{t("subTrialExpiredHint")}</AlertDescription>
+        </Alert>
+      )}
+
+      <SectionCard title={t("subWhatNextTitle")}>
+        <ul className="space-y-2.5 text-xs leading-relaxed text-slate-600">
+          <li className="flex items-start gap-2">
+            <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0 text-teal-600" aria-hidden />
+            {t("subWhatNextKeep")}
+          </li>
+          <li className="flex items-start gap-2">
+            <CarFront className="mt-0.5 h-4 w-4 shrink-0 text-amber-600" aria-hidden />
+            {t("subWhatNextDealer")}
+          </li>
+          <li className="flex items-start gap-2">
+            <CreditCard className="mt-0.5 h-4 w-4 shrink-0 text-slate-400" aria-hidden />
+            {t("subWhatNextPlans")}
+          </li>
+        </ul>
+        <p className="mt-3 text-[11px] text-slate-400">{t("subTrialAdminNote")}</p>
+      </SectionCard>
+    </>
+  );
+}

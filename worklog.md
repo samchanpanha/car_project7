@@ -623,3 +623,23 @@ Work Log:
 Stage Summary:
 - Registration now self-selects account type among BUYER/SELLER/DEALER, defaulting to BUYER when omitted; staff roles blocked by schema.
 - Dealer signups get a DEALER-type seller profile; a future "create dealership/tenant" flow can pick these accounts up.
+
+---
+Task ID: seller-dashboard-trial
+Agent: Main orchestrator (Z.ai Code)
+Task: Seller/DEALER registrations missing Inventory + Subscription; auto free trial (1 month default, admin-configurable); new admin setting for non-paying (inactive) users' trial
+
+Work Log:
+- Root cause: dashboard router sends non-tenant users to CustomerDashboard which had no selling tools — Subscription model is tenant-tied, so individual sellers/dealers had neither inventory nor subscription UI.
+- src/lib/dashboard-types.ts: added freeTrialDays to PlatformSettingsDTO; new SellerSubscriptionDTO (plan FREE_TRIAL, status ACTIVE/EXPIRED, startedAt, currentPeriodEnd, daysLeft, freeTrialDays).
+- src/lib/platform-settings.ts (new): shared readPlatformSettings() + sellerTrialWindow() (createdAt → createdAt + freeTrialDays, daysLeft ceil). Admin settings route refactored onto it; putSchema gains freeTrialDays int 0-365, default 30.
+- GET /api/seller/subscription (new): guest→401, role must be SELLER/DEALER else 403; returns computed trial. No DB rows — admin setting changes apply immediately to all accounts.
+- Admin settings UI (admin-dashboard.tsx): new "Free trial days (new sellers & dealers)" number input + hint, included in PUT.
+- src/components/marketplace/dashboard/seller-tabs.tsx (new): SellerInventory (stat cards published/views/sold, /api/vehicles/mine list with status badges + ListingEditorDialog edit + Pagination, "Add car" → sell view, empty-state CTA) and SellerSubscription (Free trial card with Active/Expired badge, days left, Progress bar of trial usage, start/end dates, What's next guidance, admin-note). EmptyState extended with optional action prop.
+- customer-dashboard.tsx: SELLER/DEALER (non-tenant) now get "My inventory" + "Subscription" tabs; badge shows Dealer role properly.
+- i18n: 26 new keys × 4 locales (tabInventoryMine, inv*, kpiTotalViews, kpiSold, sub* trial texts, setFreeTrialDays(+Hint)).
+- Browser-verified end-to-end: seller login → tabs visible → inventory empty state + Add car → sell form; dealer login → same tabs + Add car works; subscription card shows Active/30 days left/progress/dates. Admin (Nita) Settings shows new input (30), changed to 45, saved (toast), seller trial recomputed to 45 daysLeft; reset to 30.
+- API guards verified: BUYER 403, anon 401, SELLER/DEALER 200. Test users cleaned; lint clean; no dev.log errors.
+
+Stage Summary:
+- New SELLER/DEALER registrations now have a dashboard Inventory ("add car for sell") and a Subscription tab showing an automatic FREE trial — 30 days by default, fully admin-configurable via Settings → Platform settings → "Free trial days". Trial is virtual (registration date + setting), so config changes apply instantly platform-wide.

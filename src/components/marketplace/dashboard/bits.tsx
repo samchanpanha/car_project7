@@ -242,17 +242,21 @@ export function EmptyState({
   text,
   hint,
   className,
+  action,
 }: {
   icon: React.ComponentType<{ className?: string }>;
   text: string;
   hint?: string;
   className?: string;
+  /** optional CTA rendered under the hint (e.g. an "Add car" button) */
+  action?: React.ReactNode;
 }) {
   return (
     <div className={cn("rounded-xl border border-dashed border-slate-300 bg-slate-50 p-8 text-center", className)}>
       <Icon className="mx-auto h-8 w-8 text-slate-300" aria-hidden />
       <p className="mt-3 text-sm font-medium text-slate-700">{text}</p>
       {hint && <p className="mt-1 text-xs leading-relaxed text-slate-500">{hint}</p>}
+      {action && <div className="mt-4 flex justify-center">{action}</div>}
     </div>
   );
 }

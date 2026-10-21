@@ -12,6 +12,7 @@ import type { VehiclesResponseDTO } from "@/lib/types";
 import { VehicleCard, VehicleCardSkeleton } from "@/components/marketplace/vehicle-card";
 import { DashboardShell, type DashboardTabDef } from "./shell";
 import { PurchaseRequestList } from "./purchase-list";
+import { SellerInventory, SellerSubscription } from "./seller-tabs";
 import {
   AppointmentStatusBadge, ConfidenceRing, EmptyState, FetchErrorState, SectionCard, StatCard,
   StatCardSkeleton, errorText, formatDateTime, isForbidden,
@@ -24,7 +25,7 @@ import {
   AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import {
-  CalendarDays, Car, FileCheck2, Handshake, Heart, LayoutDashboard, MessageSquare, Play, Search,
+  CalendarDays, Car, CreditCard, FileCheck2, Handshake, Heart, LayoutDashboard, MessageSquare, Play, Search,
   Trash2, TriangleAlert, X,
 } from "lucide-react";
 import { useState } from "react";
@@ -38,6 +39,11 @@ export function CustomerDashboard({ me }: { me: SessionDTO }) {
   const active = (view.name === "dashboard" && view.tab) || "overview";
   const setTab = (tab: string) => navigate({ name: "dashboard", tab });
 
+  // Individually-registered sellers/dealers (no dealership yet) get selling
+  // tools too: their own inventory ("add car for sell") and the platform
+  // free-trial subscription. Tenant members see the DealerDashboard instead.
+  const isSellerish = me.user.role === "SELLER" || me.user.role === "DEALER";
+
   const tabs: DashboardTabDef[] = [
     { id: "overview", label: t("tabOverview"), icon: LayoutDashboard },
     { id: "purchases", label: t("tabPurchases"), icon: Handshake },
@@ -49,13 +55,23 @@ export function CustomerDashboard({ me }: { me: SessionDTO }) {
     ...(me.user.role === "SELLER"
       ? [{ id: "sales", label: t("tabSalesRequests"), icon: Car } as DashboardTabDef]
       : []),
+    ...(isSellerish
+      ? [
+          { id: "inventory", label: t("tabInventoryMine"), icon: Car } as DashboardTabDef,
+          { id: "subscription", label: t("tabSubscription"), icon: CreditCard } as DashboardTabDef,
+        ]
+      : []),
   ];
 
   return (
     <DashboardShell
       greeting={t("dashboardWelcome", { name: me.user.name })}
       subtitle={t("dashboardCustomerSub")}
-      badge={<span className="text-xs font-medium text-slate-500">{me.user.role === "BUYER" ? t("roleBUYER") : t("roleSELLER")}</span>}
+      badge={
+        <span className="text-xs font-medium text-slate-500">
+          {me.user.role === "BUYER" ? t("roleBUYER") : me.user.role === "DEALER" ? t("roleDEALER") : t("roleSELLER")}
+        </span>
+      }
       tabs={tabs}
       active={active}
       onTab={setTab}
@@ -69,6 +85,8 @@ export function CustomerDashboard({ me }: { me: SessionDTO }) {
       {active === "sales" && me.user.role === "SELLER" && (
         <PurchaseRequestList url="/api/seller/purchase-requests" mode="seller" />
       )}
+      {active === "inventory" && isSellerish && <SellerInventory />}
+      {active === "subscription" && isSellerish && <SellerSubscription />}
     </DashboardShell>
   );
 }

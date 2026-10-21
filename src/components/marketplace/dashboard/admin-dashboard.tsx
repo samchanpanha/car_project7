@@ -685,6 +685,7 @@ function AdminSettings() {
         featuredListingPriceUsd: Number(form.featuredListingPriceUsd) || 0,
         autoApproveListings: form.autoApproveListings,
         maintenanceMode: form.maintenanceMode,
+        freeTrialDays: Math.max(0, Math.min(365, Math.round(Number(form.freeTrialDays) || 0))),
       });
       setForm(saved);
       toast.success(t("toastUpdated"));
@@ -726,6 +727,15 @@ function AdminSettings() {
             value={form.featuredListingPriceUsd}
             onChange={(e) => setForm({ ...form, featuredListingPriceUsd: Number(e.target.value) })}
           />
+        </div>
+        <div>
+          <Label htmlFor="adm-trial" className="text-xs text-slate-500">{t("setFreeTrialDays")}</Label>
+          <Input
+            id="adm-trial" type="number" min={0} max={365} className="mt-1.5 h-9"
+            value={form.freeTrialDays}
+            onChange={(e) => setForm({ ...form, freeTrialDays: Number(e.target.value) })}
+          />
+          <p className="mt-1 text-[11px] leading-relaxed text-slate-400">{t("setFreeTrialDaysHint")}</p>
         </div>
         <div className="flex items-center justify-between rounded-lg border border-slate-200 p-3">
           <Label htmlFor="adm-auto" className="text-xs font-medium text-slate-600 cursor-pointer">{t("setAutoApprove")}</Label>

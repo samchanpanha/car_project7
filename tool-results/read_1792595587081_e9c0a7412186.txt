@@ -1,0 +1,887 @@
+     1→"use client";
+     2→
+     3→// Dealer (tenant) dashboard — inventory, leads, appointments, staff, subscription, profile.
+     4→
+     5→import { useAppStore } from "@/lib/store";
+     6→import { useT } from "@/hooks/use-t";
+     7→import { useFetch, apiSend, qs } from "@/lib/client-hooks";
+     8→import { formatUsd, timeAgo } from "@/lib/format";
+     9→import type {
+    10→  SessionDTO, TenantDashboardDTO, TenantVehicleRowDTO, TenantLeadDTO, TenantAppointmentDTO,
+    11→  TenantMemberDTO, PlanDTO, SubscriptionDTO,
+    12→} from "@/lib/dashboard-types";
+    13→import type { VehicleStatus } from "@/lib/types";
+    14→import { DashboardShell, type DashboardTabDef } from "./shell";
+    15→import { RequestSubscriptionDialog, TenantPaymentHistory, PendingPaymentBanner } from "./payment-flow";
+    16→import { PurchaseRequestList } from "./purchase-list";
+    17→import { ListingEditorDialog } from "@/components/marketplace/listing-editor";
+    18→import { Pagination } from "@/components/marketplace/pagination";
+    19→import {
+    20→  AppointmentStatusBadge, AvatarCircle, EmptyState, FetchErrorState, SectionCard, StatCard,
+    21→  StatCardSkeleton, TenantRoleBadge, VerificationBadge, VehicleStatusBadge, errorText,
+    22→  formatDateTime, isForbidden, isFeaturedLimit,
+    23→} from "./bits";
+    24→import { Button } from "@/components/ui/button";
+    25→import { Input } from "@/components/ui/input";
+    26→import { Label } from "@/components/ui/label";
+    27→import { Textarea } from "@/components/ui/textarea";
+    28→import { Progress } from "@/components/ui/progress";
+    29→import { Skeleton } from "@/components/ui/skeleton";
+    30→import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+    31→import {
+    32→  Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle,
+    33→} from "@/components/ui/dialog";
+    34→import {
+    35→  DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger,
+    36→} from "@/components/ui/dropdown-menu";
+    37→import {
+    38→  CalendarDays, Car, ChevronDown, CreditCard, Eye, Heart, Hourglass, LayoutDashboard, Loader2,
+    39→  MessageSquare, MoreHorizontal, Plus, Settings, Star, Store, UserPlus, Users,
+    40→} from "lucide-react";
+    41→import { useEffect, useState } from "react";
+    42→import { toast } from "sonner";
+    43→import { cn } from "@/lib/utils";
+    44→
+    45→const TENANT_STATUSES: (VehicleStatus | "ALL")[] = ["ALL", "PUBLISHED", "PENDING_REVIEW", "DRAFT", "SOLD", "ARCHIVED"];
+    46→const STAFF_ROLES = ["MANAGER", "SALES_STAFF", "INVENTORY_MANAGER"] as const;
+    47→
+    48→export function DealerDashboard({ me }: { me: SessionDTO }) {
+    49→  const t = useT();
+    50→  const view = useAppStore((s) => s.view);
+    51→  const navigate = useAppStore((s) => s.navigate);
+    52→  const active = (view.name === "dashboard" && view.tab) || "overview";
+    53→  const setTab = (tab: string) => navigate({ name: "dashboard", tab });
+    54→
+    55→  const tabs: DashboardTabDef[] = [
+    56→    { id: "overview", label: t("tabOverview"), icon: LayoutDashboard },
+    57→    { id: "inventory", label: t("tabInventory"), icon: Car },
+    58→    { id: "leads", label: t("tabLeads"), icon: MessageSquare },
+    59→    { id: "appointments", label: t("tabAppointments"), icon: CalendarDays },
+    60→    { id: "staff", label: t("tabStaff"), icon: Users },
+    61→    { id: "subscription", label: t("tabSubscription"), icon: CreditCard },
+    62→    { id: "settings", label: t("tabSettings"), icon: Settings },
+    63→  ];
+    64→
+    65→  return (
+    66→    <DashboardShell
+    67→      greeting={t("dashboardWelcome", { name: me.user.name })}
+    68→      subtitle={t("dashboardDealerSub")}
+    69→      badge={
+    70→        <span className="flex items-center gap-1.5">
+    71→          <TenantRoleBadge role={me.tenant?.myRole ?? "OWNER"} />
+    72→          {me.tenant && <span className="text-xs font-medium text-slate-500">{me.tenant.name}</span>}
+    73→        </span>
+    74→      }
+    75→      tabs={tabs}
+    76→      active={active}
+    77→      onTab={setTab}
+    78→    >
+    79→      {active === "overview" && <DealerOverview />}
+    80→      {active === "inventory" && <DealerInventory />}
+    81→      {active === "leads" && <DealerLeads />}
+    82→      {active === "appointments" && <DealerAppointments />}
+    83→      {active === "staff" && <DealerStaff />}
+    84→      {active === "subscription" && <DealerSubscription />}
+    85→      {active === "settings" && <DealerSettings />}
+    86→    </DashboardShell>
+    87→  );
+    88→}
+    89→
+    90→// ---------------- overview ----------------
+    91→
+    92→function DealerOverview() {
+    93→  const t = useT();
+    94→  const locale = useAppStore((s) => s.locale);
+    95→  const navigate = useAppStore((s) => s.navigate);
+    96→  const meDash = useFetch<TenantDashboardDTO>("/api/tenant/me");
+    97→  const leads = useFetch<TenantLeadDTO[]>("/api/tenant/leads");
+    98→  const inv = useFetch<TenantVehicleRowDTO[]>("/api/tenant/inventory");
+    99→  const featuredUsed = (inv.data ?? []).filter((v) => v.featured).length;
+   100→
+   101→  if (meDash.loading && !meDash.data) {
+   102→    return (
+   103→      <>
+   104→        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+   105→          {Array.from({ length: 6 }).map((_, i) => <StatCardSkeleton key={i} />)}
+   106→        </div>
+   107→        <Skeleton className="h-40 w-full rounded-xl" />
+   108→      </>
+   109→    );
+   110→  }
+   111→  if (meDash.error && !meDash.data) return <FetchErrorState message={meDash.error} onRetry={meDash.refetch} />;
+   112→  const dash = meDash.data;
+   113→  if (!dash) return null;
+   114→
+   115→  const sub = dash.subscription;
+   116→  const used = dash.stats.published + dash.stats.pending + dash.stats.sold + dash.stats.draft;
+   117→  const ver = dash.tenant.verification;
+   118→
+   119→  return (
+   120→    <>
+   121→      {(ver === "PENDING" || ver === "UNVERIFIED") && (
+   122→        <Alert className={cn(ver === "PENDING" ? "border-amber-300 bg-amber-50 text-amber-900" : "border-slate-300 bg-slate-100 text-slate-700")}>
+   123→          <Hourglass className="h-4 w-4" aria-hidden />
+   124→          <AlertTitle>{ver === "PENDING" ? t("verAlertPendingTitle") : t("verAlertUnverifiedTitle")}</AlertTitle>
+   125→          <AlertDescription>{ver === "PENDING" ? t("verAlertPendingBody") : t("verAlertUnverifiedBody")}</AlertDescription>
+   126→        </Alert>
+   127→      )}
+   128→
+   129→      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+   130→        <StatCard icon={Car} label={t("vstPUBLISHED")} value={dash.stats.published} />
+   131→        <StatCard icon={Hourglass} label={t("vstPENDING_REVIEW")} value={dash.stats.pending} />
+   132→        <StatCard icon={Eye} label={t("kpiViews")} value={dash.stats.totalViews} />
+   133→        <StatCard icon={MessageSquare} label={t("kpiLeads")} value={dash.stats.totalLeads} />
+   134→        <StatCard icon={Heart} label={t("kpiFavorites")} value={dash.stats.activeFavorites} />
+   135→        <StatCard icon={CalendarDays} label={t("kpiAppointments")} value={dash.stats.appointmentsRequested} />
+   136→      </div>
+   137→
+   138→      <SectionCard
+   139→        title={t("subCurrentPlan")}
+   140→        action={sub ? <span className="text-xs text-slate-400">{timeAgo(sub.startedAt, locale)}</span> : undefined}
+   141→      >
+   142→        {!sub ? (
+   143→          <p className="text-sm text-slate-500">{t("subNoPlan")}</p>
+   144→        ) : (
+   145→          <div className="space-y-3">
+   146→            <div className="flex flex-wrap items-center gap-2">
+   147→              <span className="rounded-full border border-amber-300 bg-amber-50 px-2.5 py-0.5 text-xs font-bold text-amber-800">{sub.plan}</span>
+   148→              <span className="text-xs text-slate-500">{formatUsd(sub.priceUsd)} / {sub.billingCycle === "MONTHLY" ? t("billingMonthly").toLowerCase() : t("billingYearly").toLowerCase()}</span>
+   149→              <span className="text-xs text-slate-400">· {t("subRenews", { d: formatDateTime(sub.currentPeriodEnd, locale) })}</span>
+   150→            </div>
+   151→            <div>
+   152→              <div className="mb-1 flex justify-between text-xs text-slate-500">
+   153→                <span>{t("subListingsUsage", { used, limit: sub.listingsLimit })}</span>
+   154→                <span className="tabular-nums">{Math.min(100, Math.round((used / Math.max(1, sub.listingsLimit)) * 100))}%</span>
+   155→              </div>
+   156→              <Progress value={(used / Math.max(1, sub.listingsLimit)) * 100} className="h-2" aria-label={t("subListingsUsage", { used, limit: sub.listingsLimit })} />
+   157→            </div>
+   158→            <div>
+   159→              <div className="mb-1 flex justify-between text-xs text-slate-500">
+   160→                <span>{t("subFeaturedUsage", { used: featuredUsed, limit: sub.featuredLimit })}</span>
+   161→              </div>
+   162→              <Progress value={Math.min(100, (featuredUsed / Math.max(1, sub.featuredLimit)) * 100)} className="h-2" aria-label={t("subFeaturedUsage", { used: featuredUsed, limit: sub.featuredLimit })} />
+   163→            </div>
+   164→            <p className="text-xs text-slate-500">{t("subSeats", { n: sub.seats })}</p>
+   165→          </div>
+   166→        )}
+   167→      </SectionCard>
+   168→
+   169→      <SectionCard
+   170→        title={t("recentLeads")}
+   171→        action={
+   172→          <Button variant="ghost" size="sm" onClick={() => navigate({ name: "dashboard", tab: "leads" })} className="text-xs text-amber-700 hover:text-amber-800">
+   173→            {t("viewAllLeads")}
+   174→          </Button>
+   175→        }
+   176→      >
+   177→        {leads.loading && !leads.data ? (
+   178→          <Skeleton className="h-24 w-full rounded-lg" />
+   179→        ) : !leads.data || leads.data.length === 0 ? (
+   180→          <EmptyState icon={MessageSquare} text={t("leadsEmpty")} hint={t("leadsEmptyHint")} />
+   181→        ) : (
+   182→          <ul className="divide-y divide-slate-100">
+   183→            {leads.data.slice(0, 3).map((l) => (
+   184→              <li key={l.conversationId} className="flex items-center justify-between gap-3 py-2.5">
+   185→                <div className="min-w-0">
+   186→                  <p className="truncate text-sm font-medium text-slate-800">
+   187→                    {l.buyer.name} · {l.vehicle.make} {l.vehicle.model} {l.vehicle.year}
+   188→                  </p>
+   189→                  {l.lastMessage && <p className="truncate text-xs text-slate-500">{l.lastMessage.body}</p>}
+   190→                </div>
+   191→                <Button variant="outline" size="sm" onClick={() => navigate({ name: "messages", conversationId: l.conversationId })}>
+   192→                  {t("actOpenChat")}
+   193→                </Button>
+   194→              </li>
+   195→            ))}
+   196→          </ul>
+   197→        )}
+   198→      </SectionCard>
+   199→    </>
+   200→  );
+   201→}
+   202→
+   203→// ---------------- inventory ----------------
+   204→
+   205→const INVENTORY_PAGE_SIZE = 8;
+   206→
+   207→function DealerInventory() {
+   208→  const t = useT();
+   209→  const navigate = useAppStore((s) => s.navigate);
+   210→  const [status, setStatus] = useState<string>("ALL");
+   211→  const [page, setPage] = useState(1); // 1-based client-side pagination
+   212→  const [busyId, setBusyId] = useState<string | null>(null);
+   213→  const [editing, setEditing] = useState<TenantVehicleRowDTO | null>(null);
+   214→  const [editPrice, setEditPrice] = useState("");
+   215→  // Full stock editor (all info + unlimited image management) — Task 16.
+   216→  const [editorId, setEditorId] = useState<string | null>(null);
+   217→  const [editorOpen, setEditorOpen] = useState(false);
+   218→
+   219→  const url = `/api/tenant/inventory${qs({ status: status === "ALL" ? undefined : status })}`;
+   220→  const { data, loading, error, refetch } = useFetch<TenantVehicleRowDTO[]>(url);
+   221→
+   222→  // Page the full stock list client-side; refetches keep the current page.
+   223→  const totalRows = data?.length ?? 0;
+   224→  const pageCount = Math.max(1, Math.ceil(totalRows / INVENTORY_PAGE_SIZE));
+   225→  const currentPage = Math.min(page, pageCount);
+   226→  const rows = (data ?? []).slice((currentPage - 1) * INVENTORY_PAGE_SIZE, currentPage * INVENTORY_PAGE_SIZE);
+   227→
+   228→  const patch = async (id: string, body: Record<string, string | number | boolean>) => {
+   229→    setBusyId(id);
+   230→    try {
+   231→      await apiSend(`/api/tenant/inventory/${id}`, "PATCH", body);
+   232→      toast.success(t("toastUpdated"));
+   233→      refetch();
+   234→    } catch (e) {
+   235→      toast.error(isForbidden(e) ? t("toastForbidden") : isFeaturedLimit(e) ? t("toastFeaturedLimit") : errorText(e));
+   236→    } finally {
+   237→      setBusyId(null);
+   238→    }
+   239→  };
+   240→
+   241→  const submitPrice = async () => {
+   242→    if (!editing) return;
+   243→    const p = Number(editPrice);
+   244→    if (!Number.isFinite(p) || p <= 0) return;
+   245→    await patch(editing.id, { priceUsd: p });
+   246→    setEditing(null);
+   247→  };
+   248→
+   249→  return (
+   250→    <div className="space-y-4">
+   251→      <div className="flex flex-wrap items-center justify-between gap-2">
+   252→        <div className="flex flex-wrap gap-1.5">
+   253→          {TENANT_STATUSES.map((s) => (
+   254→            <button
+   255→              key={s}
+   256→              onClick={() => { setStatus(s); setPage(1); }}
+   257→              aria-pressed={status === s}
+   258→              className={cn(
+   259→                "rounded-full border px-3 py-1.5 text-xs font-medium transition-colors cursor-pointer",
+   260→                status === s ? "border-amber-500 bg-amber-50 text-amber-800" : "border-slate-200 bg-white text-slate-600 hover:border-slate-300"
+   261→              )}
+   262→            >
+   263→              {t(`vst${s}` as never)}
+   264→            </button>
+   265→          ))}
+   266→        </div>
+   267→        <Button size="sm" onClick={() => navigate({ name: "sell" })} className="bg-amber-500 hover:bg-amber-400 text-slate-950 font-semibold">
+   268→          <Plus className="h-4 w-4 mr-1.5" aria-hidden />
+   269→          {t("addListing")}
+   270→        </Button>
+   271→      </div>
+   272→
+   273→      {loading && !data ? (
+   274→        <div className="space-y-3">{Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} className="h-20 w-full rounded-xl" />)}</div>
+   275→      ) : error && !data ? (
+   276→        <FetchErrorState message={error} onRetry={refetch} />
+   277→      ) : !data || data.length === 0 ? (
+   278→        <EmptyState icon={Car} text={t("inventoryEmpty")} />
+   279→      ) : (
+   280→        <div className="space-y-2.5">
+   281→          {rows.map((v) => (
+   282→            <div key={v.id} className="flex items-center gap-3 rounded-xl border border-slate-200 bg-white p-3">
+   283→              <div className="h-14 w-20 shrink-0 overflow-hidden rounded-lg bg-slate-100">
+   284→                {v.images[0] ? (
+   285→                  <img src={v.images[0]} alt="" className="h-full w-full object-cover" />
+   286→                ) : (
+   287→                  <Car className="mx-auto h-6 w-6 text-slate-300" aria-hidden />
+   288→                )}
+   289→              </div>
+   290→              <div className="min-w-0 flex-1">
+   291→                <p className="truncate text-sm font-medium text-slate-900">
+   292→                  {v.make} {v.model} {v.variant ?? ""} {v.year}
+   293→                </p>
+   294→                <p className="mt-0.5 text-[11px] text-slate-400">
+   295→                  {formatUsd(v.priceUsd)} · <Eye className="inline h-3 w-3" aria-hidden /> {v.views}
+   296→                </p>
+   297→                <div className="mt-1.5 flex items-center gap-2">
+   298→                  <VehicleStatusBadge status={v.status} />
+   299→                  {v.featured && <Star className="h-3.5 w-3.5 fill-amber-400 text-amber-400" aria-label={t("actFeature")} />}
+   300→                </div>
+   301→              </div>
+   302→              <DropdownMenu>
+   303→                <DropdownMenuTrigger asChild>
+   304→                  <Button variant="outline" size="icon" className="h-9 w-9" disabled={busyId === v.id} aria-label={`${t("actions")} ${v.make} ${v.model}`}>
+   305→                    {busyId === v.id ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : <MoreHorizontal className="h-4 w-4" aria-hidden />}
+   306→                  </Button>
+   307→                </DropdownMenuTrigger>
+   308→                <DropdownMenuContent align="end" className="w-48">
+   309→                  <DropdownMenuLabel>{t("actions")}</DropdownMenuLabel>
+   310→                  <DropdownMenuSeparator />
+   311→                  <DropdownMenuItem onClick={() => { setEditorId(v.id); setEditorOpen(true); }}>
+   312→                    {t("actEditListing")}
+   313→                  </DropdownMenuItem>
+   314→                  <DropdownMenuItem onClick={() => patch(v.id, { status: "PUBLISHED" })}>{t("actPublish")}</DropdownMenuItem>
+   315→                  <DropdownMenuItem onClick={() => patch(v.id, { status: "DRAFT" })}>{t("actUnpublish")}</DropdownMenuItem>
+   316→                  <DropdownMenuItem onClick={() => patch(v.id, { status: "SOLD" })}>{t("actMarkSold")}</DropdownMenuItem>
+   317→                  <DropdownMenuItem onClick={() => patch(v.id, { status: "ARCHIVED" })}>{t("actArchive")}</DropdownMenuItem>
+   318→                  <DropdownMenuSeparator />
+   319→                  <DropdownMenuItem onClick={() => patch(v.id, { featured: !v.featured })}>
+   320→                    {v.featured ? t("actUnfeature") : t("actFeature")}
+   321→                  </DropdownMenuItem>
+   322→                  <DropdownMenuItem onClick={() => { setEditing(v); setEditPrice(String(v.priceUsd)); }}>
+   323→                    {t("actEditPrice")}
+   324→                  </DropdownMenuItem>
+   325→                </DropdownMenuContent>
+   326→              </DropdownMenu>
+   327→            </div>
+   328→          ))}
+   329→        </div>
+   330→      )}
+   331→
+   332→      {/* Pagination — paged over the full stock list */}
+   333→      {data && data.length > INVENTORY_PAGE_SIZE && (
+   334→        <div className="space-y-1.5 pt-1">
+   335→          <p className="text-center text-xs text-slate-400">
+   336→            {t("paginationShowing", {
+   337→              from: (currentPage - 1) * INVENTORY_PAGE_SIZE + 1,
+   338→              to: Math.min(currentPage * INVENTORY_PAGE_SIZE, data.length),
+   339→              n: data.length,
+   340→            })}
+   341→          </p>
+   342→          <Pagination page={currentPage} pageCount={pageCount} onPageChange={setPage} disabled={busyId !== null} />
+   343→        </div>
+   344→      )}
+   345→
+   346→      {/* Edit price dialog */}
+   347→      <Dialog open={Boolean(editing)} onOpenChange={(o) => !o && setEditing(null)}>
+   348→        <DialogContent className="sm:max-w-xs">
+   349→          <DialogHeader>
+   350→            <DialogTitle>{t("editPriceTitle")}</DialogTitle>
+   351→          </DialogHeader>
+   352→          <div>
+   353→            <Label htmlFor="inv-price" className="text-xs text-slate-500">{editing ? `${editing.make} ${editing.model} ${editing.year}` : ""}</Label>
+   354→            <Input
+   355→              id="inv-price" type="number" min={0} className="mt-1.5 h-9" value={editPrice}
+   356→              onChange={(e) => setEditPrice(e.target.value)} autoFocus
+   357→            />
+   358→          </div>
+   359→          <DialogFooter>
+   360→            <Button variant="outline" size="sm" onClick={() => setEditing(null)}>{t("cancel")}</Button>
+   361→            <Button size="sm" onClick={submitPrice} disabled={busyId !== null} className="bg-amber-500 hover:bg-amber-400 text-slate-950 font-semibold">
+   362→              {t("saveChanges")}
+   363→            </Button>
+   364→          </DialogFooter>
+   365→        </DialogContent>
+   366→      </Dialog>
+   367→
+   368→      {/* Full stock editor — all listing info + unlimited photo manager */}
+   369→      <ListingEditorDialog
+   370→        vehicleId={editorId}
+   371→        open={editorOpen}
+   372→        onOpenChange={(o) => {
+   373→          setEditorOpen(o);
+   374→          if (!o) refetch();
+   375→        }}
+   376→      />
+   377→    </div>
+   378→  );
+   379→}
+   380→
+   381→// ---------------- leads ----------------
+   382→
+   383→function DealerLeads() {
+   384→  const t = useT();
+   385→  const locale = useAppStore((s) => s.locale);
+   386→  const navigate = useAppStore((s) => s.navigate);
+   387→  const { data, loading, error, refetch } = useFetch<TenantLeadDTO[]>("/api/tenant/leads");
+   388→
+   389→  return (
+   390→    <div className="space-y-5">
+   391→      <PurchaseRequestList url="/api/tenant/purchase-requests" mode="seller" />
+   392→
+   393→      <div>
+   394→        <h2 className="mb-3 text-sm font-semibold text-slate-900">{t("recentLeads")}</h2>
+   395→        {loading && !data ? <div className="space-y-3">{Array.from({ length: 3 }).map((_, i) => <Skeleton key={i} className="h-24 w-full rounded-xl" />)}</div>
+   396→        : error && !data ? <FetchErrorState message={error} onRetry={refetch} />
+   397→        : !data || data.length === 0 ? <EmptyState icon={MessageSquare} text={t("leadsEmpty")} hint={t("leadsEmptyHint")} />
+   398→        : (
+   399→        <div className="space-y-3">
+   400→          {data.map((l) => (
+   401→            <div key={l.conversationId} className="rounded-xl border border-slate-200 bg-white p-4">
+   402→              <div className="flex items-start justify-between gap-3">
+   403→                <div className="flex min-w-0 items-start gap-3">
+   404→                  <div className="h-12 w-16 shrink-0 overflow-hidden rounded-lg bg-slate-100">
+   405→                    {l.vehicle.thumbnail ? (
+   406→                      <img src={l.vehicle.thumbnail} alt="" className="h-full w-full object-cover" />
+   407→                    ) : (
+   408→                      <Car className="mx-auto h-5 w-5 text-slate-300" aria-hidden />
+   409→                    )}
+   410→                  </div>
+   411→                  <div className="min-w-0">
+   412→                    <p className="truncate text-sm font-semibold text-slate-900">{l.buyer.name}</p>
+   413→                    <p className="truncate text-xs text-slate-500">
+   414→                      {l.vehicle.make} {l.vehicle.model} {l.vehicle.year} · {formatUsd(l.vehicle.priceUsd)}
+   415→                    </p>
+   416→                    {l.lastMessage && (
+   417→                      <p className="mt-1.5 truncate rounded-lg bg-slate-50 border border-slate-100 px-2.5 py-1 text-xs text-slate-600">
+   418→                        <span className="text-[10px] font-semibold text-slate-400">{l.lastMessage.isMine ? "↗" : "↙"} </span>
+   419→                        {l.lastMessage.body}
+   420→                      </p>
+   421→                    )}
+   422→                  </div>
+   423→                </div>
+   424→                <div className="flex shrink-0 flex-col items-end gap-1.5">
+   425→                  <span className="text-[10px] text-slate-400">{timeAgo(l.updatedAt, locale)}</span>
+   426→                  <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-semibold text-slate-600">{l.messageCount}</span>
+   427→                  <Button variant="outline" size="sm" onClick={() => navigate({ name: "messages", conversationId: l.conversationId })}>
+   428→                    <MessageSquare className="h-3.5 w-3.5 mr-1" aria-hidden />
+   429→                    {t("actOpenChat")}
+   430→                  </Button>
+   431→                </div>
+   432→              </div>
+   433→            </div>
+   434→          ))}
+   435→        </div>
+   436→        )}
+   437→      </div>
+   438→    </div>
+   439→  );
+   440→}
+   441→
+   442→// ---------------- appointments ----------------
+   443→
+   444→function DealerAppointments() {
+   445→  const t = useT();
+   446→  const locale = useAppStore((s) => s.locale);
+   447→  const { data, loading, error, refetch } = useFetch<TenantAppointmentDTO[]>("/api/tenant/appointments");
+   448→  const [busyId, setBusyId] = useState<string | null>(null);
+   449→
+   450→  const patch = async (id: string, status: string) => {
+   451→    setBusyId(id);
+   452→    try {
+   453→      await apiSend(`/api/tenant/appointments/${id}`, "PATCH", { status });
+   454→      toast.success(t("toastUpdated"));
+   455→      refetch();
+   456→    } catch (e) {
+   457→      toast.error(isForbidden(e) ? t("toastForbidden") : errorText(e));
+   458→    } finally {
+   459→      setBusyId(null);
+   460→    }
+   461→  };
+   462→
+   463→  if (loading && !data) return <div className="space-y-3">{Array.from({ length: 3 }).map((_, i) => <Skeleton key={i} className="h-20 w-full rounded-xl" />)}</div>;
+   464→  if (error && !data) return <FetchErrorState message={error} onRetry={refetch} />;
+   465→  if (!data || data.length === 0) return <EmptyState icon={CalendarDays} text={t("apptEmpty")} hint={t("apptEmptyHint")} />;
+   466→
+   467→  return (
+   468→    <div className="space-y-2.5">
+   469→      {data.map((a) => (
+   470→        <div key={a.id} className="flex flex-wrap items-center gap-3 rounded-xl border border-slate-200 bg-white p-3.5">
+   471→          <div className="min-w-0 flex-1">
+   472→            <p className="truncate text-sm font-medium text-slate-900">
+   473→              {a.buyer.name} · {a.vehicle.make} {a.vehicle.model} {a.vehicle.year}
+   474→            </p>
+   475→            <p className="mt-0.5 text-xs text-slate-500">{formatDateTime(a.scheduledAt, locale)}</p>
+   476→            {a.notes && <p className="mt-1 truncate text-xs italic text-slate-400">“{a.notes}”</p>}
+   477→          </div>
+   478→          <div className="flex shrink-0 flex-wrap items-center gap-2">
+   479→            <AppointmentStatusBadge status={a.status} />
+   480→            {a.status === "REQUESTED" && (
+   481→              <Button variant="outline" size="sm" disabled={busyId === a.id} onClick={() => patch(a.id, "CONFIRMED")} className="border-emerald-200 text-emerald-700 hover:bg-emerald-50">
+   482→                {t("actConfirmAppt")}
+   483→              </Button>
+   484→            )}
+   485→            {a.status === "CONFIRMED" && (
+   486→              <Button variant="outline" size="sm" disabled={busyId === a.id} onClick={() => patch(a.id, "COMPLETED")} className="border-teal-200 text-teal-700 hover:bg-teal-50">
+   487→                {t("actCompleteAppt")}
+   488→              </Button>
+   489→            )}
+   490→            {(a.status === "REQUESTED" || a.status === "CONFIRMED") && (
+   491→              <Button variant="ghost" size="sm" disabled={busyId === a.id} onClick={() => patch(a.id, "CANCELLED")} className="text-rose-600 hover:bg-rose-50 hover:text-rose-700">
+   492→                {t("actCancelAppt")}
+   493→              </Button>
+   494→            )}
+   495→          </div>
+   496→        </div>
+   497→      ))}
+   498→    </div>
+   499→  );
+   500→}
+   501→
+   502→// ---------------- staff ----------------
+   503→
+   504→function DealerStaff() {
+   505→  const t = useT();
+   506→  const { data, loading, error, refetch } = useFetch<TenantMemberDTO[]>("/api/tenant/staff");
+   507→  const [busyId, setBusyId] = useState<string | null>(null);
+   508→  const [inviteOpen, setInviteOpen] = useState(false);
+   509→  const [invName, setInvName] = useState("");
+   510→  const [invPhone, setInvPhone] = useState("");
+   511→  const [invRole, setInvRole] = useState<(typeof STAFF_ROLES)[number]>("SALES_STAFF");
+   512→  const [inviting, setInviting] = useState(false);
+   513→
+   514→  const patch = async (memberId: string, body: Record<string, string>) => {
+   515→    setBusyId(memberId);
+   516→    try {
+   517→      await apiSend(`/api/tenant/staff/${memberId}`, "PATCH", body);
+   518→      toast.success(t("toastUpdated"));
+   519→      refetch();
+   520→    } catch (e) {
+   521→      toast.error(isForbidden(e) ? t("toastForbidden") : errorText(e));
+   522→    } finally {
+   523→      setBusyId(null);
+   524→    }
+   525→  };
+   526→
+   527→  const invite = async () => {
+   528→    if (!invName.trim() || !invPhone.trim()) return;
+   529→    setInviting(true);
+   530→    try {
+   531→      await apiSend("/api/tenant/staff", "POST", { name: invName.trim(), phone: invPhone.trim(), role: invRole });
+   532→      toast.success(t("toastUpdated"));
+   533→      setInviteOpen(false);
+   534→      setInvName("");
+   535→      setInvPhone("");
+   536→      setInvRole("SALES_STAFF");
+   537→      refetch();
+   538→    } catch (e) {
+   539→      toast.error(isForbidden(e) ? t("toastForbidden") : errorText(e));
+   540→    } finally {
+   541→      setInviting(false);
+   542→    }
+   543→  };
+   544→
+   545→  return (
+   546→    <div className="space-y-4">
+   547→      <div className="flex justify-end">
+   548→        <Button size="sm" onClick={() => setInviteOpen(true)} className="bg-amber-500 hover:bg-amber-400 text-slate-950 font-semibold">
+   549→          <UserPlus className="h-4 w-4 mr-1.5" aria-hidden />
+   550→          {t("actInviteMember")}
+   551→        </Button>
+   552→      </div>
+   553→
+   554→      {loading && !data ? (
+   555→        <div className="space-y-3">{Array.from({ length: 3 }).map((_, i) => <Skeleton key={i} className="h-16 w-full rounded-xl" />)}</div>
+   556→      ) : error && !data ? (
+   557→        <FetchErrorState message={error} onRetry={refetch} />
+   558→      ) : !data || data.length === 0 ? (
+   559→        <EmptyState icon={Users} text={t("staffEmpty")} />
+   560→      ) : (
+   561→        <div className="space-y-2.5">
+   562→          {data.map((m) => (
+   563→            <div key={m.id} className="flex flex-wrap items-center gap-3 rounded-xl border border-slate-200 bg-white p-3">
+   564→              <AvatarCircle name={m.name} />
+   565→              <div className="min-w-0 flex-1">
+   566→                <p className="flex flex-wrap items-center gap-1.5 text-sm font-medium text-slate-900">
+   567→                  {m.name}
+   568→                  <TenantRoleBadge role={m.role} />
+   569→                  {m.status === "SUSPENDED" && (
+   570→                    <span className="rounded-full border border-rose-200 bg-rose-50 px-2 py-0.5 text-[10px] font-semibold text-rose-700">{t("tstSUSPENDED")}</span>
+   571→                  )}
+   572→                </p>
+   573→                <p className="mt-0.5 truncate text-[11px] text-slate-400"><span className="font-mono">{m.phone}</span></p>
+   574→              </div>
+   575→              <div className="flex shrink-0 items-center gap-2">
+   576→                <DropdownMenu>
+   577→                  <DropdownMenuTrigger asChild>
+   578→                    <Button variant="outline" size="sm" disabled={busyId === m.id} aria-label={`${t("actChangeRole")} ${m.name}`}>
+   579→                      {busyId === m.id ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : t("actChangeRole")}
+   580→                      <ChevronDown className="h-3 w-3 opacity-60" aria-hidden />
+   581→                    </Button>
+   582→                  </DropdownMenuTrigger>
+   583→                  <DropdownMenuContent align="end">
+   584→                    <DropdownMenuLabel>{t("inviteRole")}</DropdownMenuLabel>
+   585→                    <DropdownMenuSeparator />
+   586→                    {STAFF_ROLES.map((r) => (
+   587→                      <DropdownMenuItem key={r} disabled={r === m.role} onClick={() => patch(m.id, { role: r })}>
+   588→                        {t(`trole${r}` as never)}
+   589→                      </DropdownMenuItem>
+   590→                    ))}
+   591→                  </DropdownMenuContent>
+   592→                </DropdownMenu>
+   593→                <Button
+   594→                  variant="ghost" size="sm"
+   595→                  disabled={busyId === m.id}
+   596→                  onClick={() => patch(m.id, { status: m.status === "ACTIVE" ? "SUSPENDED" : "ACTIVE" })}
+   597→                  className={m.status === "ACTIVE" ? "text-rose-600 hover:bg-rose-50 hover:text-rose-700" : "text-emerald-700 hover:bg-emerald-50"}
+   598→                >
+   599→                  {m.status === "ACTIVE" ? t("actSuspend") : t("actActivate")}
+   600→                </Button>
+   601→              </div>
+   602→            </div>
+   603→          ))}
+   604→        </div>
+   605→      )}
+   606→
+   607→      {/* Invite dialog */}
+   608→      <Dialog open={inviteOpen} onOpenChange={setInviteOpen}>
+   609→        <DialogContent className="sm:max-w-sm">
+   610→          <DialogHeader>
+   611→            <DialogTitle>{t("actInviteMember")}</DialogTitle>
+   612→          </DialogHeader>
+   613→          <div className="space-y-3">
+   614→            <div>
+   615→              <Label htmlFor="inv-name" className="text-xs text-slate-500">{t("inviteName")}</Label>
+   616→              <Input id="inv-name" value={invName} onChange={(e) => setInvName(e.target.value)} className="mt-1.5 h-9" />
+   617→            </div>
+   618→            <div>
+   619→              <Label htmlFor="inv-phone" className="text-xs text-slate-500">{t("invitePhone")}</Label>
+   620→              <Input id="inv-phone" type="tel" placeholder="+855 12 345 678" value={invPhone} onChange={(e) => setInvPhone(e.target.value)} className="mt-1.5 h-9" />
+   621→            </div>
+   622→            <div>
+   623→              <Label htmlFor="inv-role" className="text-xs text-slate-500">{t("inviteRole")}</Label>
+   624→              <select
+   625→                id="inv-role"
+   626→                value={invRole}
+   627→                onChange={(e) => setInvRole(e.target.value as (typeof STAFF_ROLES)[number])}
+   628→                className="mt-1.5 h-9 w-full rounded-md border border-slate-200 bg-white px-3 text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-amber-500"
+   629→              >
+   630→                {STAFF_ROLES.map((r) => (
+   631→                  <option key={r} value={r}>{t(`trole${r}` as never)}</option>
+   632→                ))}
+   633→              </select>
+   634→            </div>
+   635→          </div>
+   636→          <DialogFooter>
+   637→            <Button variant="outline" size="sm" onClick={() => setInviteOpen(false)}>{t("cancel")}</Button>
+   638→            <Button size="sm" onClick={invite} disabled={inviting || !invName.trim() || !invPhone.trim()} className="bg-amber-500 hover:bg-amber-400 text-slate-950 font-semibold">
+   639→              {inviting && <Loader2 className="h-4 w-4 mr-2 animate-spin" aria-hidden />}
+   640→              {t("actInviteMember")}
+   641→            </Button>
+   642→          </DialogFooter>
+   643→        </DialogContent>
+   644→      </Dialog>
+   645→    </div>
+   646→  );
+   647→}
+   648→
+   649→// ---------------- subscription ----------------
+   650→
+   651→function DealerSubscription() {
+   652→  const t = useT();
+   653→  const locale = useAppStore((s) => s.locale);
+   654→  const { data, loading, error, refetch } = useFetch<{
+   655→    subscription: SubscriptionDTO | null;
+   656→    plans: PlanDTO[];
+   657→    freePlanEnabled?: boolean;
+   658→    paymentsEnabled?: boolean;
+   659→  }>("/api/tenant/subscription");
+   660→  const [cycle, setCycle] = useState<"MONTHLY" | "YEARLY">("MONTHLY");
+   661→  const [requesting, setRequesting] = useState<PlanDTO | null>(null);
+   662→  const [downgrading, setDowngrading] = useState(false);
+   663→  const [historyKey, setHistoryKey] = useState(0);
+   664→
+   665→  useEffect(() => {
+   666→    if (data?.subscription) setCycle(data.subscription.billingCycle);
+   667→  }, [data?.subscription?.billingCycle]);
+   668→
+   669→  const downgrade = async () => {
+   670→    setDowngrading(true);
+   671→    try {
+   672→      await apiSend("/api/tenant/subscription", "POST", { plan: "FREE" });
+   673→      toast.success(t("toastUpdated"));
+   674→      refetch();
+   675→    } catch (e) {
+   676→      toast.error(isForbidden(e) ? t("toastForbidden") : errorText(e));
+   677→    } finally {
+   678→      setDowngrading(false);
+   679→    }
+   680→  };
+   681→
+   682→  if (loading && !data) return <Skeleton className="h-72 w-full rounded-xl" />;
+   683→  if (error && !data) return <FetchErrorState message={error} onRetry={refetch} />;
+   684→  const plans = data?.plans ?? [];
+   685→  const current = data?.subscription ?? null;
+   686→  const expired = current?.status === "EXPIRED";
+   687→  const freeDisabled = data?.freePlanEnabled === false;
+   688→  const paymentsDisabled = data?.paymentsEnabled === false;
+   689→
+   690→  return (
+   691→    <div className="space-y-4">
+   692→      {paymentsDisabled && (
+   693→        <Alert className="border-amber-300 bg-amber-50">
+   694→          <AlertDescription className="text-xs font-medium text-amber-900">{t("payDisabledNotice")}</AlertDescription>
+   695→        </Alert>
+   696→      )}
+   697→
+   698→      {/* submitted payments waiting for the Super Admin's manual approval */}
+   699→      <PendingPaymentBanner />
+   700→
+   701→      <div className="flex flex-wrap items-center justify-between gap-2">
+   702→        <p className="text-sm font-semibold text-slate-900">{t("subCurrentPlan")}</p>
+   703→        <div className="flex items-center rounded-full border border-slate-200 bg-white p-0.5" role="group" aria-label={t("tabSubscription")}>
+   704→          {(["MONTHLY", "YEARLY"] as const).map((c) => (
+   705→            <button
+   706→              key={c}
+   707→              onClick={() => setCycle(c)}
+   708→              aria-pressed={cycle === c}
+   709→              className={cn(
+   710→                "rounded-full px-3 py-1.5 text-xs font-medium transition-colors cursor-pointer",
+   711→                cycle === c ? "bg-amber-500 text-slate-950" : "text-slate-600 hover:text-slate-900"
+   712→              )}
+   713→            >
+   714→              {c === "MONTHLY" ? t("billingMonthly") : t("billingYearly")}
+   715→            </button>
+   716→          ))}
+   717→        </div>
+   718→      </div>
+   719→
+   720→      {current && (
+   721→        <div className={cn("rounded-xl border p-4 text-sm", expired ? "border-rose-200 bg-rose-50/60" : "border-amber-200 bg-amber-50/60")}>
+   722→          <p className={cn("font-semibold", expired ? "text-rose-900" : "text-amber-900")}>
+   723→            {current.plan} · {formatUsd(current.priceUsd)} / {current.billingCycle === "MONTHLY" ? t("billingMonthly").toLowerCase() : t("billingYearly").toLowerCase()}
+   724→            {expired && <span className="ml-2 rounded-full bg-rose-100 px-2 py-0.5 text-[10px] font-bold text-rose-800">{t("subExpiresBadge")}</span>}
+   725→          </p>
+   726→          <p className={cn("mt-0.5 text-xs", expired ? "text-rose-800/80" : "text-amber-800/80")}>
+   727→            {t("subRenews", { d: formatDateTime(current.currentPeriodEnd, locale) })} · {t("subSeats", { n: current.seats })}
+   728→          </p>
+   729→          {(expired || current.status === "PAST_DUE") && (
+   730→            <p className="mt-1.5 text-xs font-medium text-rose-800">{t("subPayFirst")}</p>
+   731→          )}
+   732→        </div>
+   733→      )}
+   734→
+   735→      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+   736→        {plans.map((p) => {
+   737→          const isCurrent = current?.plan === p.plan && !expired;
+   738→          const price = cycle === "MONTHLY" ? p.priceUsdMonthly : p.priceUsdYearly;
+   739→          const isPaid = p.plan !== "FREE";
+   740→          const freeBlocked = p.plan === "FREE" && freeDisabled;
+   741→          return (
+   742→            <div
+   743→              key={p.plan}
+   744→              className={cn(
+   745→                "flex flex-col rounded-xl border bg-white p-4",
+   746→                isCurrent ? "border-amber-400 ring-1 ring-amber-200" : "border-slate-200",
+   747→                freeBlocked && "opacity-70"
+   748→              )}
+   749→            >
+   750→              <div className="flex items-center justify-between">
+   751→                <p className="text-sm font-bold text-slate-900">{p.plan}</p>
+   752→                {isCurrent && <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-bold text-amber-800">{t("subCurrentBadge")}</span>}
+   753→              </div>
+   754→              <p className="mt-2 text-2xl font-bold tracking-tight text-slate-900">
+   755→                {p.plan === "FREE" ? "$0" : formatUsd(price)}
+   756→                {p.plan !== "FREE" && <span className="text-xs font-medium text-slate-400"> / {cycle === "MONTHLY" ? t("billingMonthly").toLowerCase() : t("billingYearly").toLowerCase()}</span>}
+   757→              </p>
+   758→              <ul className="mt-3 space-y-1 text-xs text-slate-500">
+   759→                <li>· {t("kpiListings")}: {p.listingsLimit}</li>
+   760→                <li>· {t("actFeature")}: {p.featuredLimit}</li>
+   761→                <li>· {t("subSeats", { n: p.seats })}</li>
+   762→                {p.features.map((f) => (
+   763→                  <li key={f.en}>· {f[locale]}</li>
+   764→                ))}
+   765→              </ul>
+   766→              {freeBlocked && (
+   767→                <p className="mt-2 text-[11px] font-medium text-rose-700">{t("payFreeDisabledNotice")}</p>
+   768→              )}
+   769→              <Button
+   770→                size="sm"
+   771→                className="mt-4 w-full"
+   772→                variant={isCurrent ? "secondary" : "default"}
+   773→                disabled={isCurrent || downgrading || freeBlocked || (p.plan === "FREE" && (!current || current.plan === "FREE"))}
+   774→                onClick={() => (isPaid ? setRequesting(p) : downgrade())}
+   775→                aria-label={isPaid ? t("payOpen") : t("subFreeDowngrade")}
+   776→              >
+   777→                {downgrading && !isPaid && <Loader2 className="h-4 w-4 mr-1.5 animate-spin" aria-hidden />}
+   778→                {isCurrent ? t("subCurrentBadge") : isPaid ? (current && current.plan !== "FREE" ? t("payRenew") : t("payOpen")) : t("subFreeDowngrade")}
+   779→              </Button>
+   780→            </div>
+   781→          );
+   782→        })}
+   783→      </div>
+   784→
+   785→      <TenantPaymentHistory key={historyKey} onChanged={refetch} />
+   786→
+   787→      <RequestSubscriptionDialog
+   788→        open={requesting !== null}
+   789→        onOpenChange={(o) => !o && setRequesting(null)}
+   790→        plan={requesting}
+   791→        cycle={cycle}
+   792→        priceUsd={requesting ? (cycle === "MONTHLY" ? requesting.priceUsdMonthly : requesting.priceUsdYearly) : 0}
+   793→        onDone={() => { refetch(); setRequesting(null); setHistoryKey((k) => k + 1); }}
+   794→      />
+   795→    </div>
+   796→  );
+   797→}
+   798→
+   799→// ---------------- dealer profile settings ----------------
+   800→
+   801→function DealerSettings() {
+   802→  const t = useT();
+   803→  const locale = useAppStore((s) => s.locale);
+   804→  const meDash = useFetch<TenantDashboardDTO>("/api/tenant/me");
+   805→  const [form, setForm] = useState<Partial<TenantDashboardDTO["tenant"]> | null>(null);
+   806→  const [saving, setSaving] = useState(false);
+   807→
+   808→  useEffect(() => {
+   809→    if (meDash.data?.tenant) setForm(meDash.data.tenant);
+   810→  }, [meDash.data?.tenant]);
+   811→
+   812→  const save = async () => {
+   813→    if (!form) return;
+   814→    setSaving(true);
+   815→    try {
+   816→      await apiSend("/api/tenant/profile", "PATCH", {
+   817→        name: form.name,
+   818→        bio: form.bio,
+   819→        bioKm: form.bioKm,
+   820→        city: form.city,
+   821→        address: form.address,
+   822→        phone: form.phone,
+   823→        telegram: form.telegram,
+   824→      });
+   825→      toast.success(t("toastUpdated"));
+   826→      meDash.refetch();
+   827→    } catch (e) {
+   828→      toast.error(isForbidden(e) ? t("toastForbidden") : errorText(e));
+   829→    } finally {
+   830→      setSaving(false);
+   831→    }
+   832→  };
+   833→
+   834→  if (meDash.loading && !meDash.data) return <Skeleton className="h-72 w-full rounded-xl" />;
+   835→  if (meDash.error && !meDash.data) return <FetchErrorState message={meDash.error} onRetry={meDash.refetch} />;
+   836→  const tenant = meDash.data?.tenant;
+   837→  if (!tenant || !form) return null;
+   838→
+   839→  return (
+   840→    <SectionCard title={t("tenantProfile")}>
+   841→      <div className="mb-4 flex flex-wrap items-center gap-2 text-xs text-slate-500">
+   842→        <VerificationBadge verification={tenant.verification} />
+   843→        <span>{t("sellerSince", { y: new Date(tenant.memberSince).getFullYear() })}</span>
+   844→        <span className="text-slate-300">·</span>
+   845→        <span className="font-mono">{tenant.slug}</span>
+   846→      </div>
+   847→      <div className="grid gap-4 sm:grid-cols-2">
+   848→        <div className="sm:col-span-2">
+   849→          <Label htmlFor="tp-name" className="text-xs text-slate-500">{t("tenantName")}</Label>
+   850→          <Input id="tp-name" value={form.name ?? ""} onChange={(e) => setForm({ ...form, name: e.target.value })} className="mt-1.5 h-9" />
+   851→        </div>
+   852→        <div>
+   853→          <Label htmlFor="tp-city" className="text-xs text-slate-500">{t("formCity")}</Label>
+   854→          <Input id="tp-city" value={form.city ?? ""} onChange={(e) => setForm({ ...form, city: e.target.value })} className="mt-1.5 h-9" />
+   855→        </div>
+   856→        <div>
+   857→          <Label htmlFor="tp-phone" className="text-xs text-slate-500">{t("invitePhone")}</Label>
+   858→          <Input id="tp-phone" type="tel" value={form.phone ?? ""} onChange={(e) => setForm({ ...form, phone: e.target.value })} className="mt-1.5 h-9" />
+   859→        </div>
+   860→        <div className="sm:col-span-2">
+   861→          <Label htmlFor="tp-address" className="text-xs text-slate-500">{t("tenantAddress")}</Label>
+   862→          <Input id="tp-address" value={form.address ?? ""} onChange={(e) => setForm({ ...form, address: e.target.value })} className="mt-1.5 h-9" />
+   863→        </div>
+   864→        <div className="sm:col-span-2">
+   865→          <Label htmlFor="tp-telegram" className="text-xs text-slate-500">{t("tenantTelegram")}</Label>
+   866→          <Input id="tp-telegram" value={form.telegram ?? ""} onChange={(e) => setForm({ ...form, telegram: e.target.value })} className="mt-1.5 h-9" placeholder="@dealer" />
+   867→        </div>
+   868→        <div className="sm:col-span-2">
+   869→          <Label htmlFor="tp-bio" className="text-xs text-slate-500">{t("tenantBio")}</Label>
+   870→          <Textarea id="tp-bio" value={form.bio ?? ""} onChange={(e) => setForm({ ...form, bio: e.target.value })} rows={3} className="mt-1.5" />
+   871→        </div>
+   872→        <div className="sm:col-span-2">
+   873→          <Label htmlFor="tp-biokm" className="text-xs text-slate-500">{t("tenantBioKm")}</Label>
+   874→          <Textarea
+   875→            id="tp-biokm" value={form.bioKm ?? ""} onChange={(e) => setForm({ ...form, bioKm: e.target.value })} rows={3}
+   876→            className={cn("mt-1.5", locale === "km" && "font-khmer")}
+   877→          />
+   878→        </div>
+   879→      </div>
+   880→      <Button onClick={save} disabled={saving} className="mt-4 bg-amber-500 hover:bg-amber-400 text-slate-950 font-semibold">
+   881→        {saving && <Loader2 className="h-4 w-4 mr-2 animate-spin" aria-hidden />}
+   882→        {t("saveChanges")}
+   883→      </Button>
+   884→    </SectionCard>
+   885→  );
+   886→}
+   887→
