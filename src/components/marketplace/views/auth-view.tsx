@@ -2,13 +2,17 @@
 
 // Auth view — password login and sign-up, both protected by the English
 // click-in-order "Security Verification" captcha (server-enforced via a
-// single-use captchaToken). One centered card on the single-route SPA; every
-// success triggers a full reload so SessionBoot / FavoritesBoot refetch with
-// the new session cookie.
+// single-use captchaToken). One centered card on the single-route SPA. A
+// successful sign-in applies the new session IN PLACE (store → locale →
+// favorites → navigate to the dashboard) with NO page reload — reloads are
+// the fragile step inside embedded previews (sessionStorage may be lost and
+// the redirect replay silently dropped, leaving the user logged in on Home).
 
 import { useState } from "react";
 import { useT } from "@/hooks/use-t";
+import { useAppStore } from "@/lib/store";
 import { apiSend, authFallbackHeaders, clearAuthFallback } from "@/lib/client-hooks";
+import type { SessionDTO } from "@/lib/dashboard-types";
 import { SecurityCaptcha } from "@/components/marketplace/security-captcha";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -51,40 +55,51 @@ function localAuthError(t: ReturnType<typeof useT>, msg: string): string {
   return msg;
 }
 
-function parkWelcome(name: string, isNew: boolean) {
-  try {
-    sessionStorage.setItem("khlan_welcome", JSON.stringify({ name, isNew }));
-  } catch {
-    /* ignore */
-  }
-}
-
-/** Park a post-login redirect request — SessionBoot replays it once the
- *  reloaded page has the fresh session. Every signed-in role lands directly
- *  on their dashboard (admin tools / dealer tools / customer account) so the
- *  dashboard is impossible to miss after a successful login. */
-function parkDashboardRedirect() {
-  try {
-    sessionStorage.setItem("khlan_go_dashboard", "1");
-  } catch {
-    /* ignore */
-  }
-}
-
-/** Make sure a session actually persisted in this browser context — via the
- *  cookie, or (when cookies are blocked, e.g. embedded previews) via the
- *  x-khlan-session header from the localStorage fallback. */
-async function sessionPersistedAs(userId: string): Promise<boolean> {
+/** Fetch the live session and verify it belongs to `userId` — returns the
+ *  SessionDTO on success, null when the session did not persist (cookie
+ *  refused AND no usable header fallback). */
+async function fetchVerifiedSession(userId: string): Promise<SessionDTO | null> {
   try {
     const r = await fetch("/api/session", {
       cache: "no-store",
       headers: authFallbackHeaders(),
     });
-    if (!r.ok) return false;
-    const s = (await r.json()) as { authed?: boolean; user?: { id?: string } };
-    return Boolean(s.authed && s.user?.id === userId);
+    if (!r.ok) return null;
+    const s = (await r.json()) as SessionDTO;
+    return s.authed && s.user?.id === userId ? s : null;
   } catch {
-    return false;
+    return null;
+  }
+}
+
+/** Apply a freshly authenticated session to the RUNNING app — store, locale,
+ *  favorites — without any page reload. Also drops parked reload artifacts
+ *  from older attempts so no future reload replays a stale toast/redirect. */
+async function applySessionInPlace(session: SessionDTO): Promise<void> {
+  const store = useAppStore.getState();
+  store.setMe(session);
+  try {
+    sessionStorage.removeItem("khlan_go_dashboard");
+    sessionStorage.removeItem("khlan_welcome");
+  } catch {
+    /* ignore */
+  }
+  // A real account's locale is the user's own configuration.
+  if (session.user.locale === "en" || session.user.locale === "km") {
+    store.setLocale(session.user.locale);
+  }
+  // Re-sync favorites that previously belonged to the guest/persona session.
+  try {
+    const fr = await fetch("/api/favorites", {
+      cache: "no-store",
+      headers: authFallbackHeaders(),
+    });
+    if (fr.ok) {
+      const fj = (await fr.json()) as { vehicleIds?: string[] };
+      store.setFavorites(fj.vehicleIds ?? []);
+    }
+  } catch {
+    /* favorites are non-critical — the dashboard view refetches */
   }
 }
 
@@ -179,11 +194,13 @@ function LoginForm() {
       );
       // The session must actually persist — cookies are refused in embedded
       // previews, so fall back to the signed token via a request header.
-      if (!sessionPersistedAs(res.user.id)) {
+      let session = await fetchVerifiedSession(res.user.id);
+      if (!session) {
         if (res.sessionToken) {
           storeTokenFallback(res.sessionToken);
         }
-        if (!(await sessionPersistedAs(res.user.id))) {
+        session = await fetchVerifiedSession(res.user.id);
+        if (!session) {
           clearAuthFallback();
           setBusy(false);
           setCaptchaOpen(false);
@@ -194,11 +211,13 @@ function LoginForm() {
         // Cookie path worked — drop any stale localStorage fallback.
         clearAuthFallback();
       }
-      parkWelcome(res.user.name, false);
-      // Every signed-in role lands on their dashboard after the reload.
-      parkDashboardRedirect();
+      // Apply the session in place and land on the dashboard — no reload,
+      // nothing left to lose between login and the dashboard.
+      await applySessionInPlace(session);
       toast.success(t("authWelcomeBack", { name: res.user.name }));
-      window.location.reload();
+      useAppStore.getState().navigate({ name: "dashboard" });
+      setBusy(false);
+      setCaptchaOpen(false);
     } catch (err) {
       const msg = err instanceof Error ? err.message : t("errorGeneric");
       setError(localAuthError(t, msg));
@@ -279,11 +298,13 @@ function SignupForm() {
         { name: name.trim(), phone: normalizePhone(phone), password, locale, captchaToken },
       );
       // Same session-persistence guard as login (cookie → header fallback).
-      if (!sessionPersistedAs(res.user.id)) {
+      let session = await fetchVerifiedSession(res.user.id);
+      if (!session) {
         if (res.sessionToken) {
           storeTokenFallback(res.sessionToken);
         }
-        if (!(await sessionPersistedAs(res.user.id))) {
+        session = await fetchVerifiedSession(res.user.id);
+        if (!session) {
           clearAuthFallback();
           setBusy(false);
           setCaptchaOpen(false);
@@ -293,12 +314,13 @@ function SignupForm() {
       } else {
         clearAuthFallback();
       }
-      parkWelcome(res.user.name, true);
       // New accounts are BUYER role — land them on their account dashboard
-      // too, so a successful registration always ends somewhere useful.
-      parkDashboardRedirect();
+      // too, fully in-memory (see doLogin).
+      await applySessionInPlace(session);
       toast.success(t("authWelcomeNew"));
-      window.location.reload();
+      useAppStore.getState().navigate({ name: "dashboard" });
+      setBusy(false);
+      setCaptchaOpen(false);
     } catch (err) {
       const msg = err instanceof Error ? err.message : t("errorGeneric");
       setError(localAuthError(t, msg));
