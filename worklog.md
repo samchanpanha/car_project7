@@ -172,3 +172,57 @@ Work Log:
 Stage Summary:
 - Dashboard architecture shipped on the single-route SPA: role-aware shells for Super Admin (platform control), Tenant/Dealer (company ops), Customer (favorites/saved searches/appointments/reports) + role-based staff access via persona switcher.
 - Advanced vehicle filtering + save-search round-trip complete. All strings bilingual EN/KM. lint 0 errors; tsc clean; dev.log clean.
+
+---
+Task ID: 6-a
+Agent: full-stack-developer (frontend auth) — completed by main orchestrator after agent tool-timeout
+Task: Login/registration UI, account configuration (profile dialog), Telegram Mini App support for KhLan
+
+Work Log:
+- Read worklog (5-b/5-c + earlier), src/lib/auth.ts, all /api/auth/** + /api/account/{profile,password} routes, /api/session (SessionDTO with authed/telegramLinked/phoneVerified), client-hooks (useFetch/apiSend/qs), store/header/page/i18n/format.
+- src/lib/store.ts: View union extended with `| { name: "auth" }` (only change; store otherwise untouched).
+- src/lib/i18n.ts: appended 82 new keys (auth section + profile-settings section + header account strings) to BOTH dictionaries (en 451 / km 451, in sync). Natural Khmer: ចូលប្រើ, ចុះឈ្មោះ, ចូលប្រើដោយកូដ, ផ្ញើកូដ, ផ្ទៀងផ្ទាត់, កំណត់ព័ត៌មានផ្ទាល់ខ្លួន, ចាកចេញ, ភ្ជាប់តាម Telegram, លេខទូរស័ព្ទមិនទាន់ផ្ទៀងផ្ទាត់, demo OTP alert, demo credentials hint, server-error localization variants, etc.
+- src/components/marketplace/views/auth-view.tsx (new): centered max-w-md card (logo + tagline), Tabs Log in / Sign up / OTP login. Login: phone (+855 regex client-side) + password with show/hide eye, inline 401 error (localized "Incorrect phone number or password"), submit → POST /api/auth/login → sessionStorage "khlan_welcome" + reload. Sign up: name/phone/password(min 8)/confirm/locale Select (default km) → POST /api/auth/register (auto-login) → reload. OTP: phone → send (purpose LOGIN) → amber demo Alert shows devCode → 6-digit numeric input → verify → reload; 60s resend countdown (interval state, hydration-safe). Collapsible "Demo accounts" card lists all 8 seeded phones + shared password khlan123 + OTP note. Enter submits all forms; buttons disabled+spinner; h-11 targets.
+- src/components/marketplace/profile-dialog.tsx (new): shadcn Dialog opened from AccountMenu; works for every authed role. Sections: (a) Profile — name, interface-language Select, avatar URL with live img/initials preview → PATCH /api/account/profile → toast + local setMe + setLocale (account locale now also applied on boot for authed sessions in SessionBoot); (b) Phone — current phone + Verified/Not-verified Badge, update-phone form → phoneVerified reset → verify sub-flow (send OTP purpose VERIFY → devCode amber alert → 6-digit input → verify → badge flips); (c) Security — current password (blank ⇒ sends "" for passwordless accounts), new + confirm (min 8, match) → POST /api/account/password; (d) Telegram — linked/unlinked Badge + bilingual hint that Mini App login auto-links. !authed ⇒ "Login required" empty state with CTA to auth view. Validation inline; all strings bilingual.
+- src/components/marketplace/header.tsx: PersonaMenu reworked into AccountMenu. Not loaded ⇒ pulsing placeholder (hydration-safe, unchanged). me.authed ⇒ avatar (img|initials) + name (lg+) trigger; dropdown label block (name, mono phone, role/tenant line, emerald "Telegram linked" + amber "Phone unverified" badges) + Profile settings (opens ProfileDialog) + Log out (POST /api/auth/logout → reload, toast replayed after reload) + Dashboard. Not authed ⇒ new top item "Log in / Sign up" → navigate({name:"auth"}) + unchanged persona switcher + demo-mode caption + Dashboard. Trigger stays visible on mobile.
+- src/lib/telegram.ts (new): tg()/isInTelegram()/initTelegram() (ready, expand, setHeaderColor #020617, themeParams → --tg-bg/--tg-text/--tg-hint/--tg-button/--tg-button-text on documentElement)/tgSendAuth() (module-level once-per-load flag, POST /api/auth/telegram)/tgHaptic()/setupBackButton() — all feature-detected, typed (no any), try/catch no-ops outside Telegram.
+- src/app/layout.tsx: telegram-web-app.js via next/script strategy="beforeInteractive" (feature-detected downstream; silent when offline).
+- src/app/page.tsx: TelegramBoot (init → tgSendAuth → single reload guarded by sessionStorage "khlan_tg_authed"; BackButton wired only inside a real Mini App — the SDK's v6.0 stub logs warnings otherwise — shown when view ≠ home, click → home); CurrentView case "auth"; SessionBoot split into data-effect + mount-only toast-replay effect (fixes pre-existing stale-session overwrite on locale change) + replays khlan_welcome/khlan_loggedout; authed session locale applied on boot; root div adopts --tg-bg/--tg-text via ref+effect only when in Telegram (normal web look untouched).
+
+Verification (agent-browser session auth6a, isolated; lint 0/0; tsc no new errors):
+1. Logged-out persona menu shows "Log in / Sign up" → auth view opens; all 3 tabs switch. ✓
+2. Registered +85512300001 / test12345 via UI → home reload, header "Test Buyer A6", menu shows name/phone/role + "Phone unverified". ✓
+3. Profile settings: renamed → Save → toast + header updated; locale save switches UI to Khmer live. ✓ (also fixed store staleness found during this test)
+4. Phone flow: update to +85512300002 → toast; Verify now → devCode alert (764297) → verify → "ផ្ទៀងផ្ទាត់ហើយ" badge + toast. ✓
+5. Password change (test12345 → test123456) → Log out → log back in with new password ✓ (header shows renamed user).
+6. OTP login +85512998009 → devCode (493629) → verify → header "Nita Meng", dashboard renders the 7-tab Super Admin shell. ✓
+7. Telegram: curl POST /api/auth/telegram with demo initData user id 77700001 → {ok,mode:"demo",user:usr_demo_buyer(Dara)}; malformed initData → 401. layout.tsx script tag present in served HTML; zero console/page errors (BackButton gated to real Mini Apps). ✓
+8. Mobile 390×844: auth view (incl. expanded demo hint) and account menu ⇒ document.documentElement.scrollWidth = 390 (no overflow). ✓
+9. Zero console errors / page errors in session. ✓
+- Cleanup: throwaway bun script deleted user +85512300001/+85512300002 (+ sellerProfile, 4 auditLogs, otpCodes for both phones, consumed admin OTP row); script removed after run. DB back to 8 seeded users (sellerProfiles 5 = 4 seeded + demo-buyer's lazy PRIVATE profile from getDemoUser, pre-existing behavior).
+
+Stage Summary:
+- Full auth UX on the single-route SPA: password login, sign-up (auto-login), OTP login with on-screen demo codes, account menu with real-account branch, per-user profile settings (profile/locale/avatar, phone verification, password change incl. passwordless accounts, Telegram status).
+- Telegram Mini App support: SDK loaded beforeInteractive, initData auth handshake once per load with loop-guarded reload, theme CSS vars + BackButton in real Mini Apps, everything feature-detected for the plain web.
+- Files: NEW src/lib/telegram.ts, src/components/marketplace/views/auth-view.tsx, src/components/marketplace/profile-dialog.tsx; MODIFIED src/app/page.tsx, src/app/layout.tsx, src/components/marketplace/header.tsx, src/lib/i18n.ts, src/lib/store.ts. No api/** or backend files touched.
+- Deviations: (1) SessionBoot refactored (split effects + authed-locale-on-boot) to fix a stale-session overwrite bug exposed by live profile updates — behavior-compatible with persona switching; (2) BackButton wiring gated on isInTelegram() to avoid console warnings from the SDK's v6.0 stub in plain browsers; (3) two PRE-EXISTING tsc errors remain in files I don't own (src/app/api/account/profile/route.ts:49, src/app/api/auth/telegram/route.ts:38 — type-only; runtime verified OK by curl/UI); (4) devCode demo alerts show codes on screen by design (no SMS gateway in sandbox).
+
+---
+Task ID: 6 (orchestration)
+Agent: Z.ai Code (main)
+Task: Login/registration + Telegram Mini App support + per-user configuration
+
+Work Log:
+- Schema: User += passwordHash (scrypt salt:hash), telegramId @unique, telegramUsername; new OtpCode model (phone, codeHash HMAC, purpose LOGIN|VERIFY, 5-min expiry, consumed flag, rate-limited 3 active/phone); db:push.
+- src/lib/auth.ts: hashPassword/verifyPassword (scrypt 64B + timingSafeEqual), signed session tokens (HMAC-SHA256, 30d, AUTH_SECRET), sessionCookieOptions, getAuthUser(), OTP gen/hash, validateTelegramInitData (full HMAC-SHA256 per Telegram spec when TELEGRAM_BOT_TOKEN set; parse-only "demo" mode flagged in sandbox; 24h replay guard).
+- src/lib/session.ts getCurrentUser priority: khlan_auth (real login) → khlan_persona (demo) → demo buyer. /api/session now returns authed/telegramLinked/phoneVerified/user.phone; persona switch clears auth cookie; login clears persona cookie.
+- Routes: POST /api/auth/register (201 auto-login + private profile), login (401 anti-enumeration), otp/send (devCode inline — no SMS gateway in sandbox, documented), otp/verify (LOGIN → sign-in; VERIFY → binds phoneVerified to session owner), telegram (find-or-create by telegramId, synthetic placeholder phone +8557000…, profile refresh), logout, PATCH /api/account/profile (name/locale/avatarUrl/phone w/ uniqueness + re-verify), POST /api/account/password (passwordless accounts may set without current).
+- Seed: all 8 personas get password khlan123; buyer has demo telegramId 77700001 — added permanently to seed.ts.
+- Fixed: stale Prisma client after db:push required dev server restart (rm -rf .next); 3 TS errors in my routes (phoneVerified narrowing, tg.id number slice ×2).
+- curl-verified 12 flows: register/dup-register/authed-session/login/dealer-tenant-session/OTP login/OTP-404-unknown/telegram-demo-maps-to-Dara/profile PATCH/phone change→unverified/VERIFY-otp→verified/password change+re-login/logout. Cleaned test user + OTP rows (DB back to 8 users).
+- Task 6-a (frontend subagent) delivered: AuthView (login/signup/OTP tabs, demo creds hint, devCode alerts, 60s resend), AccountMenu (authed vs demo branches), ProfileDialog (profile/phone+verify/security/telegram), TelegramBoot (ready/expand/themeParams CSS vars/initData handshake with reload loop-guard/BackButton), telegram-web-app.js beforeInteractive, 82 i18n keys. All flows browser-verified incl. mobile 390px (scrollWidth 390).
+
+Stage Summary:
+- Real auth is live: phone+password, passwordless OTP login, Telegram Mini App sign-in; every user gets personal configuration (Profile dialog) for name/locale/avatar/phone(+OTP verify)/password/Telegram status.
+- Demo layer preserved and unambiguous: persona switcher clearly separated, cleared on real login; login clears persona.
+- Security notes for production: set AUTH_SECRET + TELEGRAM_BOT_TOKEN envs; replace devCode with an SMS provider; OTP rate-limit in place; password hashes scrypt; tokens HMAC-signed httpOnly.

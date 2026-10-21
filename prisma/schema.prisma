@@ -21,6 +21,9 @@ model User {
   locale        String   @default("km") // km | en
   phoneVerified Boolean  @default(false)
   avatarUrl     String?
+  passwordHash  String? // scrypt salt:hash — null => OTP/Telegram-only account
+  telegramId    String?  @unique // Telegram user id when linked
+  telegramUsername String?
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 
@@ -149,6 +152,20 @@ model PlatformSetting {
   key       String   @id
   valueJson String
   updatedAt DateTime @updatedAt
+}
+
+// ---------- Auth (OTP codes for phone verification / passwordless login) ----------
+
+model OtpCode {
+  id        String   @id @default(cuid())
+  phone     String
+  codeHash  String // sha256 hex of the 6-digit code
+  purpose   String // LOGIN | VERIFY
+  expiresAt DateTime
+  consumed  Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  @@index([phone, purpose])
 }
 
 // ---------- Vehicles ----------

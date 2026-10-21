@@ -1,4 +1,5 @@
 // KhLan — demo seed script (Cambodia AI car marketplace)
+import crypto from "node:crypto";
 // Run with: bun prisma/seed.ts
 // Deterministic ids so API routes / frontend can reference them (see worklog Task 2-b).
 
@@ -106,6 +107,20 @@ async function seedUsers() {
         phoneVerified: true,
       },
     ],
+  });
+
+  // Auth demo data: every persona shares the password "khlan123" (scrypt
+  // salt:hash, matching src/lib/auth.ts) so the login form is testable;
+  // the buyer carries a demo Telegram binding for Mini App sign-in testing.
+  const salt = crypto.randomBytes(16).toString("hex");
+  const demoHash = `${salt}:${crypto.scryptSync("khlan123", salt, 64).toString("hex")}`;
+  await prisma.user.updateMany({
+    where: { id: { in: ["usr_demo_buyer", "usr_dealer_sokha", "usr_staff_chan", "usr_staff_sophea", "usr_dealer_ppauto", "usr_priv_vireak", "usr_priv_sopheak", "usr_admin"] } },
+    data: { passwordHash: demoHash },
+  });
+  await prisma.user.update({
+    where: { id: "usr_demo_buyer" },
+    data: { telegramId: "77700001", telegramUsername: "dara_khlan" },
   });
 }
 

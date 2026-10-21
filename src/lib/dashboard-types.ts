@@ -20,9 +20,15 @@ export interface PersonaDTO {
 }
 
 export interface SessionDTO {
-  user: { id: string; name: string; role: UserRole; locale: string; avatarUrl?: string | null };
+  user: { id: string; name: string; role: UserRole; locale: string; avatarUrl?: string | null; phone: string };
   sellerType: SellerType | null;
   tenant: { id: string; name: string; slug: string; logoUrl?: string | null; myRole: TenantRole } | null;
+  /** true when the user is really logged in (password/OTP/Telegram) — not a demo persona */
+  authed: boolean;
+  /** Telegram account linked to the current user */
+  telegramLinked: boolean;
+  /** present only when authed (phone verification state for profile settings) */
+  phoneVerified?: boolean;
   personas: PersonaDTO[];
 }
 

@@ -7,11 +7,12 @@ import type { PersonaDTO } from "@/lib/dashboard-types";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
+import { ProfileDialog } from "@/components/marketplace/profile-dialog";
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel,
   DropdownMenuSeparator, DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { Search, Heart, MessageSquare, Scale, Plus, Languages, CarFront, LayoutDashboard, ChevronDown, UserRound } from "lucide-react";
+import { Search, Heart, MessageSquare, Scale, Plus, Languages, CarFront, LayoutDashboard, ChevronDown, UserRound, Settings2, LogOut, LogIn } from "lucide-react";
 import { useState } from "react";
 import { cn } from "@/lib/utils";
 import { initials } from "@/components/marketplace/dashboard/bits";
@@ -59,12 +60,15 @@ const ROLE_DOT: Record<string, string> = {
   BUYER: "bg-slate-400",
 };
 
-/** Persona switcher (demo). Renders a placeholder circle until the session boots
- *  so server and client HTML match (no hydration mismatch). */
-function PersonaMenu() {
+/** Header account menu (Task 6-a). Renders a placeholder circle until the
+ *  session boots so server and client HTML match (no hydration mismatch).
+ *  - Real account (me.authed): profile settings, logout.
+ *  - Demo mode: login entry + the classic persona switcher. */
+function AccountMenu() {
   const t = useT();
   const locale = useAppStore((s) => s.locale);
   const me = useAppStore((s) => s.me);
+  const [profileOpen, setProfileOpen] = useState(false);
 
   if (!me) {
     return (
@@ -93,6 +97,95 @@ function PersonaMenu() {
     }
   };
 
+  const logout = async () => {
+    try {
+      await apiSend("/api/auth/logout", "POST");
+      try {
+        sessionStorage.setItem("khlan_loggedout", "1");
+      } catch {
+        /* ignore */
+      }
+      window.location.reload();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : t("errorGeneric"));
+    }
+  };
+
+  // ---------- real account ----------
+  if (me.authed) {
+    return (
+      <>
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <button
+              className="flex items-center gap-2 rounded-full border border-slate-700 py-1 pl-1 pr-1 transition-colors hover:border-slate-500 hover:bg-slate-900 cursor-pointer min-h-[36px] sm:pr-2.5"
+              aria-label={`${me.user.name} — ${t("accountSettings")}`}
+            >
+              {me.user.avatarUrl ? (
+                <img
+                  src={me.user.avatarUrl}
+                  alt=""
+                  className="h-7 w-7 rounded-full border border-slate-700 object-cover"
+                />
+              ) : (
+                <span className="flex h-7 w-7 items-center justify-center rounded-full bg-amber-500 text-[11px] font-bold text-slate-950">
+                  {initials(me.user.name)}
+                </span>
+              )}
+              <span className="hidden lg:block text-left leading-tight">
+                <span className="block max-w-[120px] truncate text-xs font-semibold text-white">{me.user.name}</span>
+                <span className="flex items-center gap-1 text-[10px] text-amber-400">
+                  <span className={cn("inline-block h-1.5 w-1.5 rounded-full", ROLE_DOT[me.user.role] ?? "bg-slate-400")} aria-hidden />
+                  {me.tenant ? me.tenant.name : t(`role${me.user.role}` as never)}
+                </span>
+              </span>
+              <ChevronDown className="hidden h-3.5 w-3.5 text-slate-400 sm:block" aria-hidden />
+            </button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" className="w-64">
+            <DropdownMenuLabel>
+              <span className="block text-sm font-semibold text-slate-900">{me.user.name}</span>
+              <span className="block font-mono text-[11px] font-normal text-slate-500" dir="ltr">
+                {me.user.phone}
+              </span>
+              <span className="block text-[11px] font-normal text-slate-500">
+                {me.tenant ? `${me.tenant.name} · ${t(`trole${me.tenant.myRole}` as never)}` : t(`role${me.user.role}` as never)}
+              </span>
+              <span className="mt-1 flex flex-wrap gap-1">
+                {me.telegramLinked && (
+                  <Badge variant="outline" className="border-emerald-200 bg-emerald-50 text-[9px] font-semibold text-emerald-700">
+                    {t("accountTelegramBadge")}
+                  </Badge>
+                )}
+                {me.phoneVerified === false && (
+                  <Badge variant="outline" className="border-amber-300 bg-amber-50 text-[9px] font-semibold text-amber-800">
+                    {t("accountUnverifiedBadge")}
+                  </Badge>
+                )}
+              </span>
+            </DropdownMenuLabel>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem onClick={() => setProfileOpen(true)} className="gap-2">
+              <Settings2 className="h-4 w-4 text-amber-600" aria-hidden />
+              <span className="text-xs font-semibold">{t("accountSettings")}</span>
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={logout} className="gap-2 text-rose-700 focus:text-rose-700">
+              <LogOut className="h-4 w-4" aria-hidden />
+              <span className="text-xs font-semibold">{t("accountLogout")}</span>
+            </DropdownMenuItem>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem onClick={() => useAppStore.getState().navigate({ name: "dashboard" })} className="gap-2">
+              <LayoutDashboard className="h-4 w-4 text-amber-600" aria-hidden />
+              <span className="text-xs font-semibold">{t("navDashboard")}</span>
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+        <ProfileDialog open={profileOpen} onOpenChange={setProfileOpen} />
+      </>
+    );
+  }
+
+  // ---------- demo persona mode ----------
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
@@ -114,12 +207,13 @@ function PersonaMenu() {
         </button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="w-64">
-        <DropdownMenuLabel>
-          <span className="block text-sm font-semibold text-slate-900">{me.user.name}</span>
-          <span className="block text-[11px] font-normal text-slate-500">
-            {me.tenant ? `${me.tenant.name} · ${t(`trole${me.tenant.myRole}` as never)}` : t(`role${me.user.role}` as never)}
+        <DropdownMenuItem onClick={() => useAppStore.getState().navigate({ name: "auth" })} className="gap-2">
+          <LogIn className="h-4 w-4 text-amber-600" aria-hidden />
+          <span className="min-w-0 flex-1">
+            <span className="block text-xs font-semibold text-slate-900">{t("authLoginCta")}</span>
+            <span className="block truncate text-[10px] text-slate-400">{t("authLoginCtaHint")}</span>
           </span>
-        </DropdownMenuLabel>
+        </DropdownMenuItem>
         <DropdownMenuSeparator />
         <DropdownMenuLabel className="text-[10px] font-medium uppercase tracking-wide text-slate-400">
           {t("personaSwitchLabel")}
@@ -142,6 +236,9 @@ function PersonaMenu() {
           </DropdownMenuItem>
         ))}
         <DropdownMenuSeparator />
+        <p className="px-2 py-1.5 text-[10px] leading-relaxed text-slate-400" role="note">
+          {t("authDemoModeNote")}
+        </p>
         <DropdownMenuItem onClick={() => useAppStore.getState().navigate({ name: "dashboard" })} className="gap-2">
           <LayoutDashboard className="h-4 w-4 text-amber-600" aria-hidden />
           <span className="text-xs font-semibold">{t("navDashboard")}</span>
@@ -258,7 +355,7 @@ export function Header() {
             <Plus className="h-4 w-4" aria-hidden />
             <span className="hidden sm:inline">{t("navSell")}</span>
           </Button>
-          <PersonaMenu />
+          <AccountMenu />
         </nav>
       </div>
     </header>

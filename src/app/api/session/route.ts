@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { db } from "@/lib/db";
+import { AUTH_COOKIE } from "@/lib/auth";
 import { ALLOWED_PERSONA_IDS, PERSONA_COOKIE, getCurrentUser } from "@/lib/session";
 import type { PersonaDTO, SessionDTO, TenantRole, UserRole } from "@/lib/dashboard-types";
 import type { SellerType } from "@/lib/types";
@@ -75,9 +76,11 @@ async function buildSessionFor(userId: string): Promise<SessionDTO> {
   if (!user) {
     // Defensive: persona validated upstream, but keep a safe empty shape.
     return {
-      user: { id: "", name: "", role: "BUYER", locale: "km", avatarUrl: null },
+      user: { id: "", name: "", role: "BUYER", locale: "km", avatarUrl: null, phone: "" },
       sellerType: null,
       tenant: null,
+      authed: false,
+      telegramLinked: false,
       personas,
     };
   }
@@ -88,6 +91,8 @@ async function buildSessionFor(userId: string): Promise<SessionDTO> {
       : "PRIVATE"
     : null;
 
+  const authed = await isAuthedUser(user.id);
+
   const session: SessionDTO = {
     user: {
       id: user.id,
@@ -95,6 +100,7 @@ async function buildSessionFor(userId: string): Promise<SessionDTO> {
       role: user.role as UserRole,
       locale: user.locale,
       avatarUrl: user.avatarUrl ?? null,
+      phone: user.phone,
     },
     sellerType,
     tenant: membership
@@ -106,9 +112,20 @@ async function buildSessionFor(userId: string): Promise<SessionDTO> {
           myRole: membership.role as TenantRole,
         }
       : null,
+    authed,
+    telegramLinked: Boolean(user.telegramId),
+    phoneVerified: user.phoneVerified,
     personas,
   };
   return session;
+}
+
+/** True when the given user id is the holder of a valid `khlan_auth` session. */
+async function isAuthedUser(userId: string): Promise<boolean> {
+  const { cookies } = await import("next/headers");
+  const { verifySessionToken, AUTH_COOKIE } = await import("@/lib/auth");
+  const jar = await cookies();
+  return verifySessionToken(jar.get(AUTH_COOKIE)?.value) === userId;
 }
 
 export async function GET() {
@@ -155,6 +172,9 @@ export async function POST(req: Request) {
       path: "/",
       maxAge: 60 * 60 * 24 * 365,
     });
+    // Leaving the real account: persona switching is demo-only, so clear any
+    // auth session to keep "who am I" unambiguous.
+    res.cookies.delete({ name: AUTH_COOKIE, path: "/" });
     return res;
   } catch (err) {
     console.error("[api/session] POST failed:", err);

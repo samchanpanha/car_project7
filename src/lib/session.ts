@@ -1,5 +1,6 @@
 import { cookies } from "next/headers";
 import { db } from "@/lib/db";
+import { getAuthUser } from "@/lib/auth";
 import type { User, SellerProfile } from "@prisma/client";
 
 export const DEMO_BUYER_ID = "usr_demo_buyer";
@@ -67,13 +68,22 @@ export async function getDemoUser(): Promise<DemoUser> {
 }
 
 /**
- * Resolve the current user from the `khlan_persona` cookie:
- * - cookie present + id in ALLOWED_PERSONA_IDS + user exists → that user
- *   (sellerProfile may be null for staff personas — no auto-create, to keep
- *   the seeded DB clean)
- * - otherwise → demo buyer (identical behavior to before personas existed).
+ * Resolve the current user with this priority:
+ * 1. real auth session (`khlan_auth` cookie — login/register/OTP/Telegram)
+ * 2. demo persona (`khlan_persona` cookie — sandbox impersonation)
+ * 3. demo buyer fallback
+ * The sellerProfile may be null for staff personas — no auto-create, to keep
+ * the seeded DB clean.
  */
 export async function getCurrentUser(): Promise<DemoUser> {
+  // 1. Real auth session wins over the demo persona.
+  const authUser = await getAuthUser();
+  if (authUser) {
+    const profile = await db.sellerProfile.findUnique({ where: { userId: authUser.id } });
+    return { ...authUser, sellerProfile: profile };
+  }
+
+  // 2. Demo persona cookie.
   let personaId: string | undefined;
   try {
     const store = await cookies();
@@ -90,5 +100,6 @@ export async function getCurrentUser(): Promise<DemoUser> {
     if (user) return user;
   }
 
+  // 3. Demo buyer fallback.
   return getDemoUser();
 }

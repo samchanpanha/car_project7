@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import Script from "next/script";
 import { Inter, Kantumruy_Pro } from "next/font/google";
 import "./globals.css";
 import { Toaster } from "@/components/ui/sonner";
@@ -37,6 +38,12 @@ export default function RootLayout({
         suppressHydrationWarning
         className={`${inter.variable} ${kantumruyPro.variable} antialiased bg-background text-foreground font-sans`}
       >
+        {/* Telegram Mini App SDK — feature-detected in src/lib/telegram.ts,
+            silently absent when opened in a plain browser or offline. */}
+        <Script
+          src="https://telegram.org/js/telegram-web-app.js"
+          strategy="beforeInteractive"
+        />
         {children}
         <Toaster position="top-center" richColors />
       </body>

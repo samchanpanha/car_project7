@@ -14,6 +14,7 @@ export type View =
   | { name: "favorites" }
   | { name: "seller"; userId: string }
   | { name: "compare" }
+  | { name: "auth" }
   | { name: "dashboard"; tab?: string };
 
 interface AppState {
