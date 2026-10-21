@@ -161,3 +161,12 @@
     radial-gradient(ellipse 80% 60% at 20% 0%, oklch(0.32 0.06 75 / 0.9), transparent 60%),
     radial-gradient(ellipse 60% 50% at 90% 100%, oklch(0.3 0.04 260 / 0.5), transparent 55%);
 }
+
+/* Security Verification captcha: wrong-order shake */
+@keyframes khlan-shake {
+  0%, 100% { transform: translateX(0); }
+  20% { transform: translateX(-6px); }
+  40% { transform: translateX(6px); }
+  60% { transform: translateX(-4px); }
+  80% { transform: translateX(4px); }
+}

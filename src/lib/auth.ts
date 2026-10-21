@@ -1,9 +1,11 @@
 // KhLan auth core — password hashing (scrypt), signed session tokens (HMAC),
-// OTP hashing, and Telegram Mini App initData validation.
+// and Telegram Mini App initData validation.
 // Session resolution order (see src/lib/session.ts):
 //   1. `khlan_auth` cookie  → real logged-in user
 //   2. `khlan_persona` cookie → demo persona impersonation
 //   3. demo buyer fallback
+// OTP login/verification has been removed by product decision — the only
+// sign-in paths are password login, registration and Telegram.
 
 import crypto from "node:crypto";
 import { cookies } from "next/headers";
@@ -76,16 +78,6 @@ export async function getAuthUser(): Promise<User | null> {
   if (!userId) return null;
   const user = await db.user.findUnique({ where: { id: userId } });
   return user ?? null;
-}
-
-// ---------- OTP ----------
-
-export function generateOtpCode(): string {
-  return String(crypto.randomInt(100000, 1000000));
-}
-
-export function hashOtpCode(code: string): string {
-  return crypto.createHmac("sha256", SECRET).update(`otp:${code}`).digest("hex");
 }
 
 // ---------- Telegram Mini App ----------

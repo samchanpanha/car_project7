@@ -2,12 +2,15 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { db } from "@/lib/db";
 import { AUTH_COOKIE, createSessionToken, sessionCookieOptions, verifyPassword } from "@/lib/auth";
+import { consumeCaptchaToken } from "@/lib/captcha";
 
 export const dynamic = "force-dynamic";
 
 const loginSchema = z.object({
   phone: z.string().regex(/^\+855\d{7,9}$/, "phone must be a Cambodian number like +85512345678"),
   password: z.string().min(1).max(128),
+  /** single-use token minted by POST /api/auth/captcha/verify */
+  captchaToken: z.string().min(20).max(256),
 });
 
 export async function POST(req: Request) {
@@ -28,6 +31,14 @@ export async function POST(req: Request) {
       );
     }
     const { phone, password } = parsed.data;
+
+    // Security Verification first — every login attempt needs a fresh captcha.
+    if (!consumeCaptchaToken(parsed.data.captchaToken)) {
+      return NextResponse.json(
+        { error: "Captcha verification failed or expired — please complete the security verification again" },
+        { status: 400 },
+      );
+    }
 
     const user = await db.user.findUnique({ where: { phone } });
     // Same message for unknown phone and wrong password — no account enumeration.

@@ -1,6 +1,6 @@
 "use client";
 
-import { useAppStore } from "@/lib/store";
+import { useAppStore, isGuest } from "@/lib/store";
 import { useT } from "@/hooks/use-t";
 import { formatKhr, formatMileage, formatUsd, timeAgo } from "@/lib/format";
 import { bodyTypeLabels, fuelLabels, transmissionLabels } from "@/lib/i18n";
@@ -29,6 +29,7 @@ export function VehicleCard({ vehicle, showCompare = true }: { vehicle: VehicleC
   const t = useT();
   const locale = useAppStore((s) => s.locale);
   const navigate = useAppStore((s) => s.navigate);
+  const me = useAppStore((s) => s.me);
   const favorites = useAppStore((s) => s.favorites);
   const setFavorites = useAppStore((s) => s.setFavorites);
   const toggleFavoriteLocal = useAppStore((s) => s.toggleFavoriteLocal);
@@ -40,6 +41,11 @@ export function VehicleCard({ vehicle, showCompare = true }: { vehicle: VehicleC
 
   const toggleFavorite = async (e: React.MouseEvent) => {
     e.stopPropagation();
+    if (isGuest(me)) {
+      toast.info(t("authRequiredToast"));
+      navigate({ name: "auth", tab: "signup" });
+      return;
+    }
     // optimistic
     toggleFavoriteLocal(vehicle.id);
     try {

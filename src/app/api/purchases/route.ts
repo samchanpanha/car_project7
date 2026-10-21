@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { db } from "@/lib/db";
-import { getCurrentUser } from "@/lib/session";
+import { getCurrentUser, isGuestRequest } from "@/lib/session";
 import { purchaseErrorResponse } from "@/lib/api/purchases";
 import { rateLimit } from "@/lib/rate-limit";
 
@@ -18,6 +18,9 @@ const createSchema = z.object({
  */
 export async function POST(req: Request) {
   try {
+    if (await isGuestRequest()) {
+      return NextResponse.json({ error: "Login required to request a purchase" }, { status: 401 });
+    }
     const user = await getCurrentUser();
     rateLimit(`purchases:${user.id}`, 10, 60_000);
 

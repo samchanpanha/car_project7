@@ -1,7 +1,9 @@
 import { NextResponse } from "next/server";
+import { cookies } from "next/headers";
 import { z } from "zod";
 import { db } from "@/lib/db";
 import { AUTH_COOKIE } from "@/lib/auth";
+import { ensureDefaultSuperAdmin } from "@/lib/bootstrap";
 import { ALLOWED_PERSONA_IDS, PERSONA_COOKIE, getCurrentUser } from "@/lib/session";
 import type { PersonaDTO, SessionDTO, TenantRole, UserRole } from "@/lib/dashboard-types";
 import type { SellerType } from "@/lib/types";
@@ -130,9 +132,19 @@ async function isAuthedUser(userId: string): Promise<boolean> {
 
 export async function GET() {
   try {
+    // Fresh-database guarantee: the platform always ships a Super Admin.
+    await ensureDefaultSuperAdmin();
+
     const current = await getCurrentUser();
     const session = await buildSessionFor(current.id);
-    return NextResponse.json(session);
+
+    // Distinguish a genuine guest (fresh visitor, no cookies) from an active
+    // demo persona (sandbox impersonation): guests get the public experience
+    // and are asked to register before contacting dealers; demo personas keep
+    // full sandbox access.
+    const jar = await cookies();
+    const demoPersona = !session.authed && Boolean(jar.get(PERSONA_COOKIE)?.value);
+    return NextResponse.json({ ...session, demoPersona });
   } catch (err) {
     console.error("[api/session] GET failed:", err);
     return NextResponse.json({ error: "Failed to load session" }, { status: 500 });

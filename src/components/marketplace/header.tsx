@@ -1,6 +1,6 @@
 "use client";
 
-import { useAppStore } from "@/lib/store";
+import { useAppStore, isGuest } from "@/lib/store";
 import { useT } from "@/hooks/use-t";
 import { apiSend } from "@/lib/client-hooks";
 import type { PersonaDTO } from "@/lib/dashboard-types";
@@ -63,7 +63,8 @@ const ROLE_DOT: Record<string, string> = {
 /** Header account menu (Task 6-a). Renders a placeholder circle until the
  *  session boots so server and client HTML match (no hydration mismatch).
  *  - Real account (me.authed): profile settings, logout.
- *  - Demo mode: login entry + the classic persona switcher. */
+ *  - Guest (fresh visitor): prominent Log in / Sign up buttons.
+ *  - Demo persona: login entry + the classic persona switcher. */
 function AccountMenu() {
   const t = useT();
   const locale = useAppStore((s) => s.locale);
@@ -182,6 +183,33 @@ function AccountMenu() {
         </DropdownMenu>
         <ProfileDialog open={profileOpen} onOpenChange={setProfileOpen} />
       </>
+    );
+  }
+
+  // ---------- guest (fresh visitor) ----------
+  if (isGuest(me)) {
+    return (
+      <div className="flex items-center gap-1.5">
+        <Button
+          size="sm"
+          variant="outline"
+          onClick={() => useAppStore.getState().navigate({ name: "auth", tab: "login" })}
+          className={cn(
+            "h-9 border-white/25 bg-transparent font-semibold text-white hover:bg-white/10 hover:text-white",
+          )}
+          aria-label={t("authLoginTab")}
+        >
+          <LogIn className="h-4 w-4" aria-hidden />
+          <span className="hidden sm:inline sm:ml-1.5">{t("authLoginTab")}</span>
+        </Button>
+        <Button
+          size="sm"
+          onClick={() => useAppStore.getState().navigate({ name: "auth", tab: "signup" })}
+          className="h-9 bg-amber-500 font-semibold text-slate-950 hover:bg-amber-400"
+        >
+          {t("authSignupTab")}
+        </Button>
+      </div>
     );
   }
 

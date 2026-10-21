@@ -216,20 +216,6 @@ model PlatformSetting {
   updatedAt DateTime @updatedAt
 }
 
-// ---------- Auth (OTP codes for phone verification / passwordless login) ----------
-
-model OtpCode {
-  id        String   @id @default(cuid())
-  phone     String
-  codeHash  String // sha256 hex of the 6-digit code
-  purpose   String // LOGIN | VERIFY
-  expiresAt DateTime
-  consumed  Boolean  @default(false)
-  createdAt DateTime @default(now())
-
-  @@index([phone, purpose])
-}
-
 // ---------- Vehicles ----------
 
 model Vehicle {

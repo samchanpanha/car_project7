@@ -4,7 +4,7 @@
 // configuration: profile, phone + verification, password, Telegram status.
 // Opened from the header AccountMenu (and reusable anywhere in the SPA).
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { useAppStore } from "@/lib/store";
 import { useT } from "@/hooks/use-t";
 import { apiSend } from "@/lib/client-hooks";
@@ -14,7 +14,6 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
-import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Separator } from "@/components/ui/separator";
 import {
   Dialog,
@@ -35,7 +34,6 @@ import {
   LogIn,
   MessageCircle,
   ShieldCheck,
-  TriangleAlert,
   UserRound,
 } from "lucide-react";
 import { toast } from "sonner";
@@ -184,20 +182,7 @@ function PhoneSection({ me }: { me: SessionDTO }) {
   const setMe = useAppStore((s) => s.setMe);
   const [newPhone, setNewPhone] = useState("");
   const [busy, setBusy] = useState(false);
-
-  // verify sub-flow
-  const [verifying, setVerifying] = useState(false);
-  const [devCode, setDevCode] = useState<string | null>(null);
-  const [code, setCode] = useState("");
-  const [vBusy, setVBusy] = useState(false);
-  const [countdown, setCountdown] = useState(0);
   const [error, setError] = useState<string | undefined>();
-
-  useEffect(() => {
-    if (countdown <= 0) return;
-    const id = setInterval(() => setCountdown((c) => (c > 0 ? c - 1 : 0)), 1000);
-    return () => clearInterval(id);
-  }, [countdown]);
 
   const verified = me.phoneVerified !== false;
 
@@ -224,46 +209,6 @@ function PhoneSection({ me }: { me: SessionDTO }) {
       setError(err instanceof Error ? err.message : t("errorGeneric"));
     } finally {
       setBusy(false);
-    }
-  };
-
-  const sendCode = async (e?: React.FormEvent) => {
-    e?.preventDefault();
-    setError(undefined);
-    setVBusy(true);
-    try {
-      const res = await apiSend<{ ok: boolean; devCode?: string }>("/api/auth/otp/send", "POST", {
-        phone: me.user.phone,
-        purpose: "VERIFY",
-      });
-      setDevCode(res.devCode ?? null);
-      setVerifying(true);
-      setCode("");
-      setCountdown(60);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : t("errorGeneric"));
-    } finally {
-      setVBusy(false);
-    }
-  };
-
-  const verifyCode = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setError(undefined);
-    if (!/^\d{6}$/.test(code)) return setError(t("authErrCode"));
-    setVBusy(true);
-    try {
-      await apiSend("/api/auth/otp/verify", "POST", { phone: me.user.phone, code, purpose: "VERIFY" });
-      const cur = useAppStore.getState().me;
-      if (cur) setMe({ ...cur, phoneVerified: true });
-      setVerifying(false);
-      setDevCode(null);
-      setCode("");
-      toast.success(t("profilePhoneVerifiedToast"));
-    } catch (err) {
-      setError(err instanceof Error ? err.message : t("errorGeneric"));
-    } finally {
-      setVBusy(false);
     }
   };
 
@@ -312,64 +257,6 @@ function PhoneSection({ me }: { me: SessionDTO }) {
           {t("profilePhoneUpdateBtn")}
         </Button>
       </form>
-
-      {!verified && (
-        <div className="rounded-lg border border-amber-200 bg-amber-50/60 p-3">
-          <p className="text-xs font-semibold text-amber-900">{t("profilePhoneVerifyTitle")}</p>
-          {!verifying ? (
-            <Button
-              type="button"
-              onClick={() => sendCode()}
-              disabled={vBusy}
-              className="mt-2 h-10 bg-amber-500 font-semibold text-slate-950 hover:bg-amber-400"
-            >
-              {vBusy && <Loader2 className="h-4 w-4 animate-spin" aria-hidden />}
-              {t("profilePhoneVerifyBtn")}
-            </Button>
-          ) : (
-            <form onSubmit={verifyCode} className="mt-2 flex flex-col gap-2" noValidate>
-              <p className="text-[11px] leading-relaxed text-amber-800">
-                {t("profilePhoneVerifyBody", { phone: me.user.phone })}
-              </p>
-              {devCode && (
-                <Alert className="border-amber-300 bg-amber-100 text-amber-900">
-                  <TriangleAlert className="h-4 w-4 !text-amber-700" aria-hidden />
-                  <AlertDescription className="text-xs font-medium">
-                    {t("authDemoOtpAlert", { code: devCode })}
-                  </AlertDescription>
-                </Alert>
-              )}
-              <Input
-                type="text"
-                inputMode="numeric"
-                maxLength={6}
-                dir="ltr"
-                value={code}
-                onChange={(e) => setCode(e.target.value.replace(/\D/g, "").slice(0, 6))}
-                placeholder={t("authOtpCodePlaceholder")}
-                aria-label={t("authOtpCodeLabel")}
-                autoComplete="one-time-code"
-                className="h-11 text-center font-mono text-lg tracking-[0.4em]"
-              />
-              <div className="flex gap-2">
-                <Button type="submit" disabled={vBusy} className="h-10 flex-1 bg-slate-900 font-semibold text-white hover:bg-slate-800">
-                  {vBusy && <Loader2 className="h-4 w-4 animate-spin" aria-hidden />}
-                  {t("authOtpVerifyBtn")}
-                </Button>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  disabled={vBusy || countdown > 0}
-                  onClick={() => sendCode()}
-                  className="h-10 text-xs text-slate-500 hover:text-slate-800"
-                >
-                  {countdown > 0 ? t("authOtpResendIn", { s: countdown }) : t("authOtpResend")}
-                </Button>
-              </div>
-            </form>
-          )}
-        </div>
-      )}
       <FieldError msg={error} />
     </div>
   );
@@ -392,7 +279,7 @@ function SecuritySection() {
     if (next !== confirm) return setError(t("authErrConfirm"));
     setBusy(true);
     try {
-      // Passwordless accounts (Telegram/OTP-only) send an empty current password.
+      // Accounts without a password (Telegram-only) send an empty current password.
       await apiSend("/api/account/password", "POST", {
         currentPassword: current || "",
         newPassword: next,

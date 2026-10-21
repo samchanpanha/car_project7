@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { db } from "@/lib/db";
-import { getCurrentUser } from "@/lib/session";
+import { getCurrentUser, isGuestRequest } from "@/lib/session";
 import { toErrorResponse } from "@/lib/api/guards";
 import type { AppointmentDTO } from "@/lib/dashboard-types";
 
@@ -65,6 +65,9 @@ const createSchema = z.object({
 
 export async function POST(req: Request) {
   try {
+    if (await isGuestRequest()) {
+      return NextResponse.json({ error: "Login required to book a test drive" }, { status: 401 });
+    }
     const user = await getCurrentUser();
 
     let json: unknown;

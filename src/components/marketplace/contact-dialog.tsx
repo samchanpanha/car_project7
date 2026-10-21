@@ -1,6 +1,6 @@
 "use client";
 
-import { useAppStore } from "@/lib/store";
+import { useAppStore, isGuest } from "@/lib/store";
 import { useT } from "@/hooks/use-t";
 import { Button } from "@/components/ui/button";
 import {
@@ -32,6 +32,7 @@ export function ContactDialog({
   const t = useT();
   const locale = useAppStore((s) => s.locale);
   const navigate = useAppStore((s) => s.navigate);
+  const me = useAppStore((s) => s.me);
   const [message, setMessage] = useState(
     locale === "km" ? "សួស្តី ឡាននៅមានទេ?" : "Hello, is this car still available?"
   );
@@ -43,6 +44,13 @@ export function ContactDialog({
       : [t("template1"), t("template2"), t("template3")];
 
   const send = async () => {
+    // Defense in depth: the CTAs are already gated — guests route to register.
+    if (isGuest(me)) {
+      onOpenChange(false);
+      toast.info(t("authRequiredToast"));
+      navigate({ name: "auth", tab: "signup" });
+      return;
+    }
     if (!message.trim() || message.trim().length < 2) return;
     setSending(true);
     try {

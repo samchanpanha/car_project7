@@ -1,13 +1,16 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { db } from "@/lib/db";
-import { getCurrentUser } from "@/lib/session";
+import { getCurrentUser, isGuestRequest } from "@/lib/session";
 import { toCardDTO, vehicleCardInclude } from "@/lib/api/mappers";
 
 export const dynamic = "force-dynamic";
 
 export async function GET() {
   try {
+    if (await isGuestRequest()) {
+      return NextResponse.json({ vehicleIds: [], favorites: [] });
+    }
     const user = await getCurrentUser();
     const rows = await db.favorite.findMany({
       where: { userId: user.id },
@@ -33,6 +36,9 @@ const addFavoriteSchema = z.object({ vehicleId: z.string().min(1) });
 
 export async function POST(req: Request) {
   try {
+    if (await isGuestRequest()) {
+      return NextResponse.json({ error: "Login required to save favorites" }, { status: 401 });
+    }
     let json: unknown;
     try {
       json = await req.json();
@@ -66,6 +72,9 @@ export async function POST(req: Request) {
 
 export async function DELETE(req: Request) {
   try {
+    if (await isGuestRequest()) {
+      return NextResponse.json({ error: "Login required" }, { status: 401 });
+    }
     const vehicleId = new URL(req.url).searchParams.get("vehicleId");
     if (!vehicleId) {
       return NextResponse.json({ error: "vehicleId query param is required" }, { status: 400 });

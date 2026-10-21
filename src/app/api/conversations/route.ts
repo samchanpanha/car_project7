@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { db } from "@/lib/db";
-import { getCurrentUser } from "@/lib/session";
+import { getCurrentUser, isGuestRequest } from "@/lib/session";
 import { SAFETY_TIP_MESSAGE, SELLER_AUTO_REPLY } from "@/lib/api/messages";
 import type { ConversationListItemDTO } from "@/lib/types";
 
@@ -63,6 +63,11 @@ const createConversationSchema = z.object({
 
 export async function POST(req: Request) {
   try {
+    // Contacting a dealer is an account action — never attach to the
+    // fallback demo buyer for fresh visitors.
+    if (await isGuestRequest()) {
+      return NextResponse.json({ error: "Login required to contact sellers" }, { status: 401 });
+    }
     let json: unknown;
     try {
       json = await req.json();

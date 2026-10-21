@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { db } from "@/lib/db";
 import { AUTH_COOKIE, createSessionToken, hashPassword, sessionCookieOptions } from "@/lib/auth";
+import { consumeCaptchaToken } from "@/lib/captcha";
 
 export const dynamic = "force-dynamic";
 
@@ -10,6 +11,8 @@ const registerSchema = z.object({
   phone: z.string().regex(/^\+855\d{7,9}$/, "phone must be a Cambodian number like +85512345678"),
   password: z.string().min(8, "password must be at least 8 characters").max(128),
   locale: z.enum(["en", "km"]).optional(),
+  /** single-use token minted by POST /api/auth/captcha/verify */
+  captchaToken: z.string().min(20).max(256),
 });
 
 export async function POST(req: Request) {
@@ -30,6 +33,14 @@ export async function POST(req: Request) {
       );
     }
     const { name, phone, password, locale } = parsed.data;
+
+    // Security Verification first — every registration attempt needs a fresh captcha.
+    if (!consumeCaptchaToken(parsed.data.captchaToken)) {
+      return NextResponse.json(
+        { error: "Captcha verification failed or expired — please complete the security verification again" },
+        { status: 400 },
+      );
+    }
 
     const existing = await db.user.findUnique({ where: { phone }, select: { id: true } });
     if (existing) {

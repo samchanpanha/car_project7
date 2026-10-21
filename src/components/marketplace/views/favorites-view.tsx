@@ -1,20 +1,27 @@
 "use client";
 
-import { useAppStore } from "@/lib/store";
+import { useAppStore, isGuest } from "@/lib/store";
 import { useT } from "@/hooks/use-t";
 import { useFetch } from "@/lib/client-hooks";
 import type { VehiclesResponseDTO } from "@/lib/types";
 import { VehicleCard, VehicleCardSkeleton } from "@/components/marketplace/vehicle-card";
+import { GuestPanel } from "@/components/marketplace/guest-panel";
 import { Button } from "@/components/ui/button";
 import { Heart, Search } from "lucide-react";
 
 export function FavoritesView() {
   const t = useT();
   const navigate = useAppStore((s) => s.navigate);
+  const me = useAppStore((s) => s.me);
   const favorites = useAppStore((s) => s.favorites);
   const { data, loading } = useFetch<VehiclesResponseDTO>(
     favorites.length > 0 ? `/api/vehicles?limit=48&sort=newest` : null
   );
+
+  // Saving favorites is an account feature — guests get the register prompt.
+  if (isGuest(me)) {
+    return <GuestPanel icon={<Heart className="h-6 w-6" aria-hidden />} />;
+  }
 
   const favItems = (data?.items ?? []).filter((v) => favorites.includes(v.id));
 

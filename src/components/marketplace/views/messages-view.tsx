@@ -1,9 +1,10 @@
 "use client";
 
-import { useAppStore } from "@/lib/store";
+import { useAppStore, isGuest } from "@/lib/store";
 import { useT } from "@/hooks/use-t";
 import { useFetch, apiSend } from "@/lib/client-hooks";
 import type { ConversationDetailDTO, ConversationListItemDTO, MessageDTO } from "@/lib/types";
+import { GuestPanel } from "@/components/marketplace/guest-panel";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -17,10 +18,16 @@ export function MessagesView({ conversationId }: { conversationId?: string }) {
   const t = useT();
   const locale = useAppStore((s) => s.locale);
   const navigate = useAppStore((s) => s.navigate);
+  const me = useAppStore((s) => s.me);
 
   const list = useFetch<{ conversations: ConversationListItemDTO[] }>("/api/conversations");
   // parent remounts this component with a new key when navigation changes conversationId
   const [activeId, setActiveId] = useState<string | undefined>(conversationId);
+
+  // Messaging requires an account — guests get the register prompt.
+  if (isGuest(me)) {
+    return <GuestPanel icon={<MessageSquarePlus className="h-6 w-6" aria-hidden />} />;
+  }
 
   const conversations = list.data?.conversations ?? [];
 

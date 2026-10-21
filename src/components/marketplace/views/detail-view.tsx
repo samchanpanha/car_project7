@@ -1,6 +1,6 @@
 "use client";
 
-import { useAppStore } from "@/lib/store";
+import { useAppStore, isGuest } from "@/lib/store";
 import { useT } from "@/hooks/use-t";
 import { useFetch, apiSend } from "@/lib/client-hooks";
 import type { VehicleCardDTO, VehicleDetailDTO } from "@/lib/types";
@@ -95,6 +95,11 @@ export function DetailView({ vehicleId }: { vehicleId: string }) {
   const desc = locale === "km" && v.descriptionKm ? v.descriptionKm : v.description;
 
   const toggleFavorite = async () => {
+    if (isGuest(me)) {
+      toast.info(t("authRequiredToast"));
+      navigate({ name: "auth", tab: "signup" });
+      return;
+    }
     toggleFavoriteLocal(v.id);
     try {
       if (isFav) await apiSend(`/api/favorites?vehicleId=${v.id}`, "DELETE");
@@ -155,12 +160,22 @@ export function DetailView({ vehicleId }: { vehicleId: string }) {
 
   const openBuyDialog = () => {
     if (!me) return;
-    if (!me.authed) {
-      toast.info(t("buyLoginRequired"));
-      navigate({ name: "auth" });
+    if (isGuest(me)) {
+      toast.info(t("authRequiredToast"));
+      navigate({ name: "auth", tab: "signup" });
       return;
     }
     setBuyOpen(true);
+  };
+
+  /** Contact / test-drive stay public-friendly: guests are asked to register. */
+  const openAuthedDialog = (open: () => void) => () => {
+    if (isGuest(me)) {
+      toast.info(t("authRequiredToast"));
+      navigate({ name: "auth", tab: "signup" });
+      return;
+    }
+    open();
   };
 
   const submitBuyRequest = async () => {
@@ -380,7 +395,7 @@ export function DetailView({ vehicleId }: { vehicleId: string }) {
             {/* CTAs */}
             <div className="mt-4 grid grid-cols-2 gap-2">
               <Button
-                onClick={() => setContactOpen(true)}
+                onClick={openAuthedDialog(() => setContactOpen(true))}
                 className="bg-amber-500 hover:bg-amber-400 text-slate-950 font-semibold h-11"
               >
                 <MessageSquare className="h-4 w-4 mr-2" aria-hidden />
@@ -402,7 +417,7 @@ export function DetailView({ vehicleId }: { vehicleId: string }) {
             )}
             {v.status === "PUBLISHED" && (
               <Button
-                onClick={() => setTdOpen(true)}
+                onClick={openAuthedDialog(() => setTdOpen(true))}
                 variant="outline"
                 className="mt-2 h-11 w-full border-teal-200 text-teal-700 hover:bg-teal-50"
               >
@@ -627,7 +642,7 @@ export function DetailView({ vehicleId }: { vehicleId: string }) {
       <div className="fixed bottom-[52px] inset-x-0 z-30 border-t border-slate-200 bg-white/95 backdrop-blur p-2.5 md:hidden">
         <div className="flex gap-2 max-w-md mx-auto">
           <Button
-            onClick={() => setContactOpen(true)}
+            onClick={openAuthedDialog(() => setContactOpen(true))}
             className="flex-1 bg-amber-500 hover:bg-amber-400 text-slate-950 font-semibold h-11"
           >
             <Send className="h-4 w-4 mr-2" aria-hidden />

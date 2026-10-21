@@ -158,7 +158,7 @@ function CurrentView() {
     case "compare":
       return <CompareView />;
     case "auth":
-      return <AuthView />;
+      return <AuthView key={view.tab ?? "login"} initialTab={view.tab} />;
     case "dashboard":
       return <DashboardView />;
     default:

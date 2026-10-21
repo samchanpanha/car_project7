@@ -1,9 +1,10 @@
 "use client";
 
-import { useAppStore } from "@/lib/store";
+import { useAppStore, isGuest } from "@/lib/store";
 import { useT } from "@/hooks/use-t";
 import { useFetch } from "@/lib/client-hooks";
 import type { MetaDTO } from "@/lib/types";
+import { GuestPanel } from "@/components/marketplace/guest-panel";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -70,6 +71,7 @@ export function SellView() {
   const t = useT();
   const locale = useAppStore((s) => s.locale);
   const navigate = useAppStore((s) => s.navigate);
+  const me = useAppStore((s) => s.me);
   const { data: meta } = useFetch<MetaDTO>("/api/meta");
   const [step, setStep] = useState(1);
   const [form, setForm] = useState<SellForm>(EMPTY);
@@ -159,6 +161,12 @@ export function SellView() {
   };
 
   const stepTitles = [t("step1Title"), t("step2Title"), t("step3Title")];
+
+  // Selling is an account action — guests get the register prompt, the public
+  // can still browse every listing freely.
+  if (isGuest(me)) {
+    return <GuestPanel icon={<CarFront className="h-6 w-6" aria-hidden />} />;
+  }
 
   return (
     <div className="mx-auto max-w-2xl px-4 py-6 pb-28 md:pb-10">

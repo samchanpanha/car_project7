@@ -14,8 +14,14 @@ export type View =
   | { name: "favorites" }
   | { name: "seller"; userId: string }
   | { name: "compare" }
-  | { name: "auth" }
+  | { name: "auth"; tab?: "login" | "signup" }
   | { name: "dashboard"; tab?: string };
+
+/** A genuine visitor: no real login and no demo persona — browsing is public,
+ *  but contacting dealers / favorites / selling require registration. */
+export function isGuest(me: SessionDTO | null | undefined): boolean {
+  return Boolean(me && !me.authed && !me.demoPersona);
+}
 
 interface AppState {
   locale: "en" | "km";

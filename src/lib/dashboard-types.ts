@@ -29,6 +29,9 @@ export interface SessionDTO {
   telegramLinked: boolean;
   /** present only when authed (phone verification state for profile settings) */
   phoneVerified?: boolean;
+  /** true when the sandbox persona switcher is active (demo impersonation) —
+   *  fresh visitors (guests) are false, real logins are authed=true */
+  demoPersona?: boolean;
   personas: PersonaDTO[];
 }
 

@@ -1,6 +1,6 @@
 import { cookies } from "next/headers";
 import { db } from "@/lib/db";
-import { getAuthUser } from "@/lib/auth";
+import { AUTH_COOKIE, getAuthUser } from "@/lib/auth";
 import type { User, SellerProfile } from "@prisma/client";
 
 export const DEMO_BUYER_ID = "usr_demo_buyer";
@@ -68,8 +68,25 @@ export async function getDemoUser(): Promise<DemoUser> {
 }
 
 /**
+ * True when the caller is a genuine guest: no real auth session AND no demo
+ * persona cookie. Guests get the public experience — account actions
+ * (favorites, conversations, purchases) must not silently attach to the
+ * fallback demo buyer.
+ */
+export async function isGuestRequest(): Promise<boolean> {
+  try {
+    const store = await cookies();
+    const hasAuth = Boolean(store.get(AUTH_COOKIE)?.value);
+    const hasPersona = Boolean(store.get(PERSONA_COOKIE)?.value);
+    return !hasAuth && !hasPersona;
+  } catch {
+    return false;
+  }
+}
+
+/**
  * Resolve the current user with this priority:
- * 1. real auth session (`khlan_auth` cookie — login/register/OTP/Telegram)
+ * 1. real auth session (`khlan_auth` cookie — login/register/Telegram)
  * 2. demo persona (`khlan_persona` cookie — sandbox impersonation)
  * 3. demo buyer fallback
  * The sellerProfile may be null for staff personas — no auto-create, to keep
