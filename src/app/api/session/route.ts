@@ -12,44 +12,45 @@ import {
 } from "@/lib/session";
 import type { PersonaDTO, SessionDTO, TenantRole, UserRole } from "@/lib/dashboard-types";
 import type { SellerType } from "@/lib/types";
+import type { Locale } from "@/lib/i18n";
 
 export const dynamic = "force-dynamic";
 
-/** Bilingual switcher labels per persona id. */
+/** Bilingual (now quadri-lingual, Task 19) switcher labels per persona id. */
 const PERSONA_META: Record<
   string,
-  { label: { en: string; km: string }; tag: PersonaDTO["tag"] }
+  { label: Record<Locale, string>; tag: PersonaDTO["tag"] }
 > = {
   usr_demo_buyer: {
-    label: { en: "Buyer — Dara", km: "អ្នកទិញ — ដារា" },
+    label: { en: "Buyer — Dara", km: "អ្នកទិញ — ដារា", zh: "买家 — Dara", vi: "Người mua — Dara" },
     tag: "buyer",
   },
   usr_dealer_sokha: {
-    label: { en: "Dealer Owner — Sokha", km: "ម្ចាស់ក្សេត្រ — សុខា" },
+    label: { en: "Dealer Owner — Sokha", km: "ម្ចាស់ក្សេត្រ — សុខា", zh: "经销商老板 — Sokha", vi: "Chủ đại lý — Sokha" },
     tag: "dealer-owner",
   },
   usr_staff_chan: {
-    label: { en: "Sales Staff — Chan", km: "បុគ្គលិកលក់ — ចាន់" },
+    label: { en: "Sales Staff — Chan", km: "បុគ្គលិកលក់ — ចាន់", zh: "销售人员 — Chan", vi: "Nhân viên bán hàng — Chan" },
     tag: "sales-staff",
   },
   usr_staff_sophea: {
-    label: { en: "Inventory Manager — Sophea", km: "អ្នកគ្រប់គ្រងការផ្ទុក — សុភា" },
+    label: { en: "Inventory Manager — Sophea", km: "អ្នកគ្រប់គ្រងការផ្ទុក — សុភា", zh: "库存经理 — Sophea", vi: "Quản lý kho xe — Sophea" },
     tag: "inventory-manager",
   },
   usr_dealer_ppauto: {
-    label: { en: "Dealer Owner — PP Auto", km: "ម្ចាស់ក្សេត្រ — ភីភី អូតូ" },
+    label: { en: "Dealer Owner — PP Auto", km: "ម្ចាស់ក្សេត្រ — ភីភី អូតូ", zh: "经销商老板 — PP Auto", vi: "Chủ đại lý — PP Auto" },
     tag: "dealer-owner",
   },
   usr_priv_vireak: {
-    label: { en: "Private Seller — Vireak", km: "អ្នកលក់ឯកជន — វីរៈ" },
+    label: { en: "Private Seller — Vireak", km: "អ្នកលក់ឯកជន — វីរៈ", zh: "个人卖家 — Vireak", vi: "Người bán cá nhân — Vireak" },
     tag: "private-seller",
   },
   usr_priv_sopheak: {
-    label: { en: "Private Seller — Sopheak", km: "អ្នកលក់ឯកជន — សុភ័ក្ត្រ" },
+    label: { en: "Private Seller — Sopheak", km: "អ្នកលក់ឯកជន — សុភ័ក្ត្រ", zh: "个人卖家 — Sopheak", vi: "Người bán cá nhân — Sopheak" },
     tag: "private-seller",
   },
   usr_admin: {
-    label: { en: "Super Admin — Nita", km: "អ្នកគ្រប់គ្រងកំពូល — នីតា" },
+    label: { en: "Super Admin — Nita", km: "អ្នកគ្រប់គ្រងកំពូល — នីតា", zh: "超级管理员 — Nita", vi: "Quản trị viên cấp cao — Nita" },
     tag: "admin",
   },
 };

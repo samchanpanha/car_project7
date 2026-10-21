@@ -8,7 +8,7 @@ export const dynamic = "force-dynamic";
 
 const profileSchema = z.object({
   name: z.string().trim().min(1).max(120).optional(),
-  locale: z.enum(["en", "km"]).optional(),
+  locale: z.enum(["en", "km", "zh", "vi"]).optional(),
   avatarUrl: z.string().url().max(2048).nullable().optional(),
   phone: z.string().regex(/^\+855\d{7,9}$/).optional(),
 });

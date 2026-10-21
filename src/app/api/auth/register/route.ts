@@ -11,7 +11,7 @@ const registerSchema = z.object({
   // loose on the wire — normalizeKhmerPhone canonicalizes (012…, 855…, +855…)
   phone: z.string().min(6).max(32),
   password: z.string().min(8, "password must be at least 8 characters").max(128),
-  locale: z.enum(["en", "km"]).optional(),
+  locale: z.enum(["en", "km", "zh", "vi"]).optional(),
   /** single-use token minted by POST /api/auth/captcha/verify */
   captchaToken: z.string().min(20).max(256),
 });

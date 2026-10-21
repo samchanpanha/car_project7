@@ -12,43 +12,48 @@ import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel,
   DropdownMenuSeparator, DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { Search, Heart, MessageSquare, Scale, Plus, Languages, CarFront, LayoutDashboard, ChevronDown, UserRound, Settings2, LogOut, LogIn } from "lucide-react";
+import { Search, Heart, MessageSquare, Scale, Plus, Languages, CarFront, LayoutDashboard, ChevronDown, UserRound, Settings2, LogOut, LogIn, Check } from "lucide-react";
 import { useState } from "react";
 import { cn } from "@/lib/utils";
 import { initials } from "@/components/marketplace/dashboard/bits";
 import { toast } from "sonner";
+import { LOCALES, LOCALE_NAMES, LOCALE_SHORT } from "@/lib/i18n";
 
 function LangToggle({ dark }: { dark?: boolean }) {
   const locale = useAppStore((s) => s.locale);
   const setLocale = useAppStore((s) => s.setLocale);
   return (
-    <div
-      className={cn(
-        "flex items-center rounded-full border p-0.5 text-xs font-medium",
-        dark ? "border-white/20 text-white/80" : "border-slate-200 text-slate-600"
-      )}
-      role="group"
-      aria-label="Language / ភាសា"
-    >
-      {(["en", "km"] as const).map((l) => (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
         <button
-          key={l}
-          onClick={() => setLocale(l)}
           className={cn(
-            "rounded-full px-1.5 py-1 text-xs transition-colors sm:px-2.5 sm:text-sm cursor-pointer",
-            locale === l
-              ? "bg-amber-500 text-slate-950"
-              : dark
-                ? "hover:text-white"
-                : "hover:text-slate-900"
+            "flex items-center gap-1 rounded-full border px-2 py-1.5 text-xs font-semibold transition-colors cursor-pointer min-h-[36px]",
+            dark
+              ? "border-white/20 text-white/80 hover:text-white hover:bg-white/10"
+              : "border-slate-200 text-slate-600 hover:text-slate-900 hover:bg-slate-100"
           )}
-          aria-pressed={locale === l}
+          aria-label={`Language / ភាសា / 语言 / Ngôn ngữ — ${LOCALE_NAMES[locale]}`}
+          aria-haspopup="menu"
         >
-          {l === "en" ? "EN" : "ខ្មែរ"}
+          <Languages className="h-4 w-4" aria-hidden />
+          <span>{LOCALE_SHORT[locale]}</span>
+          <ChevronDown className="h-3 w-3 opacity-70" aria-hidden />
         </button>
-      ))}
-      <Languages className="sr-only" aria-hidden />
-    </div>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end" className="min-w-44">
+        {LOCALES.map((l) => (
+          <DropdownMenuItem
+            key={l}
+            onClick={() => setLocale(l)}
+            className={cn("gap-2", locale === l && "bg-amber-50")}
+            aria-current={locale === l}
+          >
+            <span className="flex-1 text-sm font-medium text-slate-800">{LOCALE_NAMES[l]}</span>
+            {locale === l && <Check className="h-4 w-4 text-amber-600" aria-hidden />}
+          </DropdownMenuItem>
+        ))}
+      </DropdownMenuContent>
+    </DropdownMenu>
   );
 }
 
@@ -272,7 +277,7 @@ function AccountMenu() {
             <span className={cn("inline-block h-1.5 w-1.5 shrink-0 rounded-full", ROLE_DOT[p.role] ?? "bg-slate-400")} aria-hidden />
             <span className="min-w-0 flex-1">
               <span className="block truncate text-xs font-medium text-slate-800">{p.name}</span>
-              <span className="block truncate text-[10px] text-slate-400">{p.label[locale]}</span>
+              <span className="block truncate text-[10px] text-slate-400">{p.label[locale] ?? p.label.en}</span>
             </span>
             <Badge variant="outline" className="shrink-0 text-[9px] font-semibold text-slate-500">
               {t(`role${p.role}` as never)}

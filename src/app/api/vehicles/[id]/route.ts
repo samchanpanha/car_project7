@@ -247,7 +247,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
           keepIds.add(row.id);
           // Sellers cannot grant or revoke verification — an admin-set
           // VERIFIED/REJECTED survives seller edits untouched.
-          if (!isPlatformAdmin && !isSellerWritableStatus(status)) status = row.status;
+          if (!isPlatformAdmin && !isSellerWritableStatus(status)) status = row.status as typeof doc.status;
           await db.vehicleDocument.update({
             where: { id: row.id },
             data: { type: doc.type, status, notes, fileUrl },

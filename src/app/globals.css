@@ -138,6 +138,19 @@
   line-height: 1.75;
 }
 
+/* Chinese locale (Task 19): CJK system stacks — no webfont download, the
+ * sandbox/OS supplies PingFang / Microsoft YaHei / Noto Sans CJK. */
+.font-cjk,
+.font-cjk button,
+.font-cjk input,
+.font-cjk textarea,
+.font-cjk select {
+  font-family: "Noto Sans SC", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei",
+    "Source Han Sans SC", var(--font-inter), ui-sans-serif, system-ui, sans-serif;
+}
+
+/* Vietnamese uses Latin Extended (ơ ư đ…) — Inter covers it, nothing needed. */
+
 /* Custom scrollbars for filter rails / message lists */
 .kl-scroll::-webkit-scrollbar {
   width: 6px;

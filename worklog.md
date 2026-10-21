@@ -572,3 +572,37 @@ Stage Summary:
 - Every car list paginates: public browse uses true server-side numbered pagination (page/pageSize/pageCount, clamped, cursor-compatible), while dealer inventory, "your listings" and the admin moderation queue page their lists with the shared amber-accent Pagination component — consistent "Showing X–Y of Z" ranges, filter changes restart at page 1, and mobile gets a compact bar.
 - Credentials unchanged: Super Admin +85512998009 / khlan123; demo dealer +85512998001 / khlan123; demo buyer +85511998877 / khlan123.
 - Files: ADDED src/components/marketplace/pagination.tsx; MODIFIED src/components/marketplace/listing-editor.tsx, src/components/marketplace/views/browse-view.tsx, src/components/marketplace/views/sell-view.tsx, src/components/marketplace/dashboard/dealer-dashboard.tsx, src/components/marketplace/dashboard/admin-dashboard.tsx, src/lib/api/vehicle-filters.ts, src/lib/listing-types.ts, src/lib/i18n.ts.
+
+---
+Task ID: 19
+Agent: Z.ai Code (main)
+Task: "Help me implement adding more switch languages, Chinese and Vietnamese" — add Chinese (zh) and Vietnamese (vi) to KhLan's i18n: full dictionaries, 4-language switcher, persistence, fonts, per-user locale, API validation.
+
+Work Log:
+- src/lib/i18n.ts: Locale widened to "en" | "km" | "zh" | "vi"; added LOCALES, isLocale() runtime guard, LOCALE_NAMES (native names) and LOCALE_SHORT (compact header labels). Added two complete dictionaries `zh` and `vi` (typed `Record<keyof typeof en, string>`, so a missing/extra key is a compile error — tsc verifies ~656 keys each, all {var} placeholders preserved). dictionaries = { en, km, zh, vi }. Option label maps (bodyTypeLabels / fuelLabels / transmissionLabels / drivetrainLabels) extended with zh+vi entries and retyped Record<string, Record<Locale, string>>.
+- Language switcher (src/components/marketplace/header.tsx): the old 2-button EN|ខ្មែរ toggle became a compact Languages-icon dropdown (icon + LOCALE_SHORT + chevron) listing all four native names with an amber check on the active one; persona switcher labels now use `p.label[locale] ?? p.label.en`.
+- Persistence: store.setLocale writes localStorage "khlan_locale" (try/catch); SessionBoot (src/app/page.tsx) applies authed user.locale via isLocale() else restores the saved guest choice; document.documentElement.lang = locale directly; per-locale font wrapper helper fontClassFor() — km→font-khmer, zh→font-cjk, vi/en→default Inter.
+- Fonts (globals.css): new .font-cjk system CJK stack (Noto Sans SC → PingFang SC → Hiragino Sans GB → Microsoft YaHei → Source Han Sans SC) — no webfont download; Vietnamese is fully covered by Inter's Latin Extended.
+- Per-user locale UI: signup form (auth-view.tsx) and profile dialog (profile-dialog.tsx) interface-language selects now list ភាសាខ្មែរ/English/中文/Tiếng Việt with isLocale()-guarded onValueChange; profile save round-trips the chosen locale through the store.
+- APIs: zod locale enums widened to ["en","km","zh","vi"] in /api/auth/register and /api/account/profile (User.locale stays a plain string column — no DB migration). /api/session PERSONA_META labels gained zh+vi for all 8 personas; PersonaDTO.label extended additively ({zh?, vi?} optional) in dashboard-types.ts.
+- Localized helpers: format.ts timeAgo gained zh ("3小时前"/"刚刚") and vi ("3 giờ trước"/"vừa xong") branches; formatMileage zh "公里"; status-badge.tsx added shortLabelZh/shortLabelVi with a shortLabel() dispatcher.
+- Type-check fixes (pre-existing Task 17 residue surfaced by full tsc): vehicles/[id]/route.ts document-status clamp cast (`row.status as typeof doc.status`); listing-editor.tsx `vehicle?.canVerifyDocuments ?? false` null-guard.
+
+Verification (agent-browser + dev.log):
+- Guest EN→中文: header (对比/收藏/消息/出售爱车/登录/注册), hero and all sections render Chinese; html lang="zh"; .font-cjk wrapper count = 3; localStorage khlan_locale="zh".
+- 中文→Tiếng Việt: header, hero, browse filters ("Kiểu dáng", "Bán tải" from bodyTypeLabels), filter chips ("Bỏ Sedan"), results ("Tìm thấy 3 xe") correct; html lang="vi"; persisted across reload (guest path).
+- Detail page vi: Năm sản xuất / Số km đã đi / Hộp số + Tự động / Nhiên liệu + Xăng / Hệ dẫn động / Kiểu dáng / Màu sắc all translated; timeAgo vi on cards ("2 ngày trước", "6 ngày trước", "1 tuần trước").
+- Khmer + English regression: both still render exactly as before (km spot-checked on detail view).
+- Signup form: interface-language combobox lists all four options; profile dialog combobox likewise.
+- Full login in Chinese UI: 安全验证 captcha rendered in Chinese, S-E-D-A-N click-order passed, admin landed on the dashboard (Task 13 flow intact); authed user's own DB locale wins on boot (by design).
+- Profile save with 中文 → /api/session user.locale="zh" after reload (DB persistence via PATCH /api/account/profile); dashboard rendered in Chinese (欢迎，Nita Meng / 按状态统计车源 / 新用户与新车源…); restored admin locale to km afterwards and logged the test browser out.
+- Mobile 390px: compact toggle + dropdown fit the header, all four languages visible with check on active, Vietnamese diacritics and layout clean (screenshot verified).
+- Console: zero page errors; bun run lint clean; tsc --noEmit clean for src/ (only pre-existing examples/skills/prisma-seed external errors remain, none in app code).
+- Stale dev.log entry "documentsInputSchema.omit is not a function" confirmed historical (pre-fix code from Task 17 development); current code compiles and GET /api/vehicles returns 200.
+
+Stage Summary:
+- KhLan is now quadri-lingual: English, Khmer, Chinese (Simplified) and Vietnamese, with ~656 fully translated dictionary keys per new locale and zero missing-key risk enforced by the type system.
+- One switcher drives everything: header dropdown for instant switching, localStorage for guests, the account's profile locale for signed-in users (signup select + profile dialog), and API validation accepts all four locales end-to-end.
+- Fallback philosophy: strings outside the dictionary (inline km/en ternaries in sell/listing forms, AI report body, contact templates) fall back to English for zh/vi — noted as future polish, no functional gaps.
+- Credentials unchanged: Super Admin +85512998009 / khlan123; demo buyer +85511998877 / khlan123. Admin profile locale restored to km.
+- Files: MODIFIED src/lib/i18n.ts, src/lib/store.ts, src/lib/format.ts, src/lib/dashboard-types.ts, src/app/page.tsx, src/app/globals.css, src/components/marketplace/header.tsx, src/components/marketplace/views/auth-view.tsx, src/components/marketplace/profile-dialog.tsx, src/components/marketplace/status-badge.tsx, src/app/api/session/route.ts, src/app/api/auth/register/route.ts, src/app/api/account/profile/route.ts, src/app/api/vehicles/[id]/route.ts, src/components/marketplace/listing-editor.tsx.

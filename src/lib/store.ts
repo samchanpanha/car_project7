@@ -3,6 +3,7 @@
 import { create } from "zustand";
 import type { SortOption } from "./types";
 import type { SessionDTO } from "./dashboard-types";
+import type { Locale } from "./i18n";
 
 export type View =
   | { name: "home" }
@@ -24,8 +25,8 @@ export function isGuest(me: SessionDTO | null | undefined): boolean {
 }
 
 interface AppState {
-  locale: "en" | "km";
-  setLocale: (l: "en" | "km") => void;
+  locale: Locale;
+  setLocale: (l: Locale) => void;
   view: View;
   navigate: (v: View) => void;
   /** global search text typed in the header (browse reads it) */
@@ -42,7 +43,17 @@ interface AppState {
 
 export const useAppStore = create<AppState>((set, get) => ({
   locale: "en",
-  setLocale: (locale) => set({ locale }),
+  setLocale: (locale) => {
+    set({ locale });
+    // Persist the visitor's language choice across reloads (guests and demo
+    // personas have no server-side locale; authed users' profile locale wins
+    // on boot via SessionBoot, which also funnels through here).
+    try {
+      window.localStorage.setItem("khlan_locale", locale);
+    } catch {
+      /* localStorage unavailable — locale stays session-only */
+    }
+  },
   view: { name: "home" },
   navigate: (view) => {
     set({ view });

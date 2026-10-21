@@ -14,8 +14,9 @@ export interface PersonaDTO {
   id: string;
   name: string;
   role: UserRole;
-  /** demo label shown in the switcher */
-  label: { en: string; km: string };
+  /** demo label shown in the switcher (zh/vi added in Task 19 — optional so
+   *  older consumers/ payloads without them stay valid; UI falls back to en) */
+  label: { en: string; km: string; zh?: string; vi?: string };
   tag: "buyer" | "dealer-owner" | "sales-staff" | "inventory-manager" | "private-seller" | "admin";
 }
 

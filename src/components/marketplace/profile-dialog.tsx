@@ -8,6 +8,7 @@ import { useState } from "react";
 import { useAppStore } from "@/lib/store";
 import { useT } from "@/hooks/use-t";
 import { apiSend } from "@/lib/client-hooks";
+import { isLocale, type Locale } from "@/lib/i18n";
 import type { SessionDTO } from "@/lib/dashboard-types";
 import { initials } from "@/components/marketplace/dashboard/bits";
 import { Button } from "@/components/ui/button";
@@ -90,7 +91,7 @@ function ProfileSection({ me }: { me: SessionDTO }) {
   const setMe = useAppStore((s) => s.setMe);
   const setLocale = useAppStore((s) => s.setLocale);
   const [name, setName] = useState(me.user.name);
-  const [locale, setLocaleSel] = useState<"en" | "km">(me.user.locale === "en" ? "en" : "km");
+  const [locale, setLocaleSel] = useState<Locale>(isLocale(me.user.locale) ? me.user.locale : "en");
   const [avatar, setAvatar] = useState(me.user.avatarUrl ?? "");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | undefined>();
@@ -117,7 +118,7 @@ function ProfileSection({ me }: { me: SessionDTO }) {
           phoneVerified: res.user.phoneVerified,
         });
       }
-      setLocale(res.user.locale === "en" ? "en" : "km");
+      setLocale(isLocale(res.user.locale) ? res.user.locale : "en");
       toast.success(t("profileSavedToast"));
     } catch (err) {
       setError(err instanceof Error ? err.message : t("errorGeneric"));
@@ -141,13 +142,15 @@ function ProfileSection({ me }: { me: SessionDTO }) {
       </div>
       <div className="flex flex-col gap-1.5">
         <Label>{t("profileLocaleLabel")}</Label>
-        <Select value={locale} onValueChange={(v) => setLocaleSel(v === "en" ? "en" : "km")}>
+        <Select value={locale} onValueChange={(v) => { if (isLocale(v)) setLocaleSel(v); }}>
           <SelectTrigger className="h-10" aria-label={t("profileLocaleLabel")}>
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="km">ភាសាខ្មែរ (Khmer)</SelectItem>
             <SelectItem value="en">English</SelectItem>
+            <SelectItem value="zh">中文 (Chinese)</SelectItem>
+            <SelectItem value="vi">Tiếng Việt (Vietnamese)</SelectItem>
           </SelectContent>
         </Select>
       </div>

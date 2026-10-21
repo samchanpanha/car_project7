@@ -2,6 +2,7 @@
 
 import { useAppStore } from "@/lib/store";
 import { useT } from "@/hooks/use-t";
+import type { Locale } from "@/lib/i18n";
 import type { ReportStatus } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { ShieldCheck, FileSearch, TriangleAlert, CircleHelp, CircleSlash } from "lucide-react";
@@ -71,7 +72,7 @@ export function ReportStatusBadge({
       )}
     >
       <Icon className="h-3 w-3" aria-hidden />
-      {short ? (locale === "km" ? shortLabelKm(status) : shortLabelEn(status)) : t(style.label)}
+      {short ? shortLabel(status, locale) : t(style.label)}
     </span>
   );
 }
@@ -103,6 +104,41 @@ function shortLabelKm(status: ReportStatus): string {
     default:
       return "គ្មានទិន្នន័យ";
   }
+}
+function shortLabelZh(status: ReportStatus): string {
+  switch (status) {
+    case "VERIFIED":
+      return "已核实";
+    case "EVIDENCE_FOUND":
+      return "有证据";
+    case "INCONSISTENT":
+      return "存疑";
+    case "NOT_VERIFIED":
+      return "未核实";
+    default:
+      return "无数据";
+  }
+}
+function shortLabelVi(status: ReportStatus): string {
+  switch (status) {
+    case "VERIFIED":
+      return "Đã xác minh";
+    case "EVIDENCE_FOUND":
+      return "Có bằng chứng";
+    case "INCONSISTENT":
+      return "Mâu thuẫn";
+    case "NOT_VERIFIED":
+      return "Chưa xác minh";
+    default:
+      return "Không có dữ liệu";
+  }
+}
+/** Compact badge label per locale (Task 19: zh/vi added, others fall back). */
+function shortLabel(status: ReportStatus, locale: Locale): string {
+  if (locale === "km") return shortLabelKm(status);
+  if (locale === "zh") return shortLabelZh(status);
+  if (locale === "vi") return shortLabelVi(status);
+  return shortLabelEn(status);
 }
 
 /** Status legend strip shown on the report page */

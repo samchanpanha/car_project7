@@ -745,7 +745,7 @@ export function ListingEditorDialog({
                   documents={form.documents}
                   onChange={(documents) => set({ documents })}
                   disabled={saving}
-                  canVerify={vehicle.canVerifyDocuments ?? false}
+                  canVerify={vehicle?.canVerifyDocuments ?? false}
                 />
               </div>
             </section>

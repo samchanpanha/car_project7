@@ -2,7 +2,7 @@
 
 import { useAppStore } from "@/lib/store";
 import { useFetch } from "@/lib/client-hooks";
-import { translate } from "@/lib/i18n";
+import { translate, isLocale, type Locale } from "@/lib/i18n";
 import type { SessionDTO } from "@/lib/dashboard-types";
 import {
   isInTelegram,
@@ -51,9 +51,19 @@ function SessionBoot() {
     if (!data) return;
     setMe(data);
     // A real account's locale is the user's own configuration — apply it on
-    // boot (demo personas keep the manual toggle default).
-    if (data.authed && (data.user.locale === "en" || data.user.locale === "km")) {
+    // boot (demo personas keep the manual toggle default). For everyone else
+    // restore the language picked via the header toggle (localStorage).
+    if (data.authed && isLocale(data.user.locale)) {
       useAppStore.getState().setLocale(data.user.locale);
+    } else {
+      try {
+        const saved = window.localStorage.getItem("khlan_locale");
+        if (saved && isLocale(saved) && saved !== useAppStore.getState().locale) {
+          useAppStore.getState().setLocale(saved);
+        }
+      } catch {
+        /* localStorage unavailable — keep default locale */
+      }
     }
     // Replay the post-login redirect (set by the auth view): every signed-in
     // role lands directly on their dashboard — admin tools / dealer tools /
@@ -151,6 +161,14 @@ function TelegramBoot() {
   return null;
 }
 
+/** Per-locale typography: Khmer gets the Kantumruy Pro stack, Chinese gets a
+ *  CJK system stack; Vietnamese/Latin render fine with the default (Inter). */
+function fontClassFor(locale: Locale): string {
+  if (locale === "km") return "font-khmer";
+  if (locale === "zh") return "font-cjk";
+  return "";
+}
+
 function CurrentView() {
   const view = useAppStore((s) => s.view);
   switch (view.name) {
@@ -189,7 +207,7 @@ export default function Page() {
   const rootRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    document.documentElement.lang = locale === "km" ? "km" : "en";
+    document.documentElement.lang = locale;
   }, [locale]);
 
   useEffect(() => {
@@ -206,18 +224,18 @@ export default function Page() {
       ref={rootRef}
       className="flex min-h-screen flex-col bg-slate-50"
     >
-      <div className={cn(locale === "km" && "font-khmer")}>
+      <div className={cn(fontClassFor(locale))}>
         <Header />
       </div>
       <main className="flex-1 flex flex-col" id="main">
-        <div className={cn("flex-1", locale === "km" && "font-khmer")}>
+        <div className={cn("flex-1", fontClassFor(locale))}>
           <FavoritesBoot />
           <SessionBoot />
           <TelegramBoot />
           <CurrentView />
         </div>
       </main>
-      <div className={cn(locale === "km" && "font-khmer")}>
+      <div className={cn(fontClassFor(locale))}>
         <Footer />
       </div>
       <MobileNav />

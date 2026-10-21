@@ -30,7 +30,7 @@ import { Separator } from "@/components/ui/separator";
 import { CarFront, ChevronDown, Eye, EyeOff, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
-import type { DictKey } from "@/lib/i18n";
+import { isLocale, type DictKey, type Locale } from "@/lib/i18n";
 
 const PHONE_RE = /^\+855\d{7,9}$/;
 
@@ -85,7 +85,7 @@ async function applySessionInPlace(session: SessionDTO): Promise<void> {
     /* ignore */
   }
   // A real account's locale is the user's own configuration.
-  if (session.user.locale === "en" || session.user.locale === "km") {
+  if (isLocale(session.user.locale)) {
     store.setLocale(session.user.locale);
   }
   // Re-sync favorites that previously belonged to the guest/persona session.
@@ -272,7 +272,7 @@ function SignupForm() {
   const [phone, setPhone] = useState("");
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");
-  const [locale, setLocaleSel] = useState<"en" | "km">("km");
+  const [locale, setLocaleSel] = useState<Locale>("km");
   const [busy, setBusy] = useState(false);
   const [captchaOpen, setCaptchaOpen] = useState(false);
   const [error, setError] = useState<string | undefined>();
@@ -379,13 +379,15 @@ function SignupForm() {
         </div>
         <div className="flex flex-col gap-1.5">
           <Label>{t("authLocaleLabel")}</Label>
-          <Select value={locale} onValueChange={(v) => setLocaleSel(v === "en" ? "en" : "km")}>
+          <Select value={locale} onValueChange={(v) => { if (isLocale(v)) setLocaleSel(v); }}>
             <SelectTrigger className="h-11" aria-label={t("authLocaleLabel")}>
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="km">ភាសាខ្មែរ (Khmer)</SelectItem>
               <SelectItem value="en">English</SelectItem>
+              <SelectItem value="zh">中文 (Chinese)</SelectItem>
+              <SelectItem value="vi">Tiếng Việt (Vietnamese)</SelectItem>
             </SelectContent>
           </Select>
         </div>
