@@ -81,7 +81,7 @@ export async function POST(req: Request) {
       user: { id: user.id, name: user.name, role: user.role, locale: user.locale },
       isNew: false,
     });
-    res.cookies.set({ name: AUTH_COOKIE, value: createSessionToken(user.id), ...sessionCookieOptions() });
+    res.cookies.set({ name: AUTH_COOKIE, value: createSessionToken(user.id), ...await sessionCookieOptions() });
     res.cookies.delete({ name: "khlan_persona", path: "/" });
     return res;
   } catch (err) {

@@ -2,7 +2,7 @@
 
 import { useAppStore, isGuest } from "@/lib/store";
 import { useT } from "@/hooks/use-t";
-import { apiSend } from "@/lib/client-hooks";
+import { apiSend, authFallbackHeaders, clearAuthFallback } from "@/lib/client-hooks";
 import type { PersonaDTO } from "@/lib/dashboard-types";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -87,6 +87,20 @@ function AccountMenu() {
     if (p.id === me.user.id) return;
     try {
       await apiSend("/api/session", "POST", { userId: p.id });
+      // In cookie-blocked contexts (embedded previews) the persona cookie is
+      // refused — verify the switch took effect and fall back to the
+      // localStorage persona transported via the x-khlan-persona header.
+      const check = await fetch("/api/session", { cache: "no-store", headers: authFallbackHeaders() });
+      const s = check.ok ? ((await check.json()) as { user?: { id?: string } }) : null;
+      try {
+        if (s?.user?.id !== p.id) {
+          window.localStorage.setItem("khlan_ls_persona", p.id);
+        } else {
+          window.localStorage.removeItem("khlan_ls_persona");
+        }
+      } catch {
+        /* ignore */
+      }
       try {
         sessionStorage.setItem("khlan_switched", p.name);
       } catch {
@@ -101,6 +115,8 @@ function AccountMenu() {
   const logout = async () => {
     try {
       await apiSend("/api/auth/logout", "POST");
+      // Drop the header-transport fallback too (cookie-blocked sessions).
+      clearAuthFallback();
       try {
         sessionStorage.setItem("khlan_loggedout", "1");
       } catch {

@@ -71,14 +71,18 @@ export async function POST(req: Request) {
     // Private sellers get a profile lazily; give every new account one.
     await db.sellerProfile.create({ data: { userId: user.id, type: "PRIVATE" } });
 
+    const token = createSessionToken(user.id);
     const res = NextResponse.json(
       {
         ok: true,
         user: { id: user.id, name: user.name, role: user.role, locale: user.locale },
+        // Cookie-blocked browsers keep this token in localStorage and send it
+        // via the x-khlan-session header instead.
+        sessionToken: token,
       },
       { status: 201 },
     );
-    res.cookies.set({ name: AUTH_COOKIE, value: createSessionToken(user.id), ...sessionCookieOptions() });
+    res.cookies.set({ name: AUTH_COOKIE, value: token, ...await sessionCookieOptions() });
     return res;
   } catch (err) {
     console.error("[api/auth/register] failed:", err);

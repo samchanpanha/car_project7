@@ -2,6 +2,41 @@
 
 import { useCallback, useEffect, useState } from "react";
 
+/** localStorage keys — must mirror lib/auth.ts (LS_TOKEN_KEY/LS_PERSONA_KEY;
+ *  duplicated as literals because this module is imported client-side and the
+ *  server module pulls in Prisma). */
+const LS_TOKEN_KEY = "khlan_ls_token";
+const LS_PERSONA_KEY = "khlan_ls_persona";
+
+/** Fallback session transport for cookie-blocked environments (embedded
+ *  previews, strict third-party-cookie settings): when the browser refuses
+ *  Set-Cookie, the client stores the signed token / persona id in localStorage
+ *  and every API call carries them as headers. Returns {} on the server. */
+export function authFallbackHeaders(): Record<string, string> {
+  if (typeof window === "undefined") return {};
+  try {
+    const h: Record<string, string> = {};
+    const token = window.localStorage.getItem(LS_TOKEN_KEY);
+    if (token) h["x-khlan-session"] = token;
+    const persona = window.localStorage.getItem(LS_PERSONA_KEY);
+    if (persona) h["x-khlan-persona"] = persona;
+    return h;
+  } catch {
+    return {};
+  }
+}
+
+/** Clear the localStorage fallback (logout / superseded session). */
+export function clearAuthFallback(): void {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.removeItem(LS_TOKEN_KEY);
+    window.localStorage.removeItem(LS_PERSONA_KEY);
+  } catch {
+    /* ignore */
+  }
+}
+
 interface FetchState<T> {
   status: "idle" | "loading" | "done" | "error";
   data: T | null;
@@ -25,7 +60,7 @@ export function useFetch<T>(url: string | null) {
       if (cancelled) return;
       setState((s) => ({ ...s, status: "loading", error: null }));
       try {
-        const res = await fetch(url);
+        const res = await fetch(url, { headers: authFallbackHeaders() });
         const json = await res.json().catch(() => ({}));
         if (cancelled) return;
         if (!res.ok) throw new Error(json.error || `Request failed (${res.status})`);
@@ -55,7 +90,10 @@ export async function apiSend<T>(
 ): Promise<T> {
   const res = await fetch(url, {
     method,
-    headers: body ? { "Content-Type": "application/json" } : undefined,
+    headers: {
+      ...authFallbackHeaders(),
+      ...(body ? { "Content-Type": "application/json" } : {}),
+    },
     body: body ? JSON.stringify(body) : undefined,
   });
   const json = await res.json().catch(() => ({}));

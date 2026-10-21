@@ -1,6 +1,12 @@
-import { cookies } from "next/headers";
+import { cookies, headers } from "next/headers";
 import { db } from "@/lib/db";
-import { AUTH_COOKIE, getAuthUser, verifySessionToken } from "@/lib/auth";
+import {
+  AUTH_COOKIE,
+  PERSONA_HEADER,
+  SESSION_HEADER,
+  getAuthUser,
+  verifySessionToken,
+} from "@/lib/auth";
 import type { User, SellerProfile } from "@prisma/client";
 
 export const DEMO_BUYER_ID = "usr_demo_buyer";
@@ -77,23 +83,57 @@ export async function getDemoUser(): Promise<DemoUser> {
   return user;
 }
 
-/**
- * True when the caller is a genuine guest: no real auth session AND no demo
- * persona cookie. Guests get the public experience — account actions
- * (favorites, conversations, purchases) must not silently attach to the
- * fallback demo buyer. The auth cookie must carry a VALID signed token — a
- * stale/expired one counts as no auth at all.
- */
-export async function isGuestRequest(): Promise<boolean> {
+/** Read a cookie value (empty string when absent / outside request scope). */
+async function readCookie(name: string): Promise<string> {
   try {
     const store = await cookies();
-    const authValue = store.get(AUTH_COOKIE)?.value;
-    const hasAuth = Boolean(authValue && verifySessionToken(authValue));
-    const hasPersona = Boolean(store.get(PERSONA_COOKIE)?.value);
-    return !hasAuth && !hasPersona;
+    return store.get(name)?.value ?? "";
   } catch {
-    return false;
+    return "";
   }
+}
+
+/** Read a request header value (empty string when absent). */
+async function readHeader(name: string): Promise<string> {
+  try {
+    const h = await headers();
+    return h.get(name) ?? "";
+  } catch {
+    return "";
+  }
+}
+
+/**
+ * The active demo persona id (cookie first, then the `x-khlan-persona`
+ * header used by cookie-blocked browsers), or null.
+ */
+export async function getActivePersonaId(): Promise<string | null> {
+  const cookieVal = await readCookie(PERSONA_COOKIE);
+  if (cookieVal && (ALLOWED_PERSONA_IDS as readonly string[]).includes(cookieVal)) {
+    return cookieVal;
+  }
+  const headerVal = await readHeader(PERSONA_HEADER);
+  if (headerVal && (ALLOWED_PERSONA_IDS as readonly string[]).includes(headerVal)) {
+    return headerVal;
+  }
+  return null;
+}
+
+/**
+ * True when the caller is a genuine guest: no real auth session AND no demo
+ * persona — via cookie OR header (cookie-blocked browsers carry the same
+ * values in localStorage-backed headers). Guests get the public experience —
+ * account actions (favorites, conversations, purchases) must not silently
+ * attach to the fallback demo buyer. The auth cookie/header must carry a
+ * VALID signed token — a stale/expired one counts as no auth at all.
+ */
+export async function isGuestRequest(): Promise<boolean> {
+  const authCookie = await readCookie(AUTH_COOKIE);
+  if (authCookie && verifySessionToken(authCookie)) return false;
+  const authHeader = await readHeader(SESSION_HEADER);
+  if (authHeader && verifySessionToken(authHeader)) return false;
+  const persona = await getActivePersonaId();
+  return !persona;
 }
 
 /**
@@ -105,23 +145,16 @@ export async function isGuestRequest(): Promise<boolean> {
  * the seeded DB clean.
  */
 export async function getCurrentUser(): Promise<DemoUser> {
-  // 1. Real auth session wins over the demo persona.
+  // 1. Real auth session wins over the demo persona (cookie OR header token).
   const authUser = await getAuthUser();
   if (authUser) {
     const profile = await db.sellerProfile.findUnique({ where: { userId: authUser.id } });
     return { ...authUser, sellerProfile: profile };
   }
 
-  // 2. Demo persona cookie.
-  let personaId: string | undefined;
-  try {
-    const store = await cookies();
-    personaId = store.get(PERSONA_COOKIE)?.value;
-  } catch {
-    personaId = undefined; // outside request scope — fall back to demo buyer
-  }
-
-  if (personaId && (ALLOWED_PERSONA_IDS as readonly string[]).includes(personaId)) {
+  // 2. Demo persona (cookie, then header fallback).
+  const personaId = await getActivePersonaId();
+  if (personaId) {
     const user = await db.user.findUnique({
       where: { id: personaId },
       include: { sellerProfile: true },

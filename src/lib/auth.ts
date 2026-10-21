@@ -15,6 +15,15 @@ import type { User } from "@prisma/client";
 export const AUTH_COOKIE = "khlan_auth";
 export const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
 
+/** Fallback transport for environments where cookies are blocked (embedded
+ *  previews, strict third-party-cookie settings): the client stores the SAME
+ *  signed token in localStorage and sends it via these request headers. */
+export const SESSION_HEADER = "x-khlan-session";
+export const PERSONA_HEADER = "x-khlan-persona";
+/** Client localStorage keys (mirrored in client-hooks.ts / auth-view.tsx). */
+export const LS_TOKEN_KEY = "khlan_ls_token";
+export const LS_PERSONA_KEY = "khlan_ls_persona";
+
 const SECRET = process.env.AUTH_SECRET || "khlan-dev-secret-change-me";
 
 // ---------- Passwords ----------
@@ -77,19 +86,56 @@ export function verifySessionToken(token: string | undefined | null): string | n
 
 // ---------- Cookies (route handlers only) ----------
 
-export function sessionCookieOptions() {
+/**
+ * Session cookie options. Inside HTTPS-embedded contexts (preview panels)
+ * `SameSite=Lax` cookies are refused outright — switch to `SameSite=None;
+ * Secure` when the request arrived over HTTPS so the cookie can be set in
+ * cross-site frames. Plain-HTTP access keeps Lax (None+Secure is rejected
+ * on insecure origins).
+ */
+export async function sessionCookieOptions() {
+  let https = false;
+  try {
+    const { headers } = await import("next/headers");
+    const h = await headers();
+    https = (h.get("x-forwarded-proto") ?? "").split(",")[0].trim() === "https";
+  } catch {
+    /* outside request scope — default below */
+  }
   return {
     httpOnly: true as const,
-    sameSite: "lax" as const,
+    sameSite: (https ? "none" : "lax") as "none" | "lax",
+    secure: https,
     path: "/",
     maxAge: SESSION_TTL_MS / 1000,
   };
 }
 
-/** The real logged-in user, or null when only demo/persona mode is active. */
+/**
+ * The real logged-in user, or null when only demo/persona mode is active.
+ * Resolution: `khlan_auth` cookie first, then the `x-khlan-session` header
+ * (cookie-blocked browsers carry the same signed token in localStorage and
+ * attach it to every API call from the client fetch wrapper).
+ */
 export async function getAuthUser(): Promise<User | null> {
-  const jar = await cookies();
-  const userId = verifySessionToken(jar.get(AUTH_COOKIE)?.value);
+  let token: string | undefined;
+  try {
+    const jar = await cookies();
+    token = jar.get(AUTH_COOKIE)?.value;
+  } catch {
+    token = undefined;
+  }
+  if (!token || !verifySessionToken(token)) {
+    // Cookie missing/invalid → try the session header fallback.
+    try {
+      const { headers } = await import("next/headers");
+      const h = await headers();
+      token = h.get(SESSION_HEADER) ?? undefined;
+    } catch {
+      return null;
+    }
+  }
+  const userId = verifySessionToken(token);
   if (!userId) return null;
   const user = await db.user.findUnique({ where: { id: userId } });
   return user ?? null;

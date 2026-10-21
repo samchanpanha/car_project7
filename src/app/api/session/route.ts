@@ -4,7 +4,12 @@ import { z } from "zod";
 import { db } from "@/lib/db";
 import { AUTH_COOKIE } from "@/lib/auth";
 import { ensureDefaultSuperAdmin } from "@/lib/bootstrap";
-import { ALLOWED_PERSONA_IDS, PERSONA_COOKIE, getCurrentUser } from "@/lib/session";
+import {
+  ALLOWED_PERSONA_IDS,
+  PERSONA_COOKIE,
+  getActivePersonaId,
+  getCurrentUser,
+} from "@/lib/session";
 import type { PersonaDTO, SessionDTO, TenantRole, UserRole } from "@/lib/dashboard-types";
 import type { SellerType } from "@/lib/types";
 
@@ -122,12 +127,16 @@ async function buildSessionFor(userId: string): Promise<SessionDTO> {
   return session;
 }
 
-/** True when the given user id is the holder of a valid `khlan_auth` session. */
+/** True when the given user id holds a valid `khlan_auth` session (cookie OR
+ *  the `x-khlan-session` header used by cookie-blocked browsers). */
 async function isAuthedUser(userId: string): Promise<boolean> {
   const { cookies } = await import("next/headers");
-  const { verifySessionToken, AUTH_COOKIE } = await import("@/lib/auth");
+  const { verifySessionToken, AUTH_COOKIE, SESSION_HEADER } = await import("@/lib/auth");
+  const { headers } = await import("next/headers");
   const jar = await cookies();
-  return verifySessionToken(jar.get(AUTH_COOKIE)?.value) === userId;
+  if (verifySessionToken(jar.get(AUTH_COOKIE)?.value) === userId) return true;
+  const h = await headers();
+  return verifySessionToken(h.get(SESSION_HEADER)) === userId;
 }
 
 export async function GET() {
@@ -138,20 +147,22 @@ export async function GET() {
     const current = await getCurrentUser();
     const session = await buildSessionFor(current.id);
 
-    // Distinguish a genuine guest (fresh visitor, no cookies) from an active
-    // demo persona (sandbox impersonation): guests get the public experience
-    // and are asked to register before contacting dealers; demo personas keep
-    // full sandbox access.
-    const jar = await cookies();
-    const demoPersona = !session.authed && Boolean(jar.get(PERSONA_COOKIE)?.value);
+    // Distinguish a genuine guest (fresh visitor, no session info) from an
+    // active demo persona (sandbox impersonation via cookie OR header):
+    // guests get the public experience and are asked to register before
+    // contacting dealers; demo personas keep full sandbox access.
+    const personaActive = await getActivePersonaId();
+    const demoPersona = !session.authed && Boolean(personaActive);
     const res = NextResponse.json({ ...session, demoPersona });
 
     // Stale-session cleanup: when the browser still carries `khlan_auth` but
     // it no longer verifies (database reseeded, token expired, secret rotated),
     // silently falling back to the demo buyer used to masquerade as a "login"
     // that had no admin tools. Clear the dead cookie so the visitor becomes a
-    // real guest and the UI shows Log in / Sign up instead.
-    if (!session.authed && jar.get(AUTH_COOKIE)?.value) {
+    // real guest and the UI shows Log in / Sign up instead. Header-based
+    // sessions (cookie-blocked browsers) have no stale cookie to clear.
+    const jar = await cookies();
+    if (!session.authed && !demoPersona && jar.get(AUTH_COOKIE)?.value) {
       res.cookies.set({ name: AUTH_COOKIE, value: "", path: "/", maxAge: 0 });
     }
     return res;

@@ -54,11 +54,15 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Incorrect phone number or password" }, { status: 401 });
     }
 
+    const token = createSessionToken(user.id);
     const res = NextResponse.json({
       ok: true,
       user: { id: user.id, name: user.name, role: user.role, locale: user.locale },
+      // Cookie-blocked browsers (embedded previews) keep this token in
+      // localStorage and send it via the x-khlan-session header instead.
+      sessionToken: token,
     });
-    res.cookies.set({ name: AUTH_COOKIE, value: createSessionToken(user.id), ...sessionCookieOptions() });
+    res.cookies.set({ name: AUTH_COOKIE, value: token, ...await sessionCookieOptions() });
     // A real login supersedes the demo persona.
     res.cookies.delete({ name: "khlan_persona", path: "/" });
     return res;

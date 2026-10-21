@@ -379,3 +379,28 @@ Stage Summary:
 - Non-logged-in visitors no longer see the Dashboard entry anywhere (desktop header + mobile bottom nav); it appears for real logins and demo personas only, and deep-links to the dashboard still funnel guests to the register/login panel.
 - Super Admin credentials unchanged: +85512998009 / khlan123 — now also accepted as 012998009, 12998009, 85512998009.
 - Files: MODIFIED src/lib/auth.ts, src/app/api/auth/login/route.ts, src/app/api/auth/register/route.ts, src/components/marketplace/views/auth-view.tsx, src/components/marketplace/header.tsx, src/components/marketplace/mobile-nav.tsx, src/lib/i18n.ts.
+
+---
+Task ID: 12
+Agent: Z.ai Code (main)
+Task: User hit the authErrCookieBlocked message ("Signed in, but this browser blocked the session cookie…") — make login work in EVERY browser context, not just cookie-friendly ones
+
+Work Log:
+- The error confirmed the earlier hypothesis: the embedded preview refuses Set-Cookie (cross-site iframe over the gateway), so the login POST succeeded but the session never persisted. "Open in a new tab" was the only workaround — unacceptable as the only path.
+- Cookie-independent session transport (the deterministic fix):
+  - lib/auth.ts: SESSION_HEADER="x-khlan-session" + PERSONA_HEADER="x-khlan-persona" + LS_TOKEN_KEY/LS_PERSONA_KEY constants; getAuthUser() now resolves cookie token FIRST, then the header token (same HMAC-signed value); sessionCookieOptions() is async and returns SameSite=None; Secure when x-forwarded-proto is https (so cookies can at least be SET inside https-embedded frames) and Lax for plain HTTP; login/register/telegram routes await it.
+  - lib/session.ts: readCookie/readHeader helpers + getActivePersonaId() (cookie → header, allowlist-validated); getCurrentUser() priority = auth (cookie|header) → persona (cookie|header) → demo buyer; isGuestRequest() treats header tokens/personas as authenticated.
+  - api/session GET: demoPersona now true for header personas too (guest detection would otherwise have shown persona users the register panel); isAuthedUser accepts cookie OR header; stale-cookie cleanup unchanged (header sessions carry no cookie).
+  - login + register routes: JSON body now includes sessionToken (the same signed token as the cookie) so the client can fall back when Set-Cookie is dropped.
+  - lib/client-hooks.ts: authFallbackHeaders() reads localStorage and injects x-khlan-session/x-khlan-persona into EVERY useFetch/apiSend call (SSR-guarded); clearAuthFallback() for logout.
+  - auth-view.tsx doLogin/doSignup: after POST → sessionPersistedAs (now header-aware); if the cookie check fails and a sessionToken came back → store khlan_ls_token (clearing khlan_ls_persona, mirroring the server) → re-verify via header → proceed to reload; only if BOTH transports fail does authErrCookieBlocked show (now nearly unreachable); when the cookie path works, stale fallback keys are cleared.
+  - header.tsx: logout clears the localStorage fallback; switchPersona verifies the switch landed (GET /api/session with fallback headers) and persists khlan_ls_persona when the persona cookie was refused.
+- Verification:
+  - curl (no cookies at any step, simulating the user's browser): login 200 with sessionToken; /api/session via header → authed SUPER_ADMIN; /api/admin/payment-config via header → 200; persona via header → demoPersona true; header-auth beats header-persona; garbage token → guest. All phone formats still login (012…/855…/+855…).
+  - Browser E2E: seeded khlan_ls_token in a cookie-less fresh profile → reload shows "Nita Meng · Super Admin" with the Dashboard button → Dashboard renders (សូមស្វាគមន៍, Nita Meng) → Settings tab shows System settings + KHQR payment config — the full manage experience runs on header auth alone; clearing the token → guest (Log in/Sign up). Normal cookie login re-verified end-to-end (PRADO captcha → auto-dashboard). Zero console/page errors; lint clean; no new 500s (only the known pre-fix line 448).
+
+Stage Summary:
+- Sign-in now survives cookie-blocked environments deterministically: the same HMAC-signed session token travels as an httpOnly cookie when allowed and transparently switches to a localStorage-backed request header when the browser refuses it. Admin APIs, dashboards, favorites, personas and guest detection all honor both transports.
+- Cookies themselves also improved: HTTPS-embedded contexts now get SameSite=None; Secure (settable in cross-site frames) instead of a silently-dropped Lax cookie.
+- The user-facing flow is now: log in (any phone format) → captcha → session persists via cookie OR header → land on the dashboard. The cookie-blocked error message remains only as a last-resort diagnostic.
+- Files: MODIFIED src/lib/auth.ts, src/lib/session.ts, src/lib/client-hooks.ts, src/app/api/session/route.ts, src/app/api/auth/login/route.ts, src/app/api/auth/register/route.ts, src/app/api/auth/telegram/route.ts (await async cookie options), src/components/marketplace/views/auth-view.tsx, src/components/marketplace/header.tsx.

@@ -8,7 +8,7 @@
 
 import { useState } from "react";
 import { useT } from "@/hooks/use-t";
-import { apiSend } from "@/lib/client-hooks";
+import { apiSend, authFallbackHeaders, clearAuthFallback } from "@/lib/client-hooks";
 import { SecurityCaptcha } from "@/components/marketplace/security-captcha";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -70,18 +70,32 @@ function parkDashboardRedirect() {
   }
 }
 
-/** Make sure the session cookie really persisted in this browser context.
- *  Embedded previews and strict third-party-cookie blocking can silently
- *  drop Set-Cookie — the login would then "succeed" while every following
- *  request stays logged out. Detect it and tell the user what to do. */
+/** Make sure a session actually persisted in this browser context — via the
+ *  cookie, or (when cookies are blocked, e.g. embedded previews) via the
+ *  x-khlan-session header from the localStorage fallback. */
 async function sessionPersistedAs(userId: string): Promise<boolean> {
   try {
-    const r = await fetch("/api/session", { cache: "no-store" });
+    const r = await fetch("/api/session", {
+      cache: "no-store",
+      headers: authFallbackHeaders(),
+    });
     if (!r.ok) return false;
     const s = (await r.json()) as { authed?: boolean; user?: { id?: string } };
     return Boolean(s.authed && s.user?.id === userId);
   } catch {
     return false;
+  }
+}
+
+/** Store the header-transport fallback after a login whose cookie was
+ *  refused (embedded preview / strict browser). */
+function storeTokenFallback(token: string) {
+  try {
+    window.localStorage.setItem("khlan_ls_token", token);
+    // A real login supersedes any demo persona (mirrors the server cookie).
+    window.localStorage.removeItem("khlan_ls_persona");
+  } catch {
+    /* ignore */
   }
 }
 
@@ -157,18 +171,27 @@ function LoginForm() {
     setError(undefined);
     setBusy(true);
     try {
-      const res = await apiSend<{ ok: boolean; user: { id: string; name: string; role: string } }>(
+      const res = await apiSend<{ ok: boolean; user: { id: string; name: string; role: string }; sessionToken?: string }>(
         "/api/auth/login",
         "POST",
         { phone: normalizePhone(phone), password, captchaToken },
       );
-      // The cookie must actually persist — blocked cookies (embedded preview,
-      // strict browser) would otherwise loop the user back to logged-out.
-      if (!(await sessionPersistedAs(res.user.id))) {
-        setBusy(false);
-        setCaptchaOpen(false);
-        setError(t("authErrCookieBlocked"));
-        return;
+      // The session must actually persist — cookies are refused in embedded
+      // previews, so fall back to the signed token via a request header.
+      if (!sessionPersistedAs(res.user.id)) {
+        if (res.sessionToken) {
+          storeTokenFallback(res.sessionToken);
+        }
+        if (!(await sessionPersistedAs(res.user.id))) {
+          clearAuthFallback();
+          setBusy(false);
+          setCaptchaOpen(false);
+          setError(t("authErrCookieBlocked"));
+          return;
+        }
+      } else {
+        // Cookie path worked — drop any stale localStorage fallback.
+        clearAuthFallback();
       }
       parkWelcome(res.user.name, false);
       if (res.user.role === "SUPER_ADMIN" || res.user.role === "ADMIN") {
@@ -250,17 +273,25 @@ function SignupForm() {
     setError(undefined);
     setBusy(true);
     try {
-      const res = await apiSend<{ ok: boolean; user: { id: string; name: string } }>(
+      const res = await apiSend<{ ok: boolean; user: { id: string; name: string }; sessionToken?: string }>(
         "/api/auth/register",
         "POST",
         { name: name.trim(), phone: normalizePhone(phone), password, locale, captchaToken },
       );
-      // Same cookie-persistence guard as login (see sessionPersistedAs).
-      if (!(await sessionPersistedAs(res.user.id))) {
-        setBusy(false);
-        setCaptchaOpen(false);
-        setError(t("authErrCookieBlocked"));
-        return;
+      // Same session-persistence guard as login (cookie → header fallback).
+      if (!sessionPersistedAs(res.user.id)) {
+        if (res.sessionToken) {
+          storeTokenFallback(res.sessionToken);
+        }
+        if (!(await sessionPersistedAs(res.user.id))) {
+          clearAuthFallback();
+          setBusy(false);
+          setCaptchaOpen(false);
+          setError(t("authErrCookieBlocked"));
+          return;
+        }
+      } else {
+        clearAuthFallback();
       }
       parkWelcome(res.user.name, true);
       toast.success(t("authWelcomeNew"));
