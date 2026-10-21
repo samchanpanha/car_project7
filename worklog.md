@@ -325,3 +325,35 @@ Stage Summary:
 - The default Super Admin (Nita Meng / +85512998009 / khlan123, id usr_admin) is guaranteed to exist on any fresh database via runtime bootstrap, on top of the seed; credentials are listed in the auth page's Demo accounts panel.
 - Payment/subscription logic untouched (manual KHQR-only flow from Task 8 intact); contract change is additive only (SessionDTO.demoPersona?).
 - Files: NEW lib/captcha.ts, lib/bootstrap.ts, api/auth/captcha/route.ts, api/auth/captcha/verify/route.ts, components/marketplace/security-captcha.tsx, components/marketplace/guest-panel.tsx; DELETED api/auth/otp/*, components/ui/input-otp.tsx, prisma OtpCode model; MODIFIED api/auth/login, api/auth/register, api/session, lib/auth.ts, lib/session.ts (isGuestRequest), lib/store.ts (View tab + isGuest), lib/dashboard-types.ts (additive demoPersona), api/favorites, api/conversations, api/purchases, api/account/appointments, app/page.tsx, app/globals.css (shake keyframes), header.tsx, vehicle-card.tsx, contact-dialog.tsx, detail-view.tsx, auth-view.tsx, profile-dialog.tsx, messages/favorites/sell views, lib/i18n.ts.
+
+---
+Task ID: 10
+Agent: Z.ai Code (main)
+Task: "help me check and verify fix, I log in by admin but all not working well, I don't have setting for manage control" — diagnose why the Super Admin sees a buyer-like experience with no settings, and fix it
+
+Work Log:
+- Verified the backend first via curl: captcha challenge → verify → admin login (+85512998009/khlan123) all OK; /api/admin/settings + /api/admin/payment-config both 200; admin dashboard tabs incl. Settings render fine in a clean browser session — so the admin features were intact; the failure was in session state, not features.
+- Root causes found (3 + 1 latent crash):
+  1. Phantom-login masquerade: a stale/invalid khlan_auth cookie (DB reseed, rotated secret, expiry) made getCurrentUser() silently fall through to the demo persona/demo buyer — the user believes they are logged in as admin but the UI shows the buyer dashboard with no admin tools; the server never told the browser the session was dead.
+  2. Guests could open the fallback demo buyer's CustomerDashboard by clicking the header "Dashboard" button (DashboardView routed purely on role, never checked isGuest) — looked exactly like "logged in as admin but nothing works / no settings".
+  3. No post-login navigation: after admin login the app reloaded to home; the admin had to discover Dashboard → 7th/8th tab themselves.
+  4. dev.log showed a REAL crash: getDemoUser() had a create race on SellerProfile (P2002 unique userId) under concurrent /api/session boot requests → GET /api/session 500 → session never boots → broken dashboard ("all not working well").
+- Fixes:
+  - api/session GET: if the request carries khlan_auth but the session is not authed, the response now clears the dead cookie (Set-Cookie khlan_auth=; Max-Age=0) — stale sessions become genuine guests who see Log in/Sign up instead of a phantom buyer identity.
+  - lib/session.ts isGuestRequest(): the auth cookie must carry a VALID signed token (verifySessionToken) to count as authed — a stale cookie no longer lets guest-state requests attach data to the demo buyer.
+  - lib/session.ts getDemoUser(): SellerProfile create wrapped in try/catch with findUnique fallback — concurrent boot requests can no longer 500 /api/session (verified: 12 concurrent curls → 12×200).
+  - dashboard-view.tsx: genuine guests (isGuest) get the shared GuestPanel ("Create a free account to continue" + Register free/Log in) instead of the invisible fallback buyer's customer dashboard.
+  - auth-view.tsx doLogin: login response role is SUPER_ADMIN/ADMIN → parks sessionStorage khlan_go_dashboard before the reload; SessionBoot replays it once the fresh session is loaded → admins land DIRECTLY on their dashboard (manage controls immediately visible; buyers unaffected).
+- Browser E2E (agent-browser): stale-cookie session → bogus khlan_auth cleared server-side, header shows Log in/Sign up, clicking Dashboard renders the GuestPanel; fresh guest → full admin login through the click-in-order captcha (COUPE solved after one deliberate wrong-order attempt which correctly auto-refreshed the puzzle) → auto-landed on "សូមស្វាគមន៍, Nita Meng / Super Admin" dashboard with all 8 tabs → Settings tab shows System settings + Subscription payments (KHQR) master switch ON; screenshot captured; zero console/page errors.
+- Did NOT touch payment/subscription logic, contract files, or i18n (no new strings needed — GuestPanel strings already existed).
+
+Verification:
+- curl: stale khlan_auth → session 200 + clearing Set-Cookie; 12 concurrent /api/session → all 200 (race fixed); admin login + both settings endpoints still 200.
+- agent-browser: guest Dashboard → GuestPanel; admin login → auto-dashboard → Settings with KHQR config; wrong captcha order → shake + new puzzle (by design); EN/KM both render (admin account locale=km shows Khmer by design, EN toggle works).
+- lint 0 errors; dev.log clean post-fix (only the 1 pre-fix historical P2002 remains in the old log region).
+
+Stage Summary:
+- The reported experience is fixed at its root: dead sessions can no longer masquerade as the demo buyer (cookie is cleared + guest detection validates the signature), guests can no longer see a fake "buyer dashboard" (they get the register/login panel), and the Super Admin now lands directly on the dashboard with the Settings manage controls after login.
+- The intermittent "all not working well" had a second, independent cause: a session-boot race that returned 500 on /api/session — now race-proof.
+- Super Admin credentials (unchanged, guaranteed to exist on any fresh DB): phone +85512998009, password khlan123 (Nita Meng, id usr_admin); also available via the demo persona switcher "Super Admin — Nita".
+- Files: MODIFIED src/app/api/session/route.ts, src/lib/session.ts, src/components/marketplace/dashboard/dashboard-view.tsx, src/components/marketplace/views/auth-view.tsx, src/app/page.tsx.

@@ -47,6 +47,17 @@ function parkWelcome(name: string, isNew: boolean) {
   }
 }
 
+/** Park a post-login redirect request — SessionBoot replays it once the
+ *  reloaded page has the fresh session (admins land directly on their
+ *  dashboard instead of hunting for the manage controls). */
+function parkDashboardRedirect() {
+  try {
+    sessionStorage.setItem("khlan_go_dashboard", "1");
+  } catch {
+    /* ignore */
+  }
+}
+
 function FieldError({ msg }: { msg?: string }) {
   if (!msg) return null;
   return (
@@ -119,12 +130,15 @@ function LoginForm() {
     setError(undefined);
     setBusy(true);
     try {
-      const res = await apiSend<{ ok: boolean; user: { id: string; name: string } }>(
+      const res = await apiSend<{ ok: boolean; user: { id: string; name: string; role: string } }>(
         "/api/auth/login",
         "POST",
         { phone: phone.trim(), password, captchaToken },
       );
       parkWelcome(res.user.name, false);
+      if (res.user.role === "SUPER_ADMIN" || res.user.role === "ADMIN") {
+        parkDashboardRedirect();
+      }
       toast.success(t("authWelcomeBack", { name: res.user.name }));
       window.location.reload();
     } catch (err) {

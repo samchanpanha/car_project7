@@ -2,13 +2,14 @@
 
 // Dashboard role router — Admin/Super Admin → platform tools, tenant member → dealer tools, else customer tools.
 
-import { useAppStore } from "@/lib/store";
+import { useAppStore, isGuest } from "@/lib/store";
 import { useT } from "@/hooks/use-t";
 import { useFetch } from "@/lib/client-hooks";
 import type { SessionDTO } from "@/lib/dashboard-types";
 import { AdminDashboard } from "./admin-dashboard";
 import { DealerDashboard } from "./dealer-dashboard";
 import { CustomerDashboard } from "./customer-dashboard";
+import { GuestPanel } from "@/components/marketplace/guest-panel";
 import { EmptyState, FetchErrorState } from "./bits";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useEffect } from "react";
@@ -52,6 +53,13 @@ export function DashboardView() {
       );
     }
     return null;
+  }
+
+  // Genuine guests (no login, no demo persona) must never see the fallback
+  // demo buyer's dashboard — that used to look like "I logged in as admin but
+  // nothing works". Show the register/login panel instead.
+  if (isGuest(me)) {
+    return <GuestPanel />;
   }
 
   if (me.user.role === "SUPER_ADMIN" || me.user.role === "ADMIN") {

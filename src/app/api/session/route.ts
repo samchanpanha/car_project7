@@ -144,7 +144,17 @@ export async function GET() {
     // full sandbox access.
     const jar = await cookies();
     const demoPersona = !session.authed && Boolean(jar.get(PERSONA_COOKIE)?.value);
-    return NextResponse.json({ ...session, demoPersona });
+    const res = NextResponse.json({ ...session, demoPersona });
+
+    // Stale-session cleanup: when the browser still carries `khlan_auth` but
+    // it no longer verifies (database reseeded, token expired, secret rotated),
+    // silently falling back to the demo buyer used to masquerade as a "login"
+    // that had no admin tools. Clear the dead cookie so the visitor becomes a
+    // real guest and the UI shows Log in / Sign up instead.
+    if (!session.authed && jar.get(AUTH_COOKIE)?.value) {
+      res.cookies.set({ name: AUTH_COOKIE, value: "", path: "/", maxAge: 0 });
+    }
+    return res;
   } catch (err) {
     console.error("[api/session] GET failed:", err);
     return NextResponse.json({ error: "Failed to load session" }, { status: 500 });

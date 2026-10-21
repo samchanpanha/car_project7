@@ -1,6 +1,6 @@
 import { cookies } from "next/headers";
 import { db } from "@/lib/db";
-import { AUTH_COOKIE, getAuthUser } from "@/lib/auth";
+import { AUTH_COOKIE, getAuthUser, verifySessionToken } from "@/lib/auth";
 import type { User, SellerProfile } from "@prisma/client";
 
 export const DEMO_BUYER_ID = "usr_demo_buyer";
@@ -58,10 +58,20 @@ export async function getDemoUser(): Promise<DemoUser> {
   }
 
   if (!user.sellerProfile) {
-    const profile = await db.sellerProfile.create({
-      data: { userId: user.id, type: "PRIVATE" },
-    });
-    user = { ...user, sellerProfile: profile };
+    // Concurrent boot requests can race here — whoever loses the unique
+    // constraint must re-read the profile the winner just created instead of
+    // failing the whole /api/session call with a P2002 500.
+    try {
+      const profile = await db.sellerProfile.create({
+        data: { userId: user.id, type: "PRIVATE" },
+      });
+      user = { ...user, sellerProfile: profile };
+    } catch {
+      const existing = await db.sellerProfile.findUnique({
+        where: { userId: user.id },
+      });
+      if (existing) user = { ...user, sellerProfile: existing };
+    }
   }
 
   return user;
@@ -71,12 +81,14 @@ export async function getDemoUser(): Promise<DemoUser> {
  * True when the caller is a genuine guest: no real auth session AND no demo
  * persona cookie. Guests get the public experience — account actions
  * (favorites, conversations, purchases) must not silently attach to the
- * fallback demo buyer.
+ * fallback demo buyer. The auth cookie must carry a VALID signed token — a
+ * stale/expired one counts as no auth at all.
  */
 export async function isGuestRequest(): Promise<boolean> {
   try {
     const store = await cookies();
-    const hasAuth = Boolean(store.get(AUTH_COOKIE)?.value);
+    const authValue = store.get(AUTH_COOKIE)?.value;
+    const hasAuth = Boolean(authValue && verifySessionToken(authValue));
     const hasPersona = Boolean(store.get(PERSONA_COOKIE)?.value);
     return !hasAuth && !hasPersona;
   } catch {

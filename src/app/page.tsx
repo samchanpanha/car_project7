@@ -55,6 +55,21 @@ function SessionBoot() {
     if (data.authed && (data.user.locale === "en" || data.user.locale === "km")) {
       useAppStore.getState().setLocale(data.user.locale);
     }
+    // Replay the post-login redirect (set by the auth view): admins land
+    // directly on their dashboard so the manage controls are obvious.
+    try {
+      if (sessionStorage.getItem("khlan_go_dashboard")) {
+        sessionStorage.removeItem("khlan_go_dashboard");
+        if (
+          data.authed &&
+          (data.user.role === "SUPER_ADMIN" || data.user.role === "ADMIN")
+        ) {
+          useAppStore.getState().navigate({ name: "dashboard" });
+        }
+      }
+    } catch {
+      /* sessionStorage unavailable — skip replay */
+    }
   }, [data, setMe]);
 
   useEffect(() => {
