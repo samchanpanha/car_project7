@@ -1,0 +1,680 @@
+     1→"use client";
+     2→
+     3→import { useAppStore } from "@/lib/store";
+     4→import { useT } from "@/hooks/use-t";
+     5→import { useFetch, qs, apiSend } from "@/lib/client-hooks";
+     6→import type { MetaDTO, VehiclesResponseDTO, SortOption } from "@/lib/types";
+     7→import { bodyTypeLabels, fuelLabels, transmissionLabels, drivetrainLabels } from "@/lib/i18n";
+     8→import { VehicleCard, VehicleCardSkeleton } from "@/components/marketplace/vehicle-card";
+     9→import { Button } from "@/components/ui/button";
+    10→import { Input } from "@/components/ui/input";
+    11→import { Label } from "@/components/ui/label";
+    12→import { Switch } from "@/components/ui/switch";
+    13→import { Checkbox } from "@/components/ui/checkbox";
+    14→import { Card, CardContent } from "@/components/ui/card";
+    15→import {
+    16→  Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle,
+    17→} from "@/components/ui/dialog";
+    18→import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+    19→import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
+    20→import { Skeleton } from "@/components/ui/skeleton";
+    21→import { SlidersHorizontal, Search, X, BookmarkPlus, Loader2 } from "lucide-react";
+    22→import { useMemo, useState } from "react";
+    23→import { formatUsd } from "@/lib/format";
+    24→import { toast } from "sonner";
+    25→import { cn } from "@/lib/utils";
+    26→import { errorText } from "@/components/marketplace/dashboard/bits";
+    27→
+    28→const BODY_TYPES = ["SUV", "SEDAN", "PICKUP", "VAN", "HATCHBACK", "COUPE"];
+    29→const FUELS = ["PETROL", "DIESEL", "HYBRID", "ELECTRIC"];
+    30→const TRANSMISSIONS = ["AUTOMATIC", "MANUAL"];
+    31→const DRIVETRAINS = ["FWD", "RWD", "AWD"];
+    32→const CONDITIONS = ["LIKE_NEW", "USED"];
+    33→
+    34→export interface BrowseFilters {
+    35→  q: string;
+    36→  make: string;
+    37→  bodyType: string[]; // multi-value, comma-joined to the API
+    38→  fuel: string[]; // multi-value
+    39→  transmission: string[]; // multi-value
+    40→  drivetrain: string[]; // multi-value
+    41→  condition: string; // LIKE_NEW | USED | ""
+    42→  city: string;
+    43→  sellerType: string; // PRIVATE | DEALER | ""
+    44→  sellerVerified: boolean;
+    45→  featured: boolean;
+    46→  hasReport: boolean;
+    47→  priceMin: string;
+    48→  priceMax: string;
+    49→  yearMin: string;
+    50→  yearMax: string;
+    51→  mileageMin: string;
+    52→  mileageMax: string;
+    53→}
+    54→
+    55→export function emptyFilters(): BrowseFilters {
+    56→  return {
+    57→    q: "", make: "", bodyType: [], fuel: [], transmission: [], drivetrain: [],
+    58→    condition: "", city: "", sellerType: "", sellerVerified: false,
+    59→    featured: false, hasReport: false,
+    60→    priceMin: "", priceMax: "", yearMin: "", yearMax: "", mileageMin: "", mileageMax: "",
+    61→  };
+    62→}
+    63→
+    64→/** Builds the API query params (advanced filters serialize arrays comma-joined). */
+    65→function buildParams(f: BrowseFilters, sort: SortOption, page: number): Record<string, string | number> {
+    66→  const params: Record<string, string | number> = { sort, limit: 12 };
+    67→  if (page > 0) params.cursor = page;
+    68→  if (f.q.trim()) params.q = f.q.trim();
+    69→  if (f.make) params.make = f.make;
+    70→  if (f.bodyType.length) params.bodyType = f.bodyType.join(",");
+    71→  if (f.fuel.length) params.fuel = f.fuel.join(",");
+    72→  if (f.transmission.length) params.transmission = f.transmission.join(",");
+    73→  if (f.drivetrain.length) params.drivetrain = f.drivetrain.join(",");
+    74→  if (f.condition) params.condition = f.condition;
+    75→  if (f.city) params.city = f.city;
+    76→  if (f.sellerType) params.sellerType = f.sellerType;
+    77→  if (f.sellerVerified) params.sellerVerified = "true";
+    78→  if (f.featured) params.featured = "true";
+    79→  if (f.hasReport) params.hasReport = "true";
+    80→  if (f.priceMin) params.priceMin = Number(f.priceMin);
+    81→  if (f.priceMax) params.priceMax = Number(f.priceMax);
+    82→  if (f.yearMin) params.yearMin = Number(f.yearMin);
+    83→  if (f.yearMax) params.yearMax = Number(f.yearMax);
+    84→  if (f.mileageMin) params.mileageMin = Number(f.mileageMin);
+    85→  if (f.mileageMax) params.mileageMax = Number(f.mileageMax);
+    86→  return params;
+    87→}
+    88→
+    89→/** Toggle one value inside a multi-value filter array. */
+    90→function toggleValue(f: BrowseFilters, field: "bodyType" | "fuel" | "transmission" | "drivetrain", v: string): BrowseFilters {
+    91→  const cur = f[field];
+    92→  return { ...f, [field]: cur.includes(v) ? cur.filter((x) => x !== v) : [...cur, v] };
+    93→}
+    94→
+    95→// ---------------- quick filter panel (sidebar + mobile sheet) ----------------
+    96→
+    97→export function FiltersPanel({
+    98→  filters,
+    99→  setFilters,
+   100→  onClear,
+   101→}: {
+   102→  filters: BrowseFilters;
+   103→  setFilters: (f: BrowseFilters) => void;
+   104→  onClear: () => void;
+   105→}) {
+   106→  const t = useT();
+   107→  const locale = useAppStore((s) => s.locale);
+   108→  const { data: meta } = useFetch<MetaDTO>("/api/meta");
+   109→
+   110→  const set = (patch: Partial<BrowseFilters>) => setFilters({ ...filters, ...patch });
+   111→
+   112→  return (
+   113→    <div className="space-y-5" data-testid="filters-panel">
+   114→      <div>
+   115→        <Label htmlFor="f-q" className="text-xs text-slate-500">{t("searchPlaceholder")}</Label>
+   116→        <Input id="f-q" value={filters.q} onChange={(e) => set({ q: e.target.value })} className="mt-1.5 h-9" />
+   117→      </div>
+   118→
+   119→      <div>
+   120→        <Label className="text-xs text-slate-500">{t("allMakes")}</Label>
+   121→        <Select value={filters.make || "all"} onValueChange={(v) => set({ make: v === "all" ? "" : v })}>
+   122→          <SelectTrigger className="mt-1.5 h-9" aria-label={t("allMakes")}>
+   123→            <SelectValue placeholder={t("allMakes")} />
+   124→          </SelectTrigger>
+   125→          <SelectContent>
+   126→            <SelectItem value="all">{t("allMakes")}</SelectItem>
+   127→            {(meta?.makes ?? []).map((m) => (
+   128→              <SelectItem key={m} value={m}>{m}</SelectItem>
+   129→            ))}
+   130→          </SelectContent>
+   131→        </Select>
+   132→      </div>
+   133→
+   134→      <div>
+   135→        <Label className="text-xs text-slate-500">{t("bodyType")}</Label>
+   136→        <div className="mt-1.5 flex flex-wrap gap-1.5">
+   137→          {BODY_TYPES.map((bt) => {
+   138→            const active = filters.bodyType.includes(bt);
+   139→            return (
+   140→              <button
+   141→                key={bt}
+   142→                onClick={() => setFilters(toggleValue(filters, "bodyType", bt))}
+   143→                className={`rounded-full border px-3 py-1 text-xs font-medium transition-colors cursor-pointer ${
+   144→                  active
+   145→                    ? "border-amber-500 bg-amber-50 text-amber-700"
+   146→                    : "border-slate-200 text-slate-600 hover:border-slate-300"
+   147→                }`}
+   148→                aria-pressed={active}
+   149→              >
+   150→                {bodyTypeLabels[bt]?.[locale] ?? bt}
+   151→              </button>
+   152→            );
+   153→          })}
+   154→        </div>
+   155→      </div>
+   156→
+   157→      <div>
+   158→        <Label className="text-xs text-slate-500">{t("priceRange")}</Label>
+   159→        <div className="mt-1.5 flex gap-2">
+   160→          <Input
+   161→            type="number" min={0} placeholder={t("priceMin")} value={filters.priceMin}
+   162→            onChange={(e) => set({ priceMin: e.target.value })} className="h-9" aria-label={t("priceMin")}
+   163→          />
+   164→          <Input
+   165→            type="number" min={0} placeholder={t("priceMax")} value={filters.priceMax}
+   166→            onChange={(e) => set({ priceMax: e.target.value })} className="h-9" aria-label={t("priceMax")}
+   167→          />
+   168→        </div>
+   169→      </div>
+   170→
+   171→      <div className="grid grid-cols-2 gap-2">
+   172→        <div>
+   173→          <Label htmlFor="f-year" className="text-xs text-slate-500">{t("yearMin")}</Label>
+   174→          <Input id="f-year" type="number" min={1990} max={2026} placeholder="2015" value={filters.yearMin}
+   175→            onChange={(e) => set({ yearMin: e.target.value })} className="mt-1.5 h-9" />
+   176→        </div>
+   177→        <div>
+   178→          <Label htmlFor="f-mi" className="text-xs text-slate-500">{t("mileageMax")}</Label>
+   179→          <Input id="f-mi" type="number" min={0} step={10000} placeholder="150000" value={filters.mileageMax}
+   180→            onChange={(e) => set({ mileageMax: e.target.value })} className="mt-1.5 h-9" />
+   181→        </div>
+   182→      </div>
+   183→
+   184→      <div>
+   185→        <Label className="text-xs text-slate-500">{t("location")}</Label>
+   186→        <Select value={filters.city || "all"} onValueChange={(v) => set({ city: v === "all" ? "" : v })}>
+   187→          <SelectTrigger className="mt-1.5 h-9" aria-label={t("location")}>
+   188→            <SelectValue placeholder={t("allLocations")} />
+   189→          </SelectTrigger>
+   190→          <SelectContent>
+   191→            <SelectItem value="all">{t("allLocations")}</SelectItem>
+   192→            {(meta?.cities ?? []).map((c) => (
+   193→              <SelectItem key={c} value={c}>{c}</SelectItem>
+   194→            ))}
+   195→          </SelectContent>
+   196→        </Select>
+   197→      </div>
+   198→
+   199→      <div className="flex items-center justify-between rounded-lg border border-slate-200 p-3">
+   200→        <Label htmlFor="f-verified" className="text-xs font-medium text-slate-600 cursor-pointer">
+   201→          {t("verifiedOnly")}
+   202→        </Label>
+   203→        <Switch id="f-verified" checked={filters.sellerVerified} onCheckedChange={(v) => set({ sellerVerified: v })} />
+   204→      </div>
+   205→
+   206→      <Button variant="ghost" size="sm" onClick={onClear} className="w-full text-slate-500 hover:text-slate-700">
+   207→        {t("clearFilters")}
+   208→      </Button>
+   209→    </div>
+   210→  );
+   211→}
+   212→
+   213→// ---------------- advanced filter fields (desktop card + mobile sheet) ----------------
+   214→
+   215→function AdvancedFields({
+   216→  filters,
+   217→  setFilters,
+   218→  onClear,
+   219→}: {
+   220→  filters: BrowseFilters;
+   221→  setFilters: (f: BrowseFilters) => void;
+   222→  onClear: () => void;
+   223→}) {
+   224→  const t = useT();
+   225→  const locale = useAppStore((s) => s.locale);
+   226→  const set = (patch: Partial<BrowseFilters>) => setFilters({ ...filters, ...patch });
+   227→
+   228→  const numberPair = (idA: string, labelA: string, a: keyof BrowseFilters, idB: string, labelB: string, b: keyof BrowseFilters) => (
+   229→    <div className="grid grid-cols-2 gap-2">
+   230→      <div>
+   231→        <Label htmlFor={idA} className="text-xs text-slate-500">{labelA}</Label>
+   232→        <Input id={idA} type="number" min={0} value={filters[a] as string}
+   233→          onChange={(e) => set({ [a]: e.target.value } as Partial<BrowseFilters>)} className="mt-1.5 h-9" />
+   234→      </div>
+   235→      <div>
+   236→        <Label htmlFor={idB} className="text-xs text-slate-500">{labelB}</Label>
+   237→        <Input id={idB} type="number" min={0} value={filters[b] as string}
+   238→          onChange={(e) => set({ [b]: e.target.value } as Partial<BrowseFilters>)} className="mt-1.5 h-9" />
+   239→      </div>
+   240→    </div>
+   241→  );
+   242→
+   243→  const checkGroup = (
+   244→    title: string,
+   245→    field: "bodyType" | "fuel" | "transmission" | "drivetrain",
+   246→    options: string[],
+   247→    labels: Record<string, { en: string; km: string }>
+   248→  ) => (
+   249→    <fieldset>
+   250→      <legend className="text-xs font-medium text-slate-500">{title}</legend>
+   251→      <div className="mt-1.5 grid grid-cols-2 gap-1">
+   252→        {options.map((o) => (
+   253→          <label
+   254→            key={o}
+   255→            className="flex min-h-[36px] cursor-pointer items-center gap-2 rounded-lg border border-slate-200 px-2.5 py-1.5 text-xs text-slate-700 hover:border-slate-300 has-[[data-state=checked]]:border-amber-400 has-[[data-state=checked]]:bg-amber-50"
+   256→          >
+   257→            <Checkbox
+   258→              checked={filters[field].includes(o)}
+   259→              onCheckedChange={() => setFilters(toggleValue(filters, field, o))}
+   260→              aria-label={`${title}: ${labels[o]?.[locale] ?? o}`}
+   261→            />
+   262→            <span className="truncate">{labels[o]?.[locale] ?? o}</span>
+   263→          </label>
+   264→        ))}
+   265→      </div>
+   266→    </fieldset>
+   267→  );
+   268→
+   269→  return (
+   270→    <div className="space-y-4" data-testid="advanced-fields">
+   271→      {numberPair("af-pmin", t("priceMin"), "priceMin", "af-pmax", t("priceMax"), "priceMax")}
+   272→      {numberPair("af-ymin", t("yearMin"), "yearMin", "af-ymax", t("advYearMax"), "yearMax")}
+   273→      {numberPair("af-kmin", t("advMileageMin"), "mileageMin", "af-kmax", t("mileageMax"), "mileageMax")}
+   274→
+   275→      <div className="grid gap-4 sm:grid-cols-2">
+   276→        {checkGroup(t("fuelType"), "fuel", FUELS, fuelLabels)}
+   277→        {checkGroup(t("transmission"), "transmission", TRANSMISSIONS, transmissionLabels)}
+   278→        {checkGroup(t("specDrivetrain"), "drivetrain", DRIVETRAINS, drivetrainLabels)}
+   279→        {checkGroup(t("bodyType"), "bodyType", BODY_TYPES, bodyTypeLabels)}
+   280→      </div>
+   281→
+   282→      <div className="grid gap-3 sm:grid-cols-2">
+   283→        <div>
+   284→          <Label className="text-xs text-slate-500">{t("formCondition")}</Label>
+   285→          <Select value={filters.condition || "any"} onValueChange={(v) => set({ condition: v === "any" ? "" : v })}>
+   286→            <SelectTrigger className="mt-1.5 h-9" aria-label={t("formCondition")}>
+   287→              <SelectValue placeholder={t("anyCondition")} />
+   288→            </SelectTrigger>
+   289→            <SelectContent>
+   290→              <SelectItem value="any">{t("anyCondition")}</SelectItem>
+   291→              {CONDITIONS.map((c) => (
+   292→                <SelectItem key={c} value={c}>{t(`cond${c}` as never)}</SelectItem>
+   293→              ))}
+   294→            </SelectContent>
+   295→          </Select>
+   296→        </div>
+   297→        <div>
+   298→          <Label className="text-xs text-slate-500">{t("sellerType")}</Label>
+   299→          <Select value={filters.sellerType || "any"} onValueChange={(v) => set({ sellerType: v === "any" ? "" : v })}>
+   300→            <SelectTrigger className="mt-1.5 h-9" aria-label={t("sellerType")}>
+   301→              <SelectValue placeholder={t("anySeller")} />
+   302→            </SelectTrigger>
+   303→            <SelectContent>
+   304→              <SelectItem value="any">{t("anySeller")}</SelectItem>
+   305→              <SelectItem value="PRIVATE">{t("privateSeller")}</SelectItem>
+   306→              <SelectItem value="DEALER">{t("dealer")}</SelectItem>
+   307→            </SelectContent>
+   308→          </Select>
+   309→        </div>
+   310→      </div>
+   311→
+   312→      <div className="grid gap-2 sm:grid-cols-3">
+   313→        <div className="flex items-center justify-between rounded-lg border border-slate-200 p-3">
+   314→          <Label htmlFor="af-verified" className="text-xs font-medium text-slate-600 cursor-pointer">{t("verifiedOnly")}</Label>
+   315→          <Switch id="af-verified" checked={filters.sellerVerified} onCheckedChange={(v) => set({ sellerVerified: v })} />
+   316→        </div>
+   317→        <div className="flex items-center justify-between rounded-lg border border-slate-200 p-3">
+   318→          <Label htmlFor="af-featured" className="text-xs font-medium text-slate-600 cursor-pointer">{t("featuredOnly")}</Label>
+   319→          <Switch id="af-featured" checked={filters.featured} onCheckedChange={(v) => set({ featured: v })} />
+   320→        </div>
+   321→        <div className="flex items-center justify-between rounded-lg border border-slate-200 p-3">
+   322→          <Label htmlFor="af-report" className="text-xs font-medium text-slate-600 cursor-pointer">{t("hasReport")}</Label>
+   323→          <Switch id="af-report" checked={filters.hasReport} onCheckedChange={(v) => set({ hasReport: v })} />
+   324→        </div>
+   325→      </div>
+   326→
+   327→      <Button variant="ghost" size="sm" onClick={onClear} className="w-full text-slate-500 hover:text-slate-700">
+   328→        {t("clearFilters")}
+   329→      </Button>
+   330→    </div>
+   331→  );
+   332→}
+   333→
+   334→// ---------------- browse view ----------------
+   335→
+   336→export function BrowseView({ initial }: { initial?: { q?: string; make?: string; bodyType?: string; sort?: SortOption } }) {
+   337→  const t = useT();
+   338→  const locale = useAppStore((s) => s.locale);
+   339→  const navigate = useAppStore((s) => s.navigate);
+   340→  const me = useAppStore((s) => s.me);
+   341→
+   342→  const [filters, setFilters] = useState<BrowseFilters>(() => ({
+   343→    ...emptyFilters(),
+   344→    q: initial?.q ?? "",
+   345→    make: initial?.make ?? "",
+   346→    bodyType: initial?.bodyType ? [initial.bodyType] : [],
+   347→  }));
+   348→  const [sort, setSort] = useState<SortOption>(initial?.sort ?? "newest");
+   349→  const [page, setPage] = useState(0);
+   350→  const [applied, setApplied] = useState<BrowseFilters>(filters);
+   351→  const [sheetOpen, setSheetOpen] = useState(false);
+   352→  const [advOpen, setAdvOpen] = useState(false); // desktop collapsible card
+   353→  const [advSheetOpen, setAdvSheetOpen] = useState(false); // mobile bottom sheet
+   354→  const [saveOpen, setSaveOpen] = useState(false);
+   355→  const [saveName, setSaveName] = useState("");
+   356→  const [savingSearch, setSavingSearch] = useState(false);
+   357→
+   358→  const query = useMemo(() => {
+   359→    const params = buildParams(applied, sort, page);
+   360→    return `/api/vehicles${qs(params)}`;
+   361→  }, [applied, sort, page]);
+   362→
+   363→  const { data, loading, error } = useFetch<VehiclesResponseDTO>(query);
+   364→
+   365→  // Save search: params without pagination (sort kept)
+   366→  const saveQuery = useMemo(() => {
+   367→    const p = buildParams(applied, sort, 0);
+   368→    delete p.limit;
+   369→    delete p.cursor;
+   370→    return p;
+   371→  }, [applied, sort]);
+   372→
+   373→  const canSaveSearch = Boolean(me) && !["ADMIN", "SUPER_ADMIN"].includes(me?.user.role ?? "") && !me?.tenant;
+   374→
+   375→  const applyFilters = (f: BrowseFilters) => {
+   376→    setFilters(f);
+   377→    setApplied(f);
+   378→    setPage(0);
+   379→  };
+   380→
+   381→  const applyFromSheet = () => {
+   382→    setApplied(filters);
+   383→    setPage(0);
+   384→    setSheetOpen(false);
+   385→  };
+   386→  const applyFromAdvSheet = () => {
+   387→    setApplied(filters);
+   388→    setPage(0);
+   389→    setAdvSheetOpen(false);
+   390→  };
+   391→  const clearAll = () => {
+   392→    const empty = emptyFilters();
+   393→    setFilters(empty);
+   394→    setApplied(empty);
+   395→    setPage(0);
+   396→  };
+   397→
+   398→  // ---- active filter chips ----
+   399→  const chips = useMemo(() => {
+   400→    const list: { key: string; label: string }[] = [];
+   401→    if (applied.q.trim()) list.push({ key: "q", label: `“${applied.q.trim()}”` });
+   402→    if (applied.make) list.push({ key: "make", label: `${t("formMake")}: ${applied.make}` });
+   403→    applied.bodyType.forEach((v) => list.push({ key: `bodyType:${v}`, label: bodyTypeLabels[v]?.[locale] ?? v }));
+   404→    applied.fuel.forEach((v) => list.push({ key: `fuel:${v}`, label: fuelLabels[v]?.[locale] ?? v }));
+   405→    applied.transmission.forEach((v) => list.push({ key: `transmission:${v}`, label: transmissionLabels[v]?.[locale] ?? v }));
+   406→    applied.drivetrain.forEach((v) => list.push({ key: `drivetrain:${v}`, label: drivetrainLabels[v]?.[locale] ?? v }));
+   407→    if (applied.condition) list.push({ key: "condition", label: `${t("formCondition")}: ${t(`cond${applied.condition}` as never)}` });
+   408→    if (applied.city) list.push({ key: "city", label: `${t("location")}: ${applied.city}` });
+   409→    if (applied.sellerType) list.push({ key: "sellerType", label: applied.sellerType === "DEALER" ? t("dealer") : t("privateSeller") });
+   410→    if (applied.sellerVerified) list.push({ key: "sellerVerified", label: t("verifiedOnly") });
+   411→    if (applied.featured) list.push({ key: "featured", label: t("featuredOnly") });
+   412→    if (applied.hasReport) list.push({ key: "hasReport", label: t("hasReport") });
+   413→    if (applied.priceMin) list.push({ key: "priceMin", label: `${t("priceRange")} ≥ ${formatUsd(Number(applied.priceMin))}` });
+   414→    if (applied.priceMax) list.push({ key: "priceMax", label: `${t("priceRange")} ≤ ${formatUsd(Number(applied.priceMax))}` });
+   415→    if (applied.yearMin) list.push({ key: "yearMin", label: `${t("specYear")} ≥ ${applied.yearMin}` });
+   416→    if (applied.yearMax) list.push({ key: "yearMax", label: `${t("specYear")} ≤ ${applied.yearMax}` });
+   417→    if (applied.mileageMin) list.push({ key: "mileageMin", label: `${t("specMileage")} ≥ ${applied.mileageMin}` });
+   418→    if (applied.mileageMax) list.push({ key: "mileageMax", label: `${t("specMileage")} ≤ ${applied.mileageMax}` });
+   419→    return list;
+   420→  }, [applied, t, locale]);
+   421→
+   422→  const removeChip = (key: string) => {
+   423→    const next: BrowseFilters = { ...applied };
+   424→    if (key.includes(":")) {
+   425→      const [field, val] = key.split(":");
+   426→      const f = field as "bodyType" | "fuel" | "transmission" | "drivetrain";
+   427→      next[f] = next[f].filter((x) => x !== val);
+   428→    } else if (key === "sellerVerified" || key === "featured" || key === "hasReport") {
+   429→      next[key] = false;
+   430→    } else {
+   431→      (next as unknown as Record<string, string>)[key] = "";
+   432→    }
+   433→    applyFilters(next);
+   434→  };
+   435→
+   436→  const saveSearch = async () => {
+   437→    if (!saveName.trim()) return;
+   438→    setSavingSearch(true);
+   439→    try {
+   440→      await apiSend("/api/account/saved-searches", "POST", { name: saveName.trim(), query: saveQuery });
+   441→      toast.success(t("toastSearchSaved"));
+   442→      setSaveOpen(false);
+   443→      setSaveName("");
+   444→    } catch (e) {
+   445→      toast.error(errorText(e));
+   446→    } finally {
+   447→      setSavingSearch(false);
+   448→    }
+   449→  };
+   450→
+   451→  const items = data?.items ?? [];
+   452→  const activeFilterCount = chips.length;
+   453→
+   454→  const advButton = (onClick: () => void) => (
+   455→    <Button variant="outline" size="sm" onClick={onClick} aria-expanded={advOpen} aria-label={t("advFilters")}>
+   456→      <SlidersHorizontal className="h-4 w-4 mr-1.5" aria-hidden />
+   457→      {t("advFilters")}
+   458→      {activeFilterCount > 0 && (
+   459→        <span className="ml-1.5 flex h-5 min-w-5 items-center justify-center rounded-full bg-amber-500 px-1 text-[11px] font-bold text-slate-950">
+   460→          {activeFilterCount}
+   461→        </span>
+   462→      )}
+   463→    </Button>
+   464→  );
+   465→
+   466→  return (
+   467→    <div className="mx-auto max-w-7xl px-4 py-6 pb-24 md:pb-10">
+   468→      <div className="flex flex-wrap items-center justify-between gap-2">
+   469→        <h1 className="text-xl sm:text-2xl font-bold text-slate-900">{t("navBrowse")}</h1>
+   470→        <div className="flex flex-wrap items-center gap-2">
+   471→          {canSaveSearch && (
+   472→            <Button variant="outline" size="sm" onClick={() => setSaveOpen(true)} aria-label={t("saveSearchBtn")}>
+   473→              <BookmarkPlus className="h-4 w-4 mr-1.5" aria-hidden />
+   474→              {t("saveSearchBtn")}
+   475→            </Button>
+   476→          )}
+   477→          {/* Mobile advanced sheet trigger */}
+   478→          <div className="lg:hidden">{advButton(() => setAdvSheetOpen(true))}</div>
+   479→          {/* Desktop advanced toggle */}
+   480→          <div className="hidden lg:block">{advButton(() => setAdvOpen((o) => !o))}</div>
+   481→
+   482→          {/* Mobile quick filter sheet */}
+   483→          <Sheet open={sheetOpen} onOpenChange={setSheetOpen}>
+   484→            <SheetTrigger asChild>
+   485→              <Button variant="outline" size="sm" className="md:hidden">
+   486→                {t("filters")}
+   487→                {activeFilterCount > 0 && (
+   488→                  <span className="ml-1.5 flex h-5 w-5 items-center justify-center rounded-full bg-amber-500 text-[11px] font-bold text-slate-950">
+   489→                    {activeFilterCount}
+   490→                  </span>
+   491→                )}
+   492→              </Button>
+   493→            </SheetTrigger>
+   494→            <SheetContent side="bottom" className="h-[85vh] overflow-y-auto kl-scroll">
+   495→              <SheetHeader>
+   496→                <SheetTitle>{t("filters")}</SheetTitle>
+   497→              </SheetHeader>
+   498→              <div className="pb-6">
+   499→                <FiltersPanel filters={filters} setFilters={setFilters} onClear={clearAll} />
+   500→                <Button onClick={applyFromSheet} className="mt-4 w-full bg-amber-500 hover:bg-amber-400 text-slate-950 font-semibold">
+   501→                  <Search className="h-4 w-4 mr-2" aria-hidden />
+   502→                  {t("applyFilters")}
+   503→                </Button>
+   504→              </div>
+   505→            </SheetContent>
+   506→          </Sheet>
+   507→
+   508→          <Select value={sort} onValueChange={(v) => { setSort(v as SortOption); setPage(0); }}>
+   509→            <SelectTrigger className="h-9 w-[132px] text-sm sm:w-[180px]" aria-label={t("sortBy")}>
+   510→              <SelectValue />
+   511→            </SelectTrigger>
+   512→            <SelectContent>
+   513→              <SelectItem value="newest">{t("sortNewest")}</SelectItem>
+   514→              <SelectItem value="price_asc">{t("sortPriceAsc")}</SelectItem>
+   515→              <SelectItem value="price_desc">{t("sortPriceDesc")}</SelectItem>
+   516→              <SelectItem value="year_desc">{t("sortYearDesc")}</SelectItem>
+   517→              <SelectItem value="mileage_asc">{t("sortMileageAsc")}</SelectItem>
+   518→            </SelectContent>
+   519→          </Select>
+   520→        </div>
+   521→      </div>
+   522→
+   523→      {/* Active filter chips */}
+   524→      {chips.length > 0 && (
+   525→        <div className="mt-3 flex flex-wrap items-center gap-1.5" aria-label={t("activeFiltersLabel")}>
+   526→          {chips.map((c) => (
+   527→            <span
+   528→              key={c.key}
+   529→              className="inline-flex items-center gap-1 rounded-full border border-amber-300 bg-amber-50 py-1 pl-2.5 pr-1.5 text-xs font-medium text-amber-800"
+   530→            >
+   531→              {c.label}
+   532→              <button
+   533→                onClick={() => removeChip(c.key)}
+   534→                className="flex h-4 w-4 items-center justify-center rounded-full text-amber-600 hover:bg-amber-200 cursor-pointer"
+   535→                aria-label={`${t("remove")} ${c.label}`}
+   536→              >
+   537→                <X className="h-3 w-3" aria-hidden />
+   538→              </button>
+   539→            </span>
+   540→          ))}
+   541→          <button
+   542→            onClick={clearAll}
+   543→            className="inline-flex items-center rounded-full border border-slate-200 bg-white px-2.5 py-1 text-xs font-medium text-slate-500 hover:border-slate-300 hover:text-slate-700 cursor-pointer"
+   544→          >
+   545→            {t("clearFilters")}
+   546→          </button>
+   547→        </div>
+   548→      )}
+   549→
+   550→      {/* Desktop advanced panel (collapsible card, spans full width) */}
+   551→      {advOpen && (
+   552→        <Card className="mt-4 hidden lg:block">
+   553→          <CardContent className="p-5">
+   554→            <p className="mb-4 text-sm font-semibold text-slate-900">{t("advFilters")}</p>
+   555→            <AdvancedFields filters={filters} setFilters={applyFilters} onClear={clearAll} />
+   556→            <Button
+   557→              onClick={() => { setApplied(filters); setPage(0); setAdvOpen(false); }}
+   558→              className="mt-4 bg-amber-500 hover:bg-amber-400 text-slate-950 font-semibold"
+   559→            >
+   560→              <Search className="h-4 w-4 mr-2" aria-hidden />
+   561→              {t("applyFilters")}
+   562→            </Button>
+   563→          </CardContent>
+   564→        </Card>
+   565→      )}
+   566→
+   567→      <div className="mt-4 grid gap-6 lg:grid-cols-[260px_1fr]">
+   568→        {/* Desktop quick filters */}
+   569→        <aside className="hidden lg:block">
+   570→          <div className="sticky top-20 rounded-xl border border-slate-200 bg-white p-4 max-h-[calc(100vh-6rem)] overflow-y-auto kl-scroll">
+   571→            <p className="mb-4 text-sm font-semibold text-slate-900">{t("filters")}</p>
+   572→            <FiltersPanel filters={filters} setFilters={applyFilters} onClear={clearAll} />
+   573→          </div>
+   574→        </aside>
+   575→
+   576→        {/* Results */}
+   577→        <section aria-live="polite">
+   578→          <p className="text-sm text-slate-500 mb-3">
+   579→            {loading && page === 0 ? "…" : t("resultsCount", { n: data?.total ?? 0 })}
+   580→          </p>
+   581→          {error ? (
+   582→            <div className="rounded-xl border border-rose-200 bg-rose-50 p-6 text-center text-sm text-rose-700">
+   583→              {error}
+   584→            </div>
+   585→          ) : items.length === 0 && !loading ? (
+   586→            <div className="rounded-xl border border-dashed border-slate-300 bg-slate-50 p-10 text-center">
+   587→              <Search className="mx-auto h-8 w-8 text-slate-300" aria-hidden />
+   588→              <p className="mt-3 font-medium text-slate-700">{t("noResults")}</p>
+   589→              <p className="mt-1 text-sm text-slate-500">{t("noResultsHint")}</p>
+   590→              <Button variant="outline" size="sm" onClick={clearAll} className="mt-4">
+   591→                {t("clearFilters")}
+   592→              </Button>
+   593→            </div>
+   594→          ) : (
+   595→            <>
+   596→              <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 xl:grid-cols-3">
+   597→                {loading && page === 0
+   598→                  ? Array.from({ length: 6 }).map((_, i) => <VehicleCardSkeleton key={i} />)
+   599→                  : items.map((v) => <VehicleCard key={v.id} vehicle={v} />)}
+   600→              </div>
+   601→              {data?.nextCursor && (
+   602→                <div className="mt-6 text-center">
+   603→                  <Button variant="outline" onClick={() => setPage((p) => p + 1)} disabled={loading}>
+   604→                    {loading ? t("loading") : t("loadMore")}
+   605→                  </Button>
+   606→                </div>
+   607→              )}
+   608→              {!data?.nextCursor && items.length > 0 && (
+   609→                <p className="mt-6 text-center text-xs text-slate-400">
+   610→                  — {items.length} / {data?.total ?? 0} —
+   611→                </p>
+   612→              )}
+   613→            </>
+   614→          )}
+   615→        </section>
+   616→      </div>
+   617→
+   618→      {/* Mobile advanced bottom sheet */}
+   619→      <Sheet open={advSheetOpen} onOpenChange={setAdvSheetOpen}>
+   620→        <SheetContent side="bottom" className="h-[85vh] overflow-y-auto kl-scroll">
+   621→          <SheetHeader>
+   622→            <SheetTitle>{t("advFilters")}</SheetTitle>
+   623→          </SheetHeader>
+   624→          <div className="pb-6">
+   625→            <AdvancedFields filters={filters} setFilters={setFilters} onClear={clearAll} />
+   626→            <Button onClick={applyFromAdvSheet} className="mt-4 w-full bg-amber-500 hover:bg-amber-400 text-slate-950 font-semibold">
+   627→              <Search className="h-4 w-4 mr-2" aria-hidden />
+   628→              {t("applyFilters")}
+   629→            </Button>
+   630→          </div>
+   631→        </SheetContent>
+   632→      </Sheet>
+   633→
+   634→      {/* Save search dialog */}
+   635→      <Dialog open={saveOpen} onOpenChange={setSaveOpen}>
+   636→        <DialogContent className="sm:max-w-sm">
+   637→          <DialogHeader>
+   638→            <DialogTitle className="flex items-center gap-2">
+   639→              <BookmarkPlus className="h-4 w-4 text-amber-600" aria-hidden />
+   640→              {t("saveSearchTitle")}
+   641→            </DialogTitle>
+   642→          </DialogHeader>
+   643→          <div className="flex flex-wrap gap-1.5">
+   644→            {chips.length === 0 ? (
+   645→              <p className="text-xs text-slate-400">{t("noResultsHint")}</p>
+   646→            ) : (
+   647→              chips.slice(0, 6).map((c) => (
+   648→                <span key={c.key} className="rounded-full border border-slate-200 bg-slate-50 px-2.5 py-0.5 text-[11px] text-slate-600">
+   649→                  {c.label}
+   650→                </span>
+   651→              ))
+   652→            )}
+   653→          </div>
+   654→          <div>
+   655→            <Label htmlFor="ss-name" className="text-xs text-slate-500">{t("saveSearchNameLabel")}</Label>
+   656→            <Input id="ss-name" value={saveName} onChange={(e) => setSaveName(e.target.value)} className="mt-1.5 h-9" autoFocus />
+   657→          </div>
+   658→          <DialogFooter>
+   659→            <Button variant="outline" size="sm" onClick={() => setSaveOpen(false)}>{t("cancel")}</Button>
+   660→            <Button
+   661→              size="sm" onClick={saveSearch} disabled={savingSearch || !saveName.trim()}
+   662→              className="bg-amber-500 hover:bg-amber-400 text-slate-950 font-semibold"
+   663→            >
+   664→              {savingSearch && <Loader2 className="h-4 w-4 mr-2 animate-spin" aria-hidden />}
+   665→              {t("saveSearchBtn")}
+   666→            </Button>
+   667→          </DialogFooter>
+   668→        </DialogContent>
+   669→      </Dialog>
+   670→
+   671→      {/* Back to home for mobile users landing deep */}
+   672→      <div className="mt-8 text-center md:hidden">
+   673→        <Button variant="ghost" size="sm" onClick={() => navigate({ name: "home" })} className="text-slate-500">
+   674→          ← {t("navHome")}
+   675→        </Button>
+   676→      </div>
+   677→    </div>
+   678→  );
+   679→}
+   680→

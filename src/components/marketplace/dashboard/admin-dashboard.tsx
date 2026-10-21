@@ -19,6 +19,7 @@ import type {
 import type { VehicleStatus } from "@/lib/types";
 import type { SubscriptionPaymentDTO } from "@/lib/commerce-types";
 import { DashboardShell, type DashboardTabDef } from "./shell";
+import { Pagination } from "@/components/marketplace/pagination";
 import {
   AvatarCircle, ConfidenceRing, EmptyState, FetchErrorState, HBar, MiniBarChart, PaymentStatusBadge,
   RoleBadge, SectionCard, StatCard, StatCardSkeleton, TenantStatusBadge, VehicleStatusBadge,
@@ -349,12 +350,15 @@ function AdminTenants() {
   );
 }
 
+const LISTINGS_PAGE_SIZE = 10;
+
 function AdminListings() {
   const t = useT();
   const navigate = useAppStore((s) => s.navigate);
   const [status, setStatus] = useState<string>("PENDING_REVIEW");
   const [q, setQ] = useState("");
   const [debQ, setDebQ] = useState("");
+  const [page, setPage] = useState(1); // 1-based client-side pagination
   const [busyId, setBusyId] = useState<string | null>(null);
 
   useEffect(() => {
@@ -362,8 +366,19 @@ function AdminListings() {
     return () => clearTimeout(h);
   }, [q]);
 
+  // Any filter change restarts the list at page 1.
+  useEffect(() => {
+    setPage(1);
+  }, [debQ, status]);
+
   const url = `/api/admin/vehicles${qs({ status: status === "ALL" ? undefined : status, q: debQ || undefined })}`;
   const { data, loading, error, refetch } = useFetch<AdminVehicleRowDTO[]>(url);
+
+  // Page the moderation list client-side; refetches keep the current page.
+  const totalRows = data?.length ?? 0;
+  const pageCount = Math.max(1, Math.ceil(totalRows / LISTINGS_PAGE_SIZE));
+  const currentPage = Math.min(page, pageCount);
+  const rows = (data ?? []).slice((currentPage - 1) * LISTINGS_PAGE_SIZE, currentPage * LISTINGS_PAGE_SIZE);
 
   const patch = async (id: string, body: Record<string, string | boolean>) => {
     setBusyId(id);
@@ -411,7 +426,7 @@ function AdminListings() {
         <EmptyState icon={Car} text={t("noResults")} />
       ) : (
         <div className="space-y-2.5">
-          {data.map((v) => (
+          {rows.map((v) => (
             <div key={v.id} className="flex items-center gap-3 rounded-xl border border-slate-200 bg-white p-3">
               <button
                 onClick={() => navigate({ name: "detail", vehicleId: v.id })}
@@ -475,6 +490,20 @@ function AdminListings() {
               </div>
             </div>
           ))}
+        </div>
+      )}
+
+      {/* Pagination — paged over the moderation queue */}
+      {data && data.length > LISTINGS_PAGE_SIZE && (
+        <div className="space-y-1.5 pt-1">
+          <p className="text-center text-xs text-slate-400">
+            {t("paginationShowing", {
+              from: (currentPage - 1) * LISTINGS_PAGE_SIZE + 1,
+              to: Math.min(currentPage * LISTINGS_PAGE_SIZE, data.length),
+              n: data.length,
+            })}
+          </p>
+          <Pagination page={currentPage} pageCount={pageCount} onPageChange={setPage} disabled={busyId !== null} />
         </div>
       )}
     </div>

@@ -20,7 +20,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
-  CarFront, FileText, FileUp, ImagePlus, Link2, Loader2, Plus, Star, TriangleAlert, X,
+  CarFront, ChevronLeft, ChevronRight, FileText, FileUp, GripVertical, ImagePlus, Link2, Loader2, Plus, Star, TriangleAlert, X,
 } from "lucide-react";
 import { fuelLabels, transmissionLabels } from "@/lib/i18n";
 import { toast } from "sonner";
@@ -285,8 +285,9 @@ export function DocumentsEditor({
 
 /**
  * Unlimited photo manager: multi-file upload (client-downscaled, stored via
- * POST /api/uploads), link adds, remove, set-as-cover. `images` is the ordered
- * desired list — first entry is the cover.
+ * POST /api/uploads), link adds, remove, set-as-cover, and drag-and-drop
+ * reordering (HTML5 DnD with live preview, plus ‹ › buttons for touch and
+ * keyboard users). `images` is the ordered desired list — first is the cover.
  */
 export function PhotoUploader({
   images,
@@ -304,8 +305,45 @@ export function PhotoUploader({
   // Latest list ref so in-flight uploads never resurrect a just-removed photo.
   const latest = useRef(images);
   latest.current = images;
+  // Drag-to-reorder state: source index while a tile is dragged + the tile
+  // currently hovered over (drop target highlight).
+  const dragFrom = useRef<number | null>(null);
+  const [dragIdx, setDragIdx] = useState<number | null>(null);
+  const [overIdx, setOverIdx] = useState<number | null>(null);
 
   const commit = (next: string[]) => onChange(Array.from(new Set(next)));
+
+  /** Move the photo at `from` to position `to` (order = saved order on PATCH). */
+  const reorder = (from: number, to: number) => {
+    if (from === to || from < 0 || to < 0 || from >= latest.current.length) return;
+    const next = [...latest.current];
+    const [item] = next.splice(from, 1);
+    next.splice(to, 0, item);
+    commit(next);
+  };
+
+  const handleDragStart = (idx: number, e: React.DragEvent<HTMLDivElement>) => {
+    if (disabled) return;
+    dragFrom.current = idx;
+    setDragIdx(idx);
+    // Firefox refuses to start a drag without payload data.
+    e.dataTransfer.effectAllowed = "move";
+    e.dataTransfer.setData("text/plain", String(idx));
+  };
+
+  // Live preview: the hovered tile swaps with the dragged one as you move.
+  const handleDragEnter = (idx: number) => {
+    if (dragFrom.current === null || dragFrom.current === idx) return;
+    reorder(dragFrom.current, idx);
+    dragFrom.current = idx;
+    setOverIdx(idx);
+  };
+
+  const endDrag = () => {
+    dragFrom.current = null;
+    setDragIdx(null);
+    setOverIdx(null);
+  };
 
   const uploadFiles = async (files: File[]) => {
     const list = files.filter((f) => f.type.startsWith("image/"));
@@ -343,7 +381,6 @@ export function PhotoUploader({
     if (idx === 0) return;
     commit([images[idx], ...images.filter((_, i) => i !== idx)]);
   };
-
   return (
     <div>
       <div className="flex flex-wrap items-center gap-2">
@@ -402,43 +439,88 @@ export function PhotoUploader({
       </div>
 
       {images.length > 0 && (
-        <div className="mt-3 grid max-h-72 grid-cols-3 gap-2 overflow-y-auto pr-1 sm:grid-cols-4">
-          {images.map((url, idx) => (
-            <div
-              key={`${url}-${idx}`}
-              className={cn(
-                "group relative aspect-[4/3] overflow-hidden rounded-lg border-2 bg-slate-100",
-                idx === 0 ? "border-amber-500" : "border-transparent",
-              )}
-            >
-              <img src={url} alt="" className="h-full w-full object-cover" loading="lazy" />
-              {idx === 0 ? (
-                <span className="absolute left-1 top-1 rounded-full bg-amber-500 px-1.5 py-0.5 text-[9px] font-bold text-slate-950">
-                  {t("coverBadge")}
-                </span>
-              ) : (
+        <>
+          <div className="mt-3 grid max-h-72 grid-cols-3 gap-2 overflow-y-auto pr-1 sm:grid-cols-4">
+            {images.map((url, idx) => (
+              <div
+                key={`${url}-${idx}`}
+                draggable={!disabled}
+                onDragStart={(e) => handleDragStart(idx, e)}
+                onDragEnter={() => handleDragEnter(idx)}
+                onDragOver={(e) => e.preventDefault()}
+                onDrop={(e) => e.preventDefault()}
+                onDragEnd={endDrag}
+                className={cn(
+                  "group relative aspect-[4/3] overflow-hidden rounded-lg border-2 bg-slate-100",
+                  idx === 0 ? "border-amber-500" : "border-transparent",
+                  !disabled && "cursor-grab active:cursor-grabbing",
+                  dragIdx === idx && "opacity-40",
+                  overIdx === idx && dragIdx !== null && dragIdx !== idx && "ring-2 ring-amber-400",
+                )}
+              >
+                <img src={url} alt="" className="h-full w-full object-cover" loading="lazy" draggable={false} />
+                {idx === 0 ? (
+                  <span className="absolute left-1 top-1 rounded-full bg-amber-500 px-1.5 py-0.5 text-[9px] font-bold text-slate-950">
+                    {t("coverBadge")}
+                  </span>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => makeCover(idx)}
+                    disabled={disabled}
+                    className="absolute left-1 top-1 flex h-6 w-6 cursor-pointer items-center justify-center rounded-full bg-slate-950/60 text-white opacity-80 transition hover:bg-amber-500 hover:text-slate-950 hover:opacity-100"
+                    aria-label={t("setCover")}
+                  >
+                    <Star className="h-3.5 w-3.5" aria-hidden />
+                  </button>
+                )}
                 <button
                   type="button"
-                  onClick={() => makeCover(idx)}
+                  onClick={() => removeAt(idx)}
                   disabled={disabled}
-                  className="absolute left-1 top-1 flex h-6 w-6 cursor-pointer items-center justify-center rounded-full bg-slate-950/60 text-white opacity-80 transition hover:bg-amber-500 hover:text-slate-950 hover:opacity-100"
-                  aria-label={t("setCover")}
+                  className="absolute right-1 top-1 flex h-6 w-6 cursor-pointer items-center justify-center rounded-full bg-slate-950/60 text-white transition hover:bg-red-500"
+                  aria-label={t("removePhoto")}
                 >
-                  <Star className="h-3.5 w-3.5" aria-hidden />
+                  <X className="h-3.5 w-3.5" aria-hidden />
                 </button>
-              )}
-              <button
-                type="button"
-                onClick={() => removeAt(idx)}
-                disabled={disabled}
-                className="absolute right-1 top-1 flex h-6 w-6 cursor-pointer items-center justify-center rounded-full bg-slate-950/60 text-white transition hover:bg-red-500"
-                aria-label={t("removePhoto")}
-              >
-                <X className="h-3.5 w-3.5" aria-hidden />
-              </button>
-            </div>
-          ))}
-        </div>
+                {/* Move-earlier / move-later — touch + keyboard fallback for DnD */}
+                {idx > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => reorder(idx, idx - 1)}
+                    disabled={disabled}
+                    className="absolute bottom-1 left-1 flex h-6 w-6 cursor-pointer items-center justify-center rounded-full bg-slate-950/60 text-white transition hover:bg-amber-500 hover:text-slate-950"
+                    aria-label={t("movePhotoLeft")}
+                  >
+                    <ChevronLeft className="h-3.5 w-3.5" aria-hidden />
+                  </button>
+                )}
+                {idx < images.length - 1 && (
+                  <button
+                    type="button"
+                    onClick={() => reorder(idx, idx + 1)}
+                    disabled={disabled}
+                    className="absolute bottom-1 right-1 flex h-6 w-6 cursor-pointer items-center justify-center rounded-full bg-slate-950/60 text-white transition hover:bg-amber-500 hover:text-slate-950"
+                    aria-label={t("movePhotoRight")}
+                  >
+                    <ChevronRight className="h-3.5 w-3.5" aria-hidden />
+                  </button>
+                )}
+                {/* Drag affordance — grip badge shown on hover */}
+                {!disabled && images.length > 1 && (
+                  <span className="pointer-events-none absolute inset-x-0 bottom-1 flex justify-center opacity-0 transition group-hover:opacity-100">
+                    <span className="flex h-5 w-5 items-center justify-center rounded-full bg-slate-950/60 text-white">
+                      <GripVertical className="h-3 w-3" aria-hidden />
+                    </span>
+                  </span>
+                )}
+              </div>
+            ))}
+          </div>
+          {images.length > 1 && !disabled && (
+            <p className="mt-2 text-[11px] text-slate-400">{t("dragPhotosHint")}</p>
+          )}
+        </>
       )}
     </div>
   );

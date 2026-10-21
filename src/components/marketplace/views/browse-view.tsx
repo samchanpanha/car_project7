@@ -3,9 +3,11 @@
 import { useAppStore } from "@/lib/store";
 import { useT } from "@/hooks/use-t";
 import { useFetch, qs, apiSend } from "@/lib/client-hooks";
-import type { MetaDTO, VehiclesResponseDTO, SortOption } from "@/lib/types";
+import type { MetaDTO, SortOption } from "@/lib/types";
+import type { PagedVehiclesResponseDTO } from "@/lib/listing-types";
 import { bodyTypeLabels, fuelLabels, transmissionLabels, drivetrainLabels } from "@/lib/i18n";
 import { VehicleCard, VehicleCardSkeleton } from "@/components/marketplace/vehicle-card";
+import { Pagination } from "@/components/marketplace/pagination";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -61,10 +63,11 @@ export function emptyFilters(): BrowseFilters {
   };
 }
 
-/** Builds the API query params (advanced filters serialize arrays comma-joined). */
+/** Builds the API query params (advanced filters serialize arrays comma-joined).
+ * `page` is 1-based — sent to the API only when the user is past page 1. */
 function buildParams(f: BrowseFilters, sort: SortOption, page: number): Record<string, string | number> {
   const params: Record<string, string | number> = { sort, limit: 12 };
-  if (page > 0) params.cursor = page;
+  if (page > 1) params.page = page;
   if (f.q.trim()) params.q = f.q.trim();
   if (f.make) params.make = f.make;
   if (f.bodyType.length) params.bodyType = f.bodyType.join(",");
@@ -346,7 +349,7 @@ export function BrowseView({ initial }: { initial?: { q?: string; make?: string;
     bodyType: initial?.bodyType ? [initial.bodyType] : [],
   }));
   const [sort, setSort] = useState<SortOption>(initial?.sort ?? "newest");
-  const [page, setPage] = useState(0);
+  const [page, setPage] = useState(1); // 1-based
   const [applied, setApplied] = useState<BrowseFilters>(filters);
   const [sheetOpen, setSheetOpen] = useState(false);
   const [advOpen, setAdvOpen] = useState(false); // desktop collapsible card
@@ -360,13 +363,13 @@ export function BrowseView({ initial }: { initial?: { q?: string; make?: string;
     return `/api/vehicles${qs(params)}`;
   }, [applied, sort, page]);
 
-  const { data, loading, error } = useFetch<VehiclesResponseDTO>(query);
+  const { data, loading, error } = useFetch<PagedVehiclesResponseDTO>(query);
 
   // Save search: params without pagination (sort kept)
   const saveQuery = useMemo(() => {
-    const p = buildParams(applied, sort, 0);
+    const p = buildParams(applied, sort, 1);
     delete p.limit;
-    delete p.cursor;
+    delete p.page;
     return p;
   }, [applied, sort]);
 
@@ -375,24 +378,32 @@ export function BrowseView({ initial }: { initial?: { q?: string; make?: string;
   const applyFilters = (f: BrowseFilters) => {
     setFilters(f);
     setApplied(f);
-    setPage(0);
+    setPage(1);
   };
 
   const applyFromSheet = () => {
     setApplied(filters);
-    setPage(0);
+    setPage(1);
     setSheetOpen(false);
   };
   const applyFromAdvSheet = () => {
     setApplied(filters);
-    setPage(0);
+    setPage(1);
     setAdvSheetOpen(false);
   };
   const clearAll = () => {
     const empty = emptyFilters();
     setFilters(empty);
     setApplied(empty);
-    setPage(0);
+    setPage(1);
+  };
+
+  // Jump to a page and bring the fresh results into view.
+  const gotoPage = (p: number) => {
+    setPage(p);
+    if (typeof window !== "undefined") {
+      window.requestAnimationFrame(() => window.scrollTo({ top: 0, behavior: "smooth" }));
+    }
   };
 
   // ---- active filter chips ----
@@ -505,7 +516,7 @@ export function BrowseView({ initial }: { initial?: { q?: string; make?: string;
             </SheetContent>
           </Sheet>
 
-          <Select value={sort} onValueChange={(v) => { setSort(v as SortOption); setPage(0); }}>
+          <Select value={sort} onValueChange={(v) => { setSort(v as SortOption); setPage(1); }}>
             <SelectTrigger className="h-9 w-[132px] text-sm sm:w-[180px]" aria-label={t("sortBy")}>
               <SelectValue />
             </SelectTrigger>
@@ -576,7 +587,7 @@ export function BrowseView({ initial }: { initial?: { q?: string; make?: string;
         {/* Results */}
         <section aria-live="polite">
           <p className="text-sm text-slate-500 mb-3">
-            {loading && page === 0 ? "…" : t("resultsCount", { n: data?.total ?? 0 })}
+            {loading && page === 1 ? "…" : t("resultsCount", { n: data?.total ?? 0 })}
           </p>
           {error ? (
             <div className="rounded-xl border border-rose-200 bg-rose-50 p-6 text-center text-sm text-rose-700">
@@ -594,21 +605,22 @@ export function BrowseView({ initial }: { initial?: { q?: string; make?: string;
           ) : (
             <>
               <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 xl:grid-cols-3">
-                {loading && page === 0
+                {loading && page === 1
                   ? Array.from({ length: 6 }).map((_, i) => <VehicleCardSkeleton key={i} />)
                   : items.map((v) => <VehicleCard key={v.id} vehicle={v} />)}
               </div>
-              {data?.nextCursor && (
-                <div className="mt-6 text-center">
-                  <Button variant="outline" onClick={() => setPage((p) => p + 1)} disabled={loading}>
-                    {loading ? t("loading") : t("loadMore")}
-                  </Button>
+              {/* Numbered pagination — showing range + windowed page buttons */}
+              {data && data.total > 0 && (
+                <div className="mt-6 space-y-2.5">
+                  <p className="text-center text-xs text-slate-400">
+                    {t("paginationShowing", {
+                      from: (data.page - 1) * data.pageSize + 1,
+                      to: Math.min(data.page * data.pageSize, data.total),
+                      n: data.total,
+                    })}
+                  </p>
+                  <Pagination page={data.page} pageCount={data.pageCount} onPageChange={gotoPage} disabled={loading} />
                 </div>
-              )}
-              {!data?.nextCursor && items.length > 0 && (
-                <p className="mt-6 text-center text-xs text-slate-400">
-                  — {items.length} / {data?.total ?? 0} —
-                </p>
               )}
             </>
           )}

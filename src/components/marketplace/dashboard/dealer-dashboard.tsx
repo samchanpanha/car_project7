@@ -15,6 +15,7 @@ import { DashboardShell, type DashboardTabDef } from "./shell";
 import { RequestSubscriptionDialog, TenantPaymentHistory, PendingPaymentBanner } from "./payment-flow";
 import { PurchaseRequestList } from "./purchase-list";
 import { ListingEditorDialog } from "@/components/marketplace/listing-editor";
+import { Pagination } from "@/components/marketplace/pagination";
 import {
   AppointmentStatusBadge, AvatarCircle, EmptyState, FetchErrorState, SectionCard, StatCard,
   StatCardSkeleton, TenantRoleBadge, VerificationBadge, VehicleStatusBadge, errorText,
@@ -201,10 +202,13 @@ function DealerOverview() {
 
 // ---------------- inventory ----------------
 
+const INVENTORY_PAGE_SIZE = 8;
+
 function DealerInventory() {
   const t = useT();
   const navigate = useAppStore((s) => s.navigate);
   const [status, setStatus] = useState<string>("ALL");
+  const [page, setPage] = useState(1); // 1-based client-side pagination
   const [busyId, setBusyId] = useState<string | null>(null);
   const [editing, setEditing] = useState<TenantVehicleRowDTO | null>(null);
   const [editPrice, setEditPrice] = useState("");
@@ -214,6 +218,12 @@ function DealerInventory() {
 
   const url = `/api/tenant/inventory${qs({ status: status === "ALL" ? undefined : status })}`;
   const { data, loading, error, refetch } = useFetch<TenantVehicleRowDTO[]>(url);
+
+  // Page the full stock list client-side; refetches keep the current page.
+  const totalRows = data?.length ?? 0;
+  const pageCount = Math.max(1, Math.ceil(totalRows / INVENTORY_PAGE_SIZE));
+  const currentPage = Math.min(page, pageCount);
+  const rows = (data ?? []).slice((currentPage - 1) * INVENTORY_PAGE_SIZE, currentPage * INVENTORY_PAGE_SIZE);
 
   const patch = async (id: string, body: Record<string, string | number | boolean>) => {
     setBusyId(id);
@@ -243,7 +253,7 @@ function DealerInventory() {
           {TENANT_STATUSES.map((s) => (
             <button
               key={s}
-              onClick={() => setStatus(s)}
+              onClick={() => { setStatus(s); setPage(1); }}
               aria-pressed={status === s}
               className={cn(
                 "rounded-full border px-3 py-1.5 text-xs font-medium transition-colors cursor-pointer",
@@ -268,7 +278,7 @@ function DealerInventory() {
         <EmptyState icon={Car} text={t("inventoryEmpty")} />
       ) : (
         <div className="space-y-2.5">
-          {data.map((v) => (
+          {rows.map((v) => (
             <div key={v.id} className="flex items-center gap-3 rounded-xl border border-slate-200 bg-white p-3">
               <div className="h-14 w-20 shrink-0 overflow-hidden rounded-lg bg-slate-100">
                 {v.images[0] ? (
@@ -316,6 +326,20 @@ function DealerInventory() {
               </DropdownMenu>
             </div>
           ))}
+        </div>
+      )}
+
+      {/* Pagination — paged over the full stock list */}
+      {data && data.length > INVENTORY_PAGE_SIZE && (
+        <div className="space-y-1.5 pt-1">
+          <p className="text-center text-xs text-slate-400">
+            {t("paginationShowing", {
+              from: (currentPage - 1) * INVENTORY_PAGE_SIZE + 1,
+              to: Math.min(currentPage * INVENTORY_PAGE_SIZE, data.length),
+              n: data.length,
+            })}
+          </p>
+          <Pagination page={currentPage} pageCount={pageCount} onPageChange={setPage} disabled={busyId !== null} />
         </div>
       )}
 

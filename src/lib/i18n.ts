@@ -660,6 +660,13 @@ const en = {
   docTooLarge: "File is too large — the maximum is 3 MB",
   docUnsupported: "Only photos (JPEG/PNG/WebP) and PDF files are allowed",
   documentsCount: "{n} document(s)",
+  dragPhotosHint: "Drag photos to reorder — the first one is the cover.",
+  movePhotoLeft: "Move photo earlier",
+  movePhotoRight: "Move photo later",
+  paginationPrev: "Previous",
+  paginationNext: "Next",
+  paginationPageOf: "Page {page} of {count}",
+  paginationShowing: "Showing {from}–{to} of {n} cars",
 };
 
 const km: Record<keyof typeof en, string> = {
@@ -1306,6 +1313,13 @@ const km: Record<keyof typeof en, string> = {
   docTooLarge: "ឯកសារធំពេក — អតិបរមា ៣MB",
   docUnsupported: "អនុញ្ញាតតែរូបភាព (JPEG/PNG/WebP) និង PDF ប៉ុណ្ណោះ",
   documentsCount: "ឯកសារ {n}",
+  dragPhotosHint: "អូសរូបភាពដើម្បីរៀបចំលំដាប់ — រូបដំបូងគឺជារូបគម្រប។",
+  movePhotoLeft: "ផ្លាស់ទីរូបភាពទៅមុខ",
+  movePhotoRight: "ផ្លាស់ទីរូបភាពទៅក្រោយ",
+  paginationPrev: "មុន",
+  paginationNext: "បន្ទាប់",
+  paginationPageOf: "ទំព័រ {page} ក្នុងចំណោម {count}",
+  paginationShowing: "បង្ហាញ {from}–{to} ក្នុងចំណោមឡាន {n}",
 };
 
 export const dictionaries = { en, km };

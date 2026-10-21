@@ -10,6 +10,7 @@ import {
   PhotoUploader, DocumentsEditor, ListingEditorDialog, type DocumentRow,
 } from "@/components/marketplace/listing-editor";
 import { VehicleStatusBadge } from "@/components/marketplace/dashboard/bits";
+import { Pagination } from "@/components/marketplace/pagination";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -438,11 +439,20 @@ export function SellView() {
 
 // ---------------- Your listings (stock management) ----------------
 
+const MY_LISTINGS_PAGE_SIZE = 8;
+
 function MyListingsSection() {
   const t = useT();
   const [editorId, setEditorId] = useState<string | null>(null);
   const [editorOpen, setEditorOpen] = useState(false);
+  const [page, setPage] = useState(1); // 1-based client-side pagination
   const { data, loading, error, refetch } = useFetch<MyListingRowDTO[]>("/api/vehicles/mine");
+
+  // Page the own-listings list client-side; refetches keep the current page.
+  const totalRows = data?.length ?? 0;
+  const pageCount = Math.max(1, Math.ceil(totalRows / MY_LISTINGS_PAGE_SIZE));
+  const currentPage = Math.min(page, pageCount);
+  const rows = (data ?? []).slice((currentPage - 1) * MY_LISTINGS_PAGE_SIZE, currentPage * MY_LISTINGS_PAGE_SIZE);
 
   return (
     <section className="mt-8" aria-label={t("myListings")}>
@@ -468,8 +478,8 @@ function MyListingsSection() {
         ) : !data || data.length === 0 ? (
           <p className="py-3 text-center text-sm text-slate-400">{t("myListingsEmpty")}</p>
         ) : (
-          <ul className="max-h-96 divide-y divide-slate-100 overflow-y-auto pr-1">
-            {data.map((v) => (
+          <ul className="divide-y divide-slate-100">
+            {rows.map((v) => (
               <li key={v.id} className="flex items-center gap-3 py-2.5">
                 <div className="h-12 w-16 shrink-0 overflow-hidden rounded-lg bg-slate-100">
                   {v.images[0] ? (
@@ -511,6 +521,20 @@ function MyListingsSection() {
           </ul>
         )}
       </div>
+
+      {/* Pagination — paged over your own listings */}
+      {data && data.length > MY_LISTINGS_PAGE_SIZE && (
+        <div className="mt-3 space-y-1.5">
+          <p className="text-center text-xs text-slate-400">
+            {t("paginationShowing", {
+              from: (currentPage - 1) * MY_LISTINGS_PAGE_SIZE + 1,
+              to: Math.min(currentPage * MY_LISTINGS_PAGE_SIZE, data.length),
+              n: data.length,
+            })}
+          </p>
+          <Pagination page={currentPage} pageCount={pageCount} onPageChange={setPage} />
+        </div>
+      )}
 
       <ListingEditorDialog
         vehicleId={editorId}

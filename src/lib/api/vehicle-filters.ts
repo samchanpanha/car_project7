@@ -3,6 +3,7 @@ import type { Prisma } from "@prisma/client";
 import { db } from "@/lib/db";
 import { toCardDTO, vehicleCardInclude } from "@/lib/api/mappers";
 import type { SortOption, VehiclesResponseDTO } from "@/lib/types";
+import type { PagedVehiclesResponseDTO } from "@/lib/listing-types";
 
 export const ALLOWED_FUELS = ["PETROL", "DIESEL", "HYBRID", "ELECTRIC"] as const;
 export const ALLOWED_TRANSMISSIONS = ["AUTOMATIC", "MANUAL"] as const;
@@ -103,12 +104,14 @@ export function buildVehicleWhere(sp: URLSearchParams): Prisma.VehicleWhereInput
 
 /**
  * Shared buyer-flow vehicle listing: DB filters → case-insensitive q → sort →
- * page-cursor pagination. Returns the canonical VehiclesResponseDTO.
+ * page pagination. Accepts a 1-based "page" param (preferred) and keeps the
+ * legacy 0-based "cursor" for backward compatibility (saved searches).
+ * Returns the canonical VehiclesResponseDTO extended with page/pageSize/
+ * pageCount so clients can render numbered pagination.
  */
-export async function listVehicles(sp: URLSearchParams): Promise<VehiclesResponseDTO> {
+export async function listVehicles(sp: URLSearchParams): Promise<PagedVehiclesResponseDTO> {
   const where = buildVehicleWhere(sp);
-  const limit = Math.min(Math.max(Math.trunc(num(sp.get("limit")) ?? 12), 1), 48);
-  const cursorRaw = Math.max(0, Math.trunc(num(sp.get("cursor")) ?? 0));
+  const pageSize = Math.min(Math.max(Math.trunc(num(sp.get("limit")) ?? 12), 1), 48);
   const q = sp.get("q")?.trim().toLowerCase() || undefined;
   const sortParam = sp.get("sort") || "newest";
   const sort: SortOption = ALLOWED_SORTS.includes(sortParam as SortOption)
@@ -146,11 +149,29 @@ export async function listVehicles(sp: URLSearchParams): Promise<VehiclesRespons
   }
 
   const total = filtered.length;
-  const start = cursorRaw * limit;
-  const pageItems = filtered.slice(start, start + limit);
-  const nextCursor = start + limit < total ? String(cursorRaw + 1) : null;
+  const pageCount = Math.max(1, Math.ceil(total / pageSize));
 
-  return { items: pageItems.map(toCardDTO), nextCursor, total };
+  // 1-based "page" wins; legacy "cursor" is a 0-based page index. Requests
+  // beyond the last page clamp onto it (never a blank page from a stale link).
+  const pageParam = sp.get("page");
+  let page: number;
+  if (pageParam != null && pageParam.trim() !== "") {
+    page = Math.max(1, Math.trunc(num(pageParam) ?? 1));
+  } else {
+    page = Math.max(0, Math.trunc(num(sp.get("cursor")) ?? 0)) + 1;
+  }
+  const current = Math.min(page, pageCount);
+
+  const start = (current - 1) * pageSize;
+  const pageItems = filtered.slice(start, start + pageSize);
+  const nextCursor = start + pageSize < total ? String(current) : null;
+
+  const response: VehiclesResponseDTO = {
+    items: pageItems.map(toCardDTO),
+    nextCursor,
+    total,
+  };
+  return { ...response, page: current, pageSize, pageCount };
 }
 
 /** Zod schema for a stored saved-search query (flat string|number record). */

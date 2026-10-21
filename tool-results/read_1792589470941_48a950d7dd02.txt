@@ -1,0 +1,836 @@
+     1→     1→"use client";
+     2→     2→
+     3→     3→// Shared listing stock editor (Task 16) — full information form + unlimited
+     4→     4→// image manager (upload files / add a link / remove / set cover). Used by the
+     5→     5→// dealer dashboard inventory tab and the "Your listings" section of the sell
+     6→     6→// view. Talks to PATCH /api/vehicles/[id] (manage authorization server-side).
+     7→     7→
+     8→     8→import { useEffect, useMemo, useRef, useState } from "react";
+     9→     9→import { useT } from "@/hooks/use-t";
+    10→    10→import { useAppStore } from "@/lib/store";
+    11→    11→import { apiSend, useFetch } from "@/lib/client-hooks";
+    12→    12→import { fileToDataUrl } from "@/lib/image-client";
+    13→    13→import type { ManageableVehicleDetailDTO } from "@/lib/listing-types";
+    14→    14→import type { MetaDTO } from "@/lib/types";
+    15→    15→import { Button } from "@/components/ui/button";
+    16→    16→import { Input } from "@/components/ui/input";
+    17→    17→import { Label } from "@/components/ui/label";
+    18→    18→import { Textarea } from "@/components/ui/textarea";
+    19→    19→import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+    20→    20→import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+    21→    21→import { Skeleton } from "@/components/ui/skeleton";
+    22→    22→import {
+    23→    23→  CarFront, FileText, FileUp, ImagePlus, Link2, Loader2, Plus, Star, TriangleAlert, X,
+    24→    24→} from "lucide-react";
+    25→    25→import { fuelLabels, transmissionLabels } from "@/lib/i18n";
+    26→    26→import { toast } from "sonner";
+    27→    27→import { cn } from "@/lib/utils";
+    28→    28→
+    29→    29→const BODY_TYPES = ["SUV", "SEDAN", "PICKUP", "VAN", "HATCHBACK", "COUPE"];
+    30→    30→const FUELS = ["PETROL", "DIESEL", "HYBRID", "ELECTRIC"];
+    31→    31→const TRANSMISSIONS = ["AUTOMATIC", "MANUAL"];
+    32→    32→const DRIVETRAINS = ["FWD", "RWD", "AWD", "4WD"];
+    33→    33→const IMPORTS = ["USA", "KOREA", "JAPAN", "THAILAND", "DUBAI", "LOCAL"];
+    34→    34→const ACCIDENTS = ["NONE_DECLARED", "MINOR_DECLARED", "MAJOR_DECLARED", "UNKNOWN"];
+    35→    35→const EDIT_STATUSES = ["PUBLISHED", "DRAFT", "SOLD", "ARCHIVED"];
+    36→    36→
+    37→    37→// ---------------- Documents editor (Task 17) ----------------
+    38→    38→
+    39→    39→const DOC_TYPES = ["REGISTRATION_BOOK", "IMPORT_DECLARATION", "SERVICE_RECORD", "INSPECTION_CERT", "INSURANCE"];
+    40→    40→const ALL_DOC_STATUSES = ["PROVIDED", "MISSING", "VERIFIED", "REJECTED"];
+    41→    41→const SELLER_DOC_STATUSES = ["PROVIDED", "MISSING"];
+    42→    42→
+    43→    43→/** Client-side document row — `id` present = already stored on the server. */
+    44→    44→export interface DocumentRow {
+    45→    45→  id?: string;
+    46→    46→  type: string;
+    47→    47→  status: string;
+    48→    48→  notes: string;
+    49→    49→  fileUrl: string | null;
+    50→    50→}
+    51→    51→
+    52→    52→/** Read a file as a raw data URL — used for PDFs (no canvas downscale). */
+    53→    53→function rawFileToDataUrl(file: File): Promise<string> {
+    54→    54→  return new Promise((resolve, reject) => {
+    55→    55→    const reader = new FileReader();
+    56→    56→    reader.onload = () => resolve(String(reader.result));
+    57→    57→    reader.onerror = () => reject(new Error("read-failed"));
+    58→    58→    reader.readAsDataURL(file);
+    59→    59→  });
+    60→    60→}
+    61→    61→
+    62→    62→const isPdfUrl = (url: string) => url.toLowerCase().endsWith(".pdf");
+    63→    63→
+    64→    64→/**
+    65→    65→ * Optional vehicle-papers manager: one row per document (type + status +
+    66→    66→ * optional note + optional uploaded photo/PDF). Rows are fully client-side
+    67→    67→ * until the parent form saves — then the PATCH diffs them by id.
+    68→    68→ */
+    69→    69→export function DocumentsEditor({
+    70→    70→  documents,
+    71→    71→  onChange,
+    72→    72→  disabled,
+    73→    73→  canVerify,
+    74→    74→}: {
+    75→    75→  documents: DocumentRow[];
+    76→    76→  onChange: (next: DocumentRow[]) => void;
+    77→    77→  disabled?: boolean;
+    78→    78→  canVerify?: boolean;
+    79→    79→}) {
+    80→    80→  const t = useT();
+    81→    81→  const inputRef = useRef<HTMLInputElement | null>(null);
+    82→    82→  // Which row is currently uploading its file (keyed like the row list).
+    83→    83→  const [uploadingKey, setUploadingKey] = useState<string | null>(null);
+    84→    84→  // The row the shared file picker was opened for.
+    85→    85→  const pendingKeyRef = useRef<string | null>(null);
+    86→    86→
+    87→    87→  const rowKey = (d: DocumentRow, i: number) => d.id ?? `new-${i}`;
+    88→    88→
+    89→    89→  const update = (key: string, patch: Partial<DocumentRow>) =>
+    90→    90→    onChange(documents.map((d, i) => (rowKey(d, i) === key ? { ...d, ...patch } : d)));
+    91→    91→
+    92→    92→  const removeAt = (idx: number) => onChange(documents.filter((_, i) => i !== idx));
+    93→    93→
+    94→    94→  const addRow = () =>
+    95→    95→    onChange([...documents, { type: "REGISTRATION_BOOK", status: "PROVIDED", notes: "", fileUrl: null }]);
+    96→    96→
+    97→    97→  const uploadFile = async (key: string, file: File) => {
+    98→    98→    const isPdf = file.type === "application/pdf" || file.name.toLowerCase().endsWith(".pdf");
+    99→    99→    const isImage = file.type.startsWith("image/");
+   100→   100→    if (!isPdf && !isImage) {
+   101→   101→      toast.warning(t("docUnsupported"));
+   102→   102→      return;
+   103→   103→    }
+   104→   104→    // PDFs cannot be downscaled client-side — enforce the server cap early.
+   105→   105→    if (file.size > 3 * 1024 * 1024) {
+   106→   106→      toast.warning(t("docTooLarge"));
+   107→   107→      return;
+   108→   108→    }
+   109→   109→    setUploadingKey(key);
+   110→   110→    try {
+   111→   111→      const dataUrl = isPdf ? await rawFileToDataUrl(file) : await fileToDataUrl(file, 1600, 0.85);
+   112→   112→      const res = await apiSend<{ url: string }>("/api/uploads", "POST", { dataUrl });
+   113→   113→      update(key, { fileUrl: res.url });
+   114→   114→    } catch {
+   115→   115→      toast.error(t("uploadFailedCount", { n: 1 }));
+   116→   116→    } finally {
+   117→   117→      setUploadingKey(null);
+   118→   118→    }
+   119→   119→  };
+   120→   120→
+   121→   121→  const statusOptions = (canVerify ? ALL_DOC_STATUSES : SELLER_DOC_STATUSES).map((s) => ({
+   122→   122→    value: s,
+   123→   123→    label: t(`doc${s}` as never),
+   124→   124→    disabled: false,
+   125→   125→  }));
+   126→   126→
+   127→   127→  return (
+   128→   128→    <div>
+   129→   129→      {/* One shared file picker — pendingKeyRef routes the chosen file to the
+   130→   130→          row whose "Upload file" button was clicked. */}
+   131→   131→      <input
+   132→   132→        ref={inputRef}
+   133→   133→        type="file"
+   134→   134→        accept="image/*,application/pdf"
+   135→   135→        className="hidden"
+   136→   136→        aria-label={t("docUploadFile")}
+   137→   137→        onChange={(e) => {
+   138→   138→          const key = pendingKeyRef.current;
+   139→   139→          const f = e.target.files?.[0];
+   140→   140→          if (f && key) void uploadFile(key, f);
+   141→   141→          e.target.value = "";
+   142→   142→        }}
+   143→   143→      />
+   144→   144→      {documents.length > 0 && (
+   145→   145→        <div className="space-y-2">
+   146→   146→          {documents.map((d, idx) => {
+   147→   147→            const key = rowKey(d, idx);
+   148→   148→            // Sellers see admin-set VERIFIED/REJECTED as read-only options.
+   149→   149→            const options =
+   150→   150→              !canVerify && !SELLER_DOC_STATUSES.includes(d.status)
+   151→   151→                ? [...statusOptions, { value: d.status, label: t(`doc${d.status}` as never), disabled: true }]
+   152→   152→                : statusOptions;
+   153→   153→            return (
+   154→   154→              <div key={key} className="rounded-xl border border-slate-200 bg-slate-50/60 p-3">
+   155→   155→                <div className="flex items-start gap-2">
+   156→   156→                  <div className="min-w-0 flex-1">
+   157→   157→                    <Select value={d.type} onValueChange={(v) => update(key, { type: v })}>
+   158→   158→                      <SelectTrigger className="h-9 w-full" aria-label={t("docTypeLabel")}>
+   159→   159→                        <SelectValue placeholder={t("docTypeLabel")} />
+   160→   160→                      </SelectTrigger>
+   161→   161→                      <SelectContent>
+   162→   162→                        {DOC_TYPES.map((tp) => (
+   163→   163→                          <SelectItem key={tp} value={tp}>
+   164→   164→                            {t(`doc${tp}` as never)}
+   165→   165→                          </SelectItem>
+   166→   166→                        ))}
+   167→   167→                      </SelectContent>
+   168→   168→                    </Select>
+   169→   169→                  </div>
+   170→   170→                  <div className="w-32 shrink-0">
+   171→   171→                    <Select value={d.status} onValueChange={(v) => update(key, { status: v })}>
+   172→   172→                      <SelectTrigger className="h-9 w-full" aria-label={t("docStatusLabel")}>
+   173→   173→                        <SelectValue placeholder={t("docStatusLabel")} />
+   174→   174→                      </SelectTrigger>
+   175→   175→                      <SelectContent>
+   176→   176→                        {options.map((o) => (
+   177→   177→                          <SelectItem key={o.value} value={o.value} disabled={o.disabled}>
+   178→   178→                            {o.label}
+   179→   179→                          </SelectItem>
+   180→   180→                        ))}
+   181→   181→                      </SelectContent>
+   182→   182→                    </Select>
+   183→   183→                  </div>
+   184→   184→                  <button
+   185→   185→                    type="button"
+   186→   186→                    onClick={() => removeAt(idx)}
+   187→   187→                    disabled={disabled}
+   188→   188→                    className="flex h-9 w-9 shrink-0 cursor-pointer items-center justify-center rounded-lg border border-slate-200 text-slate-400 transition hover:border-red-200 hover:bg-red-50 hover:text-red-600"
+   189→   189→                    aria-label={t("removeDocument")}
+   190→   190→                  >
+   191→   191→                    <X className="h-4 w-4" aria-hidden />
+   192→   192→                  </button>
+   193→   193→                </div>
+   194→   194→
+   195→   195→                <Input
+   196→   196→                  value={d.notes}
+   197→   197→                  onChange={(e) => update(key, { notes: e.target.value })}
+   198→   198→                  placeholder={t("docNotesLabel")}
+   199→   199→                  className="mt-2 h-9 text-xs"
+   200→   200→                  aria-label={t("docNotesLabel")}
+   201→   201→                />
+   202→   202→
+   203→   203→                <div className="mt-2 flex flex-wrap items-center gap-2">
+   204→   204→                  {d.fileUrl ? (
+   205→   205→                    <>
+   206→   206→                      {isPdfUrl(d.fileUrl) ? (
+   207→   207→                        <a
+   208→   208→                          href={d.fileUrl}
+   209→   209→                          target="_blank"
+   210→   210→                          rel="noopener noreferrer"
+   211→   211→                          className="flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-medium text-slate-600 transition hover:border-amber-300 hover:text-amber-700"
+   212→   212→                        >
+   213→   213→                          <FileText className="h-4 w-4 text-rose-600" aria-hidden />
+   214→   214→                          PDF
+   215→   215→                        </a>
+   216→   216→                      ) : (
+   217→   217→                        <a
+   218→   218→                          href={d.fileUrl}
+   219→   219→                          target="_blank"
+   220→   220→                          rel="noopener noreferrer"
+   221→   221→                          className="block overflow-hidden rounded-lg border border-slate-200"
+   222→   222→                          aria-label={t("docViewFile")}
+   223→   223→                        >
+   224→   224→                          <img src={d.fileUrl} alt="" className="h-10 w-14 object-cover" loading="lazy" />
+   225→   225→                        </a>
+   226→   226→                      )}
+   227→   227→                      <button
+   228→   228→                        type="button"
+   229→   229→                        onClick={() => update(key, { fileUrl: null })}
+   230→   230→                        disabled={disabled}
+   231→   231→                        className="cursor-pointer text-[11px] font-medium text-slate-400 underline-offset-2 transition hover:text-red-600 hover:underline"
+   232→   232→                      >
+   233→   233→                        {t("docRemoveFile")}
+   234→   234→                      </button>
+   235→   235→                    </>
+   236→   236→                  ) : (
+   237→   237→                    <Button
+   238→   238→                      type="button"
+   239→   239→                      variant="outline"
+   240→   240→                      size="sm"
+   241→   241→                      className="h-8"
+   242→   242→                      disabled={disabled || uploadingKey === key}
+   243→   243→                      onClick={() => {
+   244→   244→                        pendingKeyRef.current = key;
+   245→   245→                        inputRef.current?.click();
+   246→   246→                      }}
+   247→   247→                    >
+   248→   248→                      {uploadingKey === key ? (
+   249→   249→                        <>
+   250→   250→                          <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" aria-hidden />
+   251→   251→                          {t("loading")}
+   252→   252→                        </>
+   253→   253→                      ) : (
+   254→   254→                        <>
+   255→   255→                          <FileUp className="h-3.5 w-3.5 mr-1.5" aria-hidden />
+   256→   256→                          {t("docUploadFile")}
+   257→   257→                        </>
+   258→   258→                      )}
+   259→   259→                    </Button>
+   260→   260→                  )}
+   261→   261→                  <span className="text-[11px] text-slate-400">{t("docFileHint")}</span>
+   262→   262→                </div>
+   263→   263→              </div>
+   264→   264→            );
+   265→   265→          })}
+   266→   266→        </div>
+   267→   267→      )}
+   268→   268→
+   269→   269→      <Button
+   270→   270→        type="button"
+   271→   271→        variant="outline"
+   272→   272→        size="sm"
+   273→   273→        className="mt-2 h-9 border-dashed border-slate-300 text-slate-500 hover:border-amber-300 hover:bg-amber-50 hover:text-amber-800"
+   274→   274→        disabled={disabled}
+   275→   275→        onClick={addRow}
+   276→   276→      >
+   277→   277→        <Plus className="h-4 w-4 mr-1.5" aria-hidden />
+   278→   278→        {t("addDocument")}
+   279→   279→      </Button>
+   280→   280→    </div>
+   281→   281→  );
+   282→   282→}
+   283→   283→
+   284→   284→// ---------------- PhotoUploader ----------------
+   285→   285→
+   286→   286→/**
+   287→   287→ * Unlimited photo manager: multi-file upload (client-downscaled, stored via
+   288→   288→ * POST /api/uploads), link adds, remove, set-as-cover. `images` is the ordered
+   289→   289→ * desired list — first entry is the cover.
+   290→   290→ */
+   291→   291→export function PhotoUploader({
+   292→   292→  images,
+   293→   293→  onChange,
+   294→   294→  disabled,
+   295→   295→}: {
+   296→   296→  images: string[];
+   297→   297→  onChange: (next: string[]) => void;
+   298→   298→  disabled?: boolean;
+   299→   299→}) {
+   300→   300→  const t = useT();
+   301→   301→  const inputRef = useRef<HTMLInputElement>(null);
+   302→   302→  const [uploading, setUploading] = useState(0);
+   303→   303→  const [urlInput, setUrlInput] = useState("");
+   304→   304→  // Latest list ref so in-flight uploads never resurrect a just-removed photo.
+   305→   305→  const latest = useRef(images);
+   306→   306→  latest.current = images;
+   307→   307→
+   308→   308→  const commit = (next: string[]) => onChange(Array.from(new Set(next)));
+   309→   309→
+   310→   310→  const uploadFiles = async (files: File[]) => {
+   311→   311→    const list = files.filter((f) => f.type.startsWith("image/"));
+   312→   312→    if (list.length === 0) return;
+   313→   313→    setUploading(list.length);
+   314→   314→    let failed = 0;
+   315→   315→    const added: string[] = [];
+   316→   316→    for (const file of list) {
+   317→   317→      try {
+   318→   318→        const dataUrl = await fileToDataUrl(file, 1280, 0.82);
+   319→   319→        const res = await apiSend<{ url: string }>("/api/uploads", "POST", { dataUrl });
+   320→   320→        added.push(res.url);
+   321→   321→      } catch {
+   322→   322→        failed += 1;
+   323→   323→      } finally {
+   324→   324→        setUploading((n) => Math.max(0, n - 1));
+   325→   325→      }
+   326→   326→    }
+   327→   327→    if (added.length > 0) commit([...latest.current, ...added]);
+   328→   328→    if (failed > 0) toast.error(t("uploadFailedCount", { n: failed }));
+   329→   329→  };
+   330→   330→
+   331→   331→  const addUrl = () => {
+   332→   332→    const u = urlInput.trim();
+   333→   333→    if (!u || !/^(https?:\/\/|\/api\/uploads\/)/.test(u)) {
+   334→   334→      toast.warning(t("invalidPhotoUrl"));
+   335→   335→      return;
+   336→   336→    }
+   337→   337→    if (!latest.current.includes(u)) commit([...latest.current, u]);
+   338→   338→    setUrlInput("");
+   339→   339→  };
+   340→   340→
+   341→   341→  const removeAt = (idx: number) => commit(images.filter((_, i) => i !== idx));
+   342→   342→  const makeCover = (idx: number) => {
+   343→   343→    if (idx === 0) return;
+   344→   344→    commit([images[idx], ...images.filter((_, i) => i !== idx)]);
+   345→   345→  };
+   346→   346→
+   347→   347→  return (
+   348→   348→    <div>
+   349→   349→      <div className="flex flex-wrap items-center gap-2">
+   350→   350→        <input
+   351→   351→          ref={inputRef}
+   352→   352→          type="file"
+   353→   353→          accept="image/*"
+   354→   354→          multiple
+   355→   355→          className="hidden"
+   356→   356→          aria-label={t("uploadPhotos")}
+   357→   357→          onChange={(e) => {
+   358→   358→            if (e.target.files) void uploadFiles(Array.from(e.target.files));
+   359→   359→            e.target.value = "";
+   360→   360→          }}
+   361→   361→        />
+   362→   362→        <Button
+   363→   363→          type="button"
+   364→   364→          variant="outline"
+   365→   365→          size="sm"
+   366→   366→          className="h-9 border-amber-300 text-amber-800 hover:bg-amber-50 hover:text-amber-900"
+   367→   367→          disabled={disabled || uploading > 0}
+   368→   368→          onClick={() => inputRef.current?.click()}
+   369→   369→        >
+   370→   370→          {uploading > 0 ? (
+   371→   371→            <>
+   372→   372→              <Loader2 className="h-4 w-4 mr-1.5 animate-spin" aria-hidden />
+   373→   373→              {t("uploadingPhotos", { n: uploading })}
+   374→   374→            </>
+   375→   375→          ) : (
+   376→   376→            <>
+   377→   377→              <ImagePlus className="h-4 w-4 mr-1.5" aria-hidden />
+   378→   378→              {t("uploadPhotos")}
+   379→   379→            </>
+   380→   380→          )}
+   381→   381→        </Button>
+   382→   382→        <span className="text-[11px] text-slate-400">{t("photosUnlimitedHint")}</span>
+   383→   383→      </div>
+   384→   384→
+   385→   385→      <div className="mt-2 flex gap-2">
+   386→   386→        <Input
+   387→   387→          value={urlInput}
+   388→   388→          onChange={(e) => setUrlInput(e.target.value)}
+   389→   389→          onKeyDown={(e) => {
+   390→   390→            if (e.key === "Enter") {
+   391→   391→              e.preventDefault();
+   392→   392→              addUrl();
+   393→   393→            }
+   394→   394→          }}
+   395→   395→          placeholder="https://…"
+   396→   396→          className="h-9 text-xs"
+   397→   397→          aria-label={t("addPhotoUrl")}
+   398→   398→        />
+   399→   399→        <Button type="button" variant="outline" size="sm" className="h-9" disabled={disabled} onClick={addUrl}>
+   400→   400→          <Link2 className="h-4 w-4" aria-hidden />
+   401→   401→        </Button>
+   402→   402→      </div>
+   403→   403→
+   404→   404→      {images.length > 0 && (
+   405→   405→        <div className="mt-3 grid max-h-72 grid-cols-3 gap-2 overflow-y-auto pr-1 sm:grid-cols-4">
+   406→   406→          {images.map((url, idx) => (
+   407→   407→            <div
+   408→   408→              key={`${url}-${idx}`}
+   409→   409→              className={cn(
+   410→   410→                "group relative aspect-[4/3] overflow-hidden rounded-lg border-2 bg-slate-100",
+   411→   411→                idx === 0 ? "border-amber-500" : "border-transparent",
+   412→   412→              )}
+   413→   413→            >
+   414→   414→              <img src={url} alt="" className="h-full w-full object-cover" loading="lazy" />
+   415→   415→              {idx === 0 ? (
+   416→   416→                <span className="absolute left-1 top-1 rounded-full bg-amber-500 px-1.5 py-0.5 text-[9px] font-bold text-slate-950">
+   417→   417→                  {t("coverBadge")}
+   418→   418→                </span>
+   419→   419→              ) : (
+   420→   420→                <button
+   421→   421→                  type="button"
+   422→   422→                  onClick={() => makeCover(idx)}
+   423→   423→                  disabled={disabled}
+   424→   424→                  className="absolute left-1 top-1 flex h-6 w-6 cursor-pointer items-center justify-center rounded-full bg-slate-950/60 text-white opacity-80 transition hover:bg-amber-500 hover:text-slate-950 hover:opacity-100"
+   425→   425→                  aria-label={t("setCover")}
+   426→   426→                >
+   427→   427→                  <Star className="h-3.5 w-3.5" aria-hidden />
+   428→   428→                </button>
+   429→   429→              )}
+   430→   430→              <button
+   431→   431→                type="button"
+   432→   432→                onClick={() => removeAt(idx)}
+   433→   433→                disabled={disabled}
+   434→   434→                className="absolute right-1 top-1 flex h-6 w-6 cursor-pointer items-center justify-center rounded-full bg-slate-950/60 text-white transition hover:bg-red-500"
+   435→   435→                aria-label={t("removePhoto")}
+   436→   436→              >
+   437→   437→                <X className="h-3.5 w-3.5" aria-hidden />
+   438→   438→              </button>
+   439→   439→            </div>
+   440→   440→          ))}
+   441→   441→        </div>
+   442→   442→      )}
+   443→   443→    </div>
+   444→   444→  );
+   445→   445→}
+   446→   446→
+   447→   447→// ---------------- ListingEditorDialog ----------------
+   448→   448→
+   449→   449→interface EditorForm {
+   450→   450→  make: string;
+   451→   451→  model: string;
+   452→   452→  variant: string;
+   453→   453→  year: string;
+   454→   454→  mileageKm: string;
+   455→   455→  priceUsd: string;
+   456→   456→  transmission: string;
+   457→   457→  fuel: string;
+   458→   458→  engineCc: string;
+   459→   459→  drivetrain: string;
+   460→   460→  bodyType: string;
+   461→   461→  exteriorColor: string;
+   462→   462→  city: string;
+   463→   463→  district: string;
+   464→   464→  condition: string;
+   465→   465→  accidentDeclared: string;
+   466→   466→  ownershipCount: string;
+   467→   467→  vinLast6: string;
+   468→   468→  plateNo: string;
+   469→   469→  importOrigin: string;
+   470→   470→  description: string;
+   471→   471→  descriptionKm: string;
+   472→   472→  status: string;
+   473→   473→  images: string[];
+   474→   474→  documents: DocumentRow[];
+   475→   475→}
+   476→   476→
+   477→   477→function toForm(v: ManageableVehicleDetailDTO): EditorForm {
+   478→   478→  return {
+   479→   479→    make: v.make,
+   480→   480→    model: v.model,
+   481→   481→    variant: v.variant ?? "",
+   482→   482→    year: String(v.year),
+   483→   483→    mileageKm: String(v.mileageKm),
+   484→   484→    priceUsd: String(v.priceUsd),
+   485→   485→    transmission: v.transmission,
+   486→   486→    fuel: v.fuel,
+   487→   487→    engineCc: v.engineCc ? String(v.engineCc) : "",
+   488→   488→    drivetrain: v.drivetrain ?? "",
+   489→   489→    bodyType: v.bodyType,
+   490→   490→    exteriorColor: v.exteriorColor ?? "",
+   491→   491→    city: v.city,
+   492→   492→    district: v.district ?? "",
+   493→   493→    condition: v.condition,
+   494→   494→    accidentDeclared: v.accidentDeclared,
+   495→   495→    ownershipCount: v.ownershipCount ? String(v.ownershipCount) : "",
+   496→   496→    vinLast6: v.vinLast6 ?? "",
+   497→   497→    plateNo: v.plateNo ?? "",
+   498→   498→    importOrigin: v.importOrigin ?? "",
+   499→   499→    description: v.description ?? "",
+   500→   500→    descriptionKm: v.descriptionKm ?? "",
+   501→   501→    status: v.status,
+   502→   502→    images: v.images,
+   503→   503→    documents: (v.documents ?? []).map((d) => ({
+   504→   504→      id: d.id,
+   505→   505→      type: d.type,
+   506→   506→      status: d.status,
+   507→   507→      notes: d.notes ?? "",
+   508→   508→      fileUrl: d.fileUrl,
+   509→   509→    })),
+   510→   510→  };
+   511→   511→}
+   512→   512→
+   513→   513→export function ListingEditorDialog({
+   514→   514→  vehicleId,
+   515→   515→  open,
+   516→   516→  onOpenChange,
+   517→   517→  onSaved,
+   518→   518→}: {
+   519→   519→  vehicleId: string | null;
+   520→   520→  open: boolean;
+   521→   521→  onOpenChange: (open: boolean) => void;
+   522→   522→  onSaved?: () => void;
+   523→   523→}) {
+   524→   524→  const t = useT();
+   525→   525→  const locale = useAppStore((s) => s.locale);
+   526→   526→  const { data: meta } = useFetch<MetaDTO>(open ? "/api/meta" : null);
+   527→   527→  // GET /api/vehicles/[id] returns { vehicle, similar } — unwrap the vehicle.
+   528→   528→  const detail = useFetch<{ vehicle: ManageableVehicleDetailDTO; similar: unknown }>(
+   529→   529→    open && vehicleId ? `/api/vehicles/${vehicleId}` : null,
+   530→   530→  );
+   531→   531→  const vehicle = detail.data?.vehicle ?? null;
+   532→   532→  const [form, setForm] = useState<EditorForm | null>(null);
+   533→   533→  const [saving, setSaving] = useState(false);
+   534→   534→
+   535→   535→  useEffect(() => {
+   536→   536→    if (vehicle) setForm(toForm(vehicle));
+   537→   537→    if (detail.error) setForm(null);
+   538→   538→  }, [vehicle, detail.error]);
+   539→   539→
+   540→   540→  // Reset local state whenever a different vehicle is opened.
+   541→   541→  useEffect(() => {
+   542→   542→    setForm(null);
+   543→   543→  }, [vehicleId]);
+   544→   544→
+   545→   545→  const set = (patch: Partial<EditorForm>) => setForm((f) => (f ? { ...f, ...patch } : f));
+   546→   546→
+   547→   547→  const title = useMemo(
+   548→   548→    () => (form ? `${form.make} ${form.model} ${form.variant ?? ""} ${form.year}`.trim() : ""),
+   549→   549→    [form],
+   550→   550→  );
+   551→   551→
+   552→   552→  const validate = (): string | null => {
+   553→   553→    if (!form) return null;
+   554→   554→    if (!form.make.trim()) return locale === "km" ? "សូមបញ្ចូលម៉ាកឡាន" : "Please enter the make";
+   555→   555→    if (!form.model.trim()) return locale === "km" ? "សូមបញ្ចូលម៉ូដែល" : "Please enter the model";
+   556→   556→    const y = Number(form.year);
+   557→   557→    if (!Number.isInteger(y) || y < 1990 || y > 2026)
+   558→   558→      return locale === "km" ? "ឆ្នាំមិនត្រឹមត្រូវ" : "Enter a valid year (1990–2026)";
+   559→   559→    const p = Number(form.priceUsd);
+   560→   560→    if (!Number.isFinite(p) || p <= 0) return locale === "km" ? "សូមបញ្ចូលតម្លៃ" : "Please enter a valid price";
+   561→   561→    const m = Number(form.mileageKm);
+   562→   562→    if (Number.isNaN(m) || m < 0) return locale === "km" ? "ចម្ងាយដំណើរមិនត្រឹមត្រូវ" : "Enter a valid mileage";
+   563→   563→    if (!form.bodyType || !form.fuel || !form.transmission)
+   564→   564→      return locale === "km" ? "សូមជ្រើសប្រភេទឡាន ឥន្ធនៈ ប៉ុស្តិ៍" : "Select body type, fuel and transmission";
+   565→   565→    return null;
+   566→   566→  };
+   567→   567→
+   568→   568→  const save = async () => {
+   569→   569→    if (!form || !vehicleId) return;
+   570→   570→    const err = validate();
+   571→   571→    if (err) {
+   572→   572→      toast.warning(err);
+   573→   573→      return;
+   574→   574→    }
+   575→   575→    setSaving(true);
+   576→   576→    try {
+   577→   577→      await apiSend(`/api/vehicles/${vehicleId}`, "PATCH", {
+   578→   578→        make: form.make.trim(),
+   579→   579→        model: form.model.trim(),
+   580→   580→        variant: form.variant.trim() || null,
+   581→   581→        year: Number(form.year),
+   582→   582→        priceUsd: Number(form.priceUsd),
+   583→   583→        mileageKm: Math.round(Number(form.mileageKm) || 0),
+   584→   584→        transmission: form.transmission,
+   585→   585→        fuel: form.fuel,
+   586→   586→        engineCc: form.engineCc ? Number(form.engineCc) : null,
+   587→   587→        drivetrain: form.drivetrain || null,
+   588→   588→        bodyType: form.bodyType,
+   589→   589→        exteriorColor: form.exteriorColor.trim() || null,
+   590→   590→        city: form.city.trim() || "Phnom Penh",
+   591→   591→        district: form.district.trim() || null,
+   592→   592→        condition: form.condition,
+   593→   593→        accidentDeclared: form.accidentDeclared,
+   594→   594→        ownershipCount: form.ownershipCount ? Number(form.ownershipCount) : null,
+   595→   595→        vinLast6: form.vinLast6.trim().slice(0, 6) || null,
+   596→   596→        plateNo: form.plateNo.trim() || null,
+   597→   597→        importOrigin: form.importOrigin || null,
+   598→   598→        description: form.description.trim() || null,
+   599→   599→        descriptionKm: form.descriptionKm.trim() || null,
+   600→   600→        status: form.status,
+   601→   601→        images: form.images, // full ordered list — add/remove/reorder in one call
+   602→   602→        documents: form.documents.map((d) => ({
+   603→   603→          ...(d.id ? { id: d.id } : {}),
+   604→   604→          type: d.type,
+   605→   605→          status: d.status,
+   606→   606→          notes: d.notes.trim() || null,
+   607→   607→          fileUrl: d.fileUrl,
+   608→   608→        })),
+   609→   609→      });
+   610→   610→      toast.success(t("listingUpdated"));
+   611→   611→      onOpenChange(false);
+   612→   612→      onSaved?.();
+   613→   613→    } catch (e) {
+   614→   614→      toast.error(e instanceof Error ? e.message : t("errorGeneric"));
+   615→   615→    } finally {
+   616→   616→      setSaving(false);
+   617→   617→    }
+   618→   618→  };
+   619→   619→
+   620→   620→  return (
+   621→   621→    <Dialog open={open} onOpenChange={(o) => { if (!o && !saving) onOpenChange(false); }}>
+   622→   622→      <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-2xl">
+   623→   623→        <DialogHeader>
+   624→   624→          <DialogTitle className="flex items-center gap-2 text-base">
+   625→   625→            <CarFront className="h-4 w-4 text-amber-600" aria-hidden />
+   626→   626→            {t("editListingTitle")}
+   627→   627→          </DialogTitle>
+   628→   628→        </DialogHeader>
+   629→   629→
+   630→   630→        {detail.loading && !form ? (
+   631→   631→          <div className="space-y-3">
+   632→   632→            <Skeleton className="h-24 w-full rounded-xl" />
+   633→   633→            <Skeleton className="h-40 w-full rounded-xl" />
+   634→   634→          </div>
+   635→   635→        ) : !form ? (
+   636→   636→          <p className="py-6 text-center text-sm text-slate-500">{detail.error || t("errorGeneric")}</p>
+   637→   637→        ) : vehicle?.manage === false ? (
+   638→   638→          <p className="py-6 text-center text-sm text-slate-500">{t("errorGeneric")}</p>
+   639→   639→        ) : (
+   640→   640→          <div className="space-y-5">
+   641→   641→            {/* Photos — unlimited stock manager */}
+   642→   642→            <section>
+   643→   643→              <Label className="text-xs font-medium text-slate-500">{t("formPhotos")}</Label>
+   644→   644→              <div className="mt-2">
+   645→   645→                <PhotoUploader images={form.images} onChange={(images) => set({ images })} disabled={saving} />
+   646→   646→              </div>
+   647→   647→              <p className="mt-1.5 text-[11px] text-slate-400">
+   648→   648→                {t("photosCount", { n: form.images.length })} · {t("coverHint")}
+   649→   649→              </p>
+   650→   650→            </section>
+   651→   651→
+   652→   652→            {/* Documents — optional vehicle papers (Task 17) */}
+   653→   653→            <section>
+   654→   654→              <div className="flex items-center justify-between">
+   655→   655→                <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">{t("sectionDocuments")}</p>
+   656→   656→                {form.documents.length > 0 && (
+   657→   657→                  <span className="text-[11px] text-slate-400">{t("documentsCount", { n: form.documents.length })}</span>
+   658→   658→                )}
+   659→   659→              </div>
+   660→   660→              <p className="mt-1 text-[11px] text-slate-400">{t("docsOptionalHint")}</p>
+   661→   661→              <div className="mt-2">
+   662→   662→                <DocumentsEditor
+   663→   663→                  documents={form.documents}
+   664→   664→                  onChange={(documents) => set({ documents })}
+   665→   665→                  disabled={saving}
+   666→   666→                  canVerify={vehicle.canVerifyDocuments ?? false}
+   667→   667→                />
+   668→   668→              </div>
+   669→   669→            </section>
+   670→   670→
+   671→   671→            {/* Car details */}
+   672→   672→            <section>
+   673→   673→              <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-400">{t("sectionCarDetails")}</p>
+   674→   674→              <div className="grid grid-cols-2 gap-3">
+   675→   675→                <EditField label={t("formMake")}>
+   676→   676→                  <Input value={form.make} onChange={(e) => set({ make: e.target.value })} list="kl-ed-makes" />
+   677→   677→                  <datalist id="kl-ed-makes">
+   678→   678→                    {(meta?.makes ?? []).map((m) => <option key={m} value={m} />)}
+   679→   679→                  </datalist>
+   680→   680→                </EditField>
+   681→   681→                <EditField label={t("formModel")}>
+   682→   682→                  <Input value={form.model} onChange={(e) => set({ model: e.target.value })} />
+   683→   683→                </EditField>
+   684→   684→                <EditField label={t("formVariant")}>
+   685→   685→                  <Input value={form.variant} onChange={(e) => set({ variant: e.target.value })} />
+   686→   686→                </EditField>
+   687→   687→                <EditField label={t("formYear")}>
+   688→   688→                  <Input type="number" min={1990} max={2026} value={form.year} onChange={(e) => set({ year: e.target.value })} />
+   689→   689→                </EditField>
+   690→   690→                <EditField label={t("specMileage")}>
+   691→   691→                  <Input type="number" min={0} value={form.mileageKm} onChange={(e) => set({ mileageKm: e.target.value })} />
+   692→   692→                </EditField>
+   693→   693→                <EditField label={t("formColor")}>
+   694→   694→                  <Input value={form.exteriorColor} onChange={(e) => set({ exteriorColor: e.target.value })} placeholder="White" />
+   695→   695→                </EditField>
+   696→   696→                <EditField label={t("formBodyType")}>
+   697→   697→                  <EditSelect value={form.bodyType} onChange={(v) => set({ bodyType: v })} options={BODY_TYPES.map((b) => ({ value: b, label: b }))} placeholder={t("formBodyType")} />
+   698→   698→                </EditField>
+   699→   699→                <EditField label={t("formFuel")}>
+   700→   700→                  <EditSelect value={form.fuel} onChange={(v) => set({ fuel: v })} options={FUELS.map((f) => ({ value: f, label: fuelLabels[f]?.[locale] ?? f }))} placeholder={t("formFuel")} />
+   701→   701→                </EditField>
+   702→   702→                <EditField label={t("formTransmission")}>
+   703→   703→                  <EditSelect value={form.transmission} onChange={(v) => set({ transmission: v })} options={TRANSMISSIONS.map((tr) => ({ value: tr, label: transmissionLabels[tr]?.[locale] ?? tr }))} placeholder={t("formTransmission")} />
+   704→   704→                </EditField>
+   705→   705→                <EditField label={t("formDrivetrain")}>
+   706→   706→                  <EditSelect value={form.drivetrain} onChange={(v) => set({ drivetrain: v })} options={DRIVETRAINS.map((d) => ({ value: d, label: d }))} placeholder="—" />
+   707→   707→                </EditField>
+   708→   708→                <EditField label={t("formEngine")}>
+   709→   709→                  <Input type="number" min={0} value={form.engineCc} onChange={(e) => set({ engineCc: e.target.value })} />
+   710→   710→                </EditField>
+   711→   711→                <EditField label={t("formCondition")}>
+   712→   712→                  <EditSelect value={form.condition} onChange={(v) => set({ condition: v })} options={[{ value: "LIKE_NEW", label: t("condLIKE_NEW") }, { value: "USED", label: t("condUSED") }]} placeholder={t("formCondition")} />
+   713→   713→                </EditField>
+   714→   714→                <EditField label={t("formAccident")}>
+   715→   715→                  <EditSelect value={form.accidentDeclared} onChange={(v) => set({ accidentDeclared: v })} options={ACCIDENTS.map((a) => ({ value: a, label: t(`accident${a}` as never) }))} placeholder={t("formAccident")} />
+   716→   716→                </EditField>
+   717→   717→                <EditField label={t("formOwners")}>
+   718→   718→                  <Input type="number" min={0} value={form.ownershipCount} onChange={(e) => set({ ownershipCount: e.target.value })} />
+   719→   719→                </EditField>
+   720→   720→                <EditField label={t("formVin")}>
+   721→   721→                  <Input value={form.vinLast6} maxLength={6} onChange={(e) => set({ vinLast6: e.target.value.toUpperCase() })} />
+   722→   722→                </EditField>
+   723→   723→                <EditField label={t("formPlate")}>
+   724→   724→                  <Input value={form.plateNo} onChange={(e) => set({ plateNo: e.target.value })} />
+   725→   725→                </EditField>
+   726→   726→                <EditField label={t("formImport")}>
+   727→   727→                  <EditSelect value={form.importOrigin} onChange={(v) => set({ importOrigin: v })} options={IMPORTS.map((i) => ({ value: i, label: i }))} placeholder="—" />
+   728→   728→                </EditField>
+   729→   729→              </div>
+   730→   730→            </section>
+   731→   731→
+   732→   732→            {/* Price & location */}
+   733→   733→            <section>
+   734→   734→              <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-400">{t("sectionPriceLocation")}</p>
+   735→   735→              <div className="grid grid-cols-2 gap-3">
+   736→   736→                <EditField label={t("formPrice")}>
+   737→   737→                  <Input type="number" min={0} value={form.priceUsd} onChange={(e) => set({ priceUsd: e.target.value })} />
+   738→   738→                </EditField>
+   739→   739→                <EditField label={t("formCity")}>
+   740→   740→                  <Input value={form.city} onChange={(e) => set({ city: e.target.value })} />
+   741→   741→                </EditField>
+   742→   742→                <EditField label={t("formDistrict")}>
+   743→   743→                  <Input value={form.district} onChange={(e) => set({ district: e.target.value })} />
+   744→   744→                </EditField>
+   745→   745→                <EditField label={t("sectionStatus")}>
+   746→   746→                  <EditSelect
+   747→   747→                    value={form.status}
+   748→   748→                    onChange={(v) => set({ status: v })}
+   749→   749→                    options={EDIT_STATUSES.map((s) => ({ value: s, label: t(`vst${s}` as never) }))}
+   750→   750→                    placeholder={t("sectionStatus")}
+   751→   751→                  />
+   752→   752→                </EditField>
+   753→   753→              </div>
+   754→   754→            </section>
+   755→   755→
+   756→   756→            {/* Description */}
+   757→   757→            <section>
+   758→   758→              <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-400">{t("sectionDescription")}</p>
+   759→   759→              <div className="space-y-3">
+   760→   760→                <EditField label={t("formDescription")}>
+   761→   761→                  <Textarea rows={3} value={form.description} onChange={(e) => set({ description: e.target.value })} />
+   762→   762→                </EditField>
+   763→   763→                <EditField label={t("formDescriptionKm")}>
+   764→   764→                  <Textarea rows={3} value={form.descriptionKm} onChange={(e) => set({ descriptionKm: e.target.value })} className="font-khmer" />
+   765→   765→                </EditField>
+   766→   766→              </div>
+   767→   767→            </section>
+   768→   768→
+   769→   769→            <div className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 p-3">
+   770→   770→              <TriangleAlert className="mt-0.5 h-4 w-4 shrink-0 text-amber-600" aria-hidden />
+   771→   771→              <p className="text-xs leading-relaxed text-amber-800">{t("editListingNote")}</p>
+   772→   772→            </div>
+   773→   773→          </div>
+   774→   774→        )}
+   775→   775→
+   776→   776→        <DialogFooter>
+   777→   777→          <Button variant="outline" size="sm" onClick={() => onOpenChange(false)} disabled={saving}>
+   778→   778→            {t("cancel")}
+   779→   779→          </Button>
+   780→   780→          <Button
+   781→   781→            size="sm"
+   782→   782→            onClick={save}
+   783→   783→            disabled={saving || !form || detail.loading}
+   784→   784→            className="bg-amber-500 font-semibold text-slate-950 hover:bg-amber-400"
+   785→   785→          >
+   786→   786→            {saving ? (
+   787→   787→              <>
+   788→   788→                <Loader2 className="mr-2 h-4 w-4 animate-spin" aria-hidden />
+   789→   789→                {t("loading")}
+   790→   790→              </>
+   791→   791→            ) : (
+   792→   792→              t("saveChanges")
+   793→   793→            )}
+   794→   794→          </Button>
+   795→   795→        </DialogFooter>
+   796→   796→      </DialogContent>
+   797→   797→    </Dialog>
+   798→   798→  );
+   799→   799→}
+   800→   800→
+   801→   801→function EditField({ label, children }: { label: string; children: React.ReactNode }) {
+   802→   802→  return (
+   803→   803→    <div>
+   804→   804→      <Label className="text-xs font-medium text-slate-500">{label}</Label>
+   805→   805→      <div className="mt-1.5">{children}</div>
+   806→   806→    </div>
+   807→   807→  );
+   808→   808→}
+   809→   809→
+   810→   810→function EditSelect({
+   811→   811→  value,
+   812→   812→  onChange,
+   813→   813→  options,
+   814→   814→  placeholder,
+   815→   815→}: {
+   816→   816→  value: string;
+   817→   817→  onChange: (v: string) => void;
+   818→   818→  options: { value: string; label: string }[];
+   819→   819→  placeholder?: string;
+   820→   820→}) {
+   821→   821→  return (
+   822→   822→    <Select value={value || undefined} onValueChange={onChange}>
+   823→   823→      <SelectTrigger className="h-9 w-full" aria-label={placeholder}>
+   824→   824→        <SelectValue placeholder={placeholder} />
+   825→   825→      </SelectTrigger>
+   826→   826→      <SelectContent>
+   827→   827→        {options.map((o) => (
+   828→   828→          <SelectItem key={o.value} value={o.value}>
+   829→   829→            {o.label}
+   830→   830→          </SelectItem>
+   831→   831→        ))}
+   832→   832→      </SelectContent>
+   833→   833→    </Select>
+   834→   834→  );
+   835→   835→}
+   836→   836→

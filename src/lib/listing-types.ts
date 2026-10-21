@@ -2,7 +2,7 @@
 // by the dealer inventory tab, the sell view "your listings" section and the
 // /api/vehicles endpoints. Additive to lib/types.ts (which stays untouched).
 
-import type { VehicleDetailDTO, VehicleStatus } from "./types";
+import type { VehicleDetailDTO, VehicleStatus, VehiclesResponseDTO } from "./types";
 
 /** Row of GET /api/vehicles/mine — the signed-in user's own (non-tenant) listings. */
 export interface MyListingRowDTO {
@@ -43,4 +43,16 @@ export interface ManageableVehicleDetailDTO extends VehicleDetailDTO {
  * buyers can open the actual paper (trust signal). */
 export interface VehicleDetailWithFilesDTO extends VehicleDetailDTO {
   documents: VehicleDocumentRowDTO[];
+}
+
+/** VehiclesResponseDTO + explicit page fields for real numbered pagination.
+ * Additive — the legacy { items, nextCursor, total } shape stays intact, so
+ * saved-search runners and other consumers keep working unchanged. */
+export interface PagedVehiclesResponseDTO extends VehiclesResponseDTO {
+  /** 1-based current page (server clamps it into [1, pageCount]). */
+  page: number;
+  /** Rows per page (the "limit" param). */
+  pageSize: number;
+  /** Total number of pages (≥ 1, even for empty result sets). */
+  pageCount: number;
 }
