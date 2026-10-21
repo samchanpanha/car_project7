@@ -225,6 +225,10 @@ model Vehicle {
   id              String  @id @default(cuid())
   sellerId        String
   seller          User    @relation("SellerVehicles", fields: [sellerId], references: [id])
+  // Which real user (or demo persona) actually created the listing — used for
+  // "my listings" ownership and edit authorization (sellerId stays the display
+  // seller, which may be the shared demo seller for legacy MVP flows).
+  createdById     String?
   make            String
   model           String
   variant         String?

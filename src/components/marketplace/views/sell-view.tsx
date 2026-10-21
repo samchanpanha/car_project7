@@ -2,19 +2,22 @@
 
 import { useAppStore, isGuest } from "@/lib/store";
 import { useT } from "@/hooks/use-t";
-import { useFetch } from "@/lib/client-hooks";
+import { useFetch, apiSend } from "@/lib/client-hooks";
 import type { MetaDTO } from "@/lib/types";
+import type { MyListingRowDTO } from "@/lib/listing-types";
 import { GuestPanel } from "@/components/marketplace/guest-panel";
+import { PhotoUploader, ListingEditorDialog } from "@/components/marketplace/listing-editor";
+import { VehicleStatusBadge } from "@/components/marketplace/dashboard/bits";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { CarFront, Check, Loader2, Plus, TriangleAlert } from "lucide-react";
+import { CarFront, Check, Eye, Loader2, Pencil, Plus, TriangleAlert } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
-import { apiSend } from "@/lib/client-hooks";
+import { formatUsd } from "@/lib/format";
 
 // Sample photo pool for the demo (mirrors seeded inventory photos)
 const SAMPLE_PHOTOS = [
@@ -76,18 +79,16 @@ export function SellView() {
   const [step, setStep] = useState(1);
   const [form, setForm] = useState<SellForm>(EMPTY);
   const [submitting, setSubmitting] = useState(false);
-  const [urlInput, setUrlInput] = useState("");
 
   const set = (patch: Partial<SellForm>) => setForm((f) => ({ ...f, ...patch }));
 
+  // Sample photos are a convenience quick-pick — toggle in/out of the listing.
   const toggleImage = (url: string) => {
     setForm((f) => ({
       ...f,
       images: f.images.includes(url)
         ? f.images.filter((i) => i !== url)
-        : f.images.length < 6
-          ? [...f.images, url]
-          : f.images,
+        : [...f.images, url],
     }));
   };
 
@@ -277,6 +278,9 @@ export function SellView() {
         {step === 2 && (
           <div className="space-y-5">
             <Field label={t("formPhotos")} hint={t("formPhotosHint")}>
+              <PhotoUploader images={form.images} onChange={(images) => set({ images })} disabled={submitting} />
+            </Field>
+            <Field label={t("samplePhotos")}>
               <div className="grid grid-cols-3 gap-2 sm:grid-cols-4">
                 {SAMPLE_PHOTOS.map((url) => {
                   const selected = form.images.includes(url);
@@ -284,15 +288,15 @@ export function SellView() {
                   return (
                     <button
                       key={url}
+                      type="button"
                       onClick={() => toggleImage(url)}
                       className={cn(
                         "relative aspect-[4/3] overflow-hidden rounded-lg border-2 cursor-pointer transition-all",
                         selected ? "border-amber-500" : "border-transparent opacity-70 hover:opacity-100"
                       )}
                       aria-pressed={selected}
-                      aria-label={`${t("formPhotos")} ${idx + 1}`}
+                      aria-label={`${t("samplePhotos")} ${idx + 1}`}
                     >
-                      { }
                       <img src={url} alt="" className="h-full w-full object-cover" loading="lazy" />
                       {selected && (
                         <span className="absolute top-1 right-1 flex h-5 w-5 items-center justify-center rounded-full bg-amber-500 text-[10px] font-bold text-slate-950">
@@ -302,30 +306,6 @@ export function SellView() {
                     </button>
                   );
                 })}
-              </div>
-              <div className="mt-2 flex gap-2">
-                <Input
-                  value={urlInput}
-                  onChange={(e) => setUrlInput(e.target.value)}
-                  placeholder="https://…"
-                  className="h-9 text-xs"
-                  aria-label={t("formAddUrl")}
-                />
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => {
-                    const u = urlInput.trim();
-                    if (!u || !/^https?:\/\//.test(u)) {
-                      toast.warning(locale === "km" ? "URL មិនត្រឹមត្រូវ" : "Invalid URL");
-                      return;
-                    }
-                    if (form.images.length < 6 && !form.images.includes(u)) set({ images: [...form.images, u] });
-                    setUrlInput("");
-                  }}
-                >
-                  <Plus className="h-4 w-4" aria-hidden />
-                </Button>
               </div>
             </Field>
             <div className="grid grid-cols-2 gap-3">
@@ -428,7 +408,98 @@ export function SellView() {
           )}
         </Button>
       </div>
+
+      {/* Your listings — stock management for the signed-in user's own cars */}
+      <MyListingsSection />
     </div>
+  );
+}
+
+// ---------------- Your listings (stock management) ----------------
+
+function MyListingsSection() {
+  const t = useT();
+  const [editorId, setEditorId] = useState<string | null>(null);
+  const [editorOpen, setEditorOpen] = useState(false);
+  const { data, loading, error, refetch } = useFetch<MyListingRowDTO[]>("/api/vehicles/mine");
+
+  return (
+    <section className="mt-8" aria-label={t("myListings")}>
+      <div className="flex items-center justify-between">
+        <h2 className="text-base font-bold text-slate-900">{t("myListings")}</h2>
+        {data && data.length > 0 && (
+          <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-500">
+            {data.length}
+          </span>
+        )}
+      </div>
+      <p className="mt-0.5 text-xs text-slate-400">{t("myListingsHint")}</p>
+
+      <div className="mt-3 rounded-2xl border border-slate-200 bg-white p-4">
+        {loading && !data ? (
+          <div className="space-y-2">
+            {Array.from({ length: 2 }).map((_, i) => (
+              <div key={i} className="h-16 animate-pulse rounded-xl bg-slate-100" />
+            ))}
+          </div>
+        ) : error && !data ? (
+          <p className="py-3 text-center text-sm text-slate-500">{error}</p>
+        ) : !data || data.length === 0 ? (
+          <p className="py-3 text-center text-sm text-slate-400">{t("myListingsEmpty")}</p>
+        ) : (
+          <ul className="max-h-96 divide-y divide-slate-100 overflow-y-auto pr-1">
+            {data.map((v) => (
+              <li key={v.id} className="flex items-center gap-3 py-2.5">
+                <div className="h-12 w-16 shrink-0 overflow-hidden rounded-lg bg-slate-100">
+                  {v.images[0] ? (
+                    <img src={v.images[0]} alt="" className="h-full w-full object-cover" loading="lazy" />
+                  ) : (
+                    <div className="flex h-full w-full items-center justify-center">
+                      <CarFront className="h-5 w-5 text-slate-300" aria-hidden />
+                    </div>
+                  )}
+                </div>
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-sm font-medium text-slate-900">
+                    {v.make} {v.model} {v.variant ?? ""} {v.year}
+                  </p>
+                  <p className="mt-0.5 flex items-center gap-2 text-[11px] text-slate-400">
+                    <span>{formatUsd(v.priceUsd)}</span>
+                    <span>· {t("photosCount", { n: v.images.length })}</span>
+                    <span className="inline-flex items-center gap-0.5">
+                      <Eye className="h-3 w-3" aria-hidden /> {v.views}
+                    </span>
+                  </p>
+                </div>
+                <VehicleStatusBadge status={v.status} />
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-8 shrink-0"
+                  onClick={() => {
+                    setEditorId(v.id);
+                    setEditorOpen(true);
+                  }}
+                  aria-label={`${t("actEditListing")} — ${v.make} ${v.model}`}
+                >
+                  <Pencil className="h-3.5 w-3.5" aria-hidden />
+                  <span className="ml-1.5 hidden sm:inline">{t("actEditListing")}</span>
+                </Button>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+
+      <ListingEditorDialog
+        vehicleId={editorId}
+        open={editorOpen}
+        onOpenChange={(o) => {
+          setEditorOpen(o);
+          if (!o) refetch();
+        }}
+      />
+    </section>
   );
 }
 

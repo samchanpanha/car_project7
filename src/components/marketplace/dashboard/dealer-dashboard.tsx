@@ -14,6 +14,7 @@ import type { VehicleStatus } from "@/lib/types";
 import { DashboardShell, type DashboardTabDef } from "./shell";
 import { RequestSubscriptionDialog, TenantPaymentHistory, PendingPaymentBanner } from "./payment-flow";
 import { PurchaseRequestList } from "./purchase-list";
+import { ListingEditorDialog } from "@/components/marketplace/listing-editor";
 import {
   AppointmentStatusBadge, AvatarCircle, EmptyState, FetchErrorState, SectionCard, StatCard,
   StatCardSkeleton, TenantRoleBadge, VerificationBadge, VehicleStatusBadge, errorText,
@@ -207,6 +208,9 @@ function DealerInventory() {
   const [busyId, setBusyId] = useState<string | null>(null);
   const [editing, setEditing] = useState<TenantVehicleRowDTO | null>(null);
   const [editPrice, setEditPrice] = useState("");
+  // Full stock editor (all info + unlimited image management) — Task 16.
+  const [editorId, setEditorId] = useState<string | null>(null);
+  const [editorOpen, setEditorOpen] = useState(false);
 
   const url = `/api/tenant/inventory${qs({ status: status === "ALL" ? undefined : status })}`;
   const { data, loading, error, refetch } = useFetch<TenantVehicleRowDTO[]>(url);
@@ -294,6 +298,9 @@ function DealerInventory() {
                 <DropdownMenuContent align="end" className="w-48">
                   <DropdownMenuLabel>{t("actions")}</DropdownMenuLabel>
                   <DropdownMenuSeparator />
+                  <DropdownMenuItem onClick={() => { setEditorId(v.id); setEditorOpen(true); }}>
+                    {t("actEditListing")}
+                  </DropdownMenuItem>
                   <DropdownMenuItem onClick={() => patch(v.id, { status: "PUBLISHED" })}>{t("actPublish")}</DropdownMenuItem>
                   <DropdownMenuItem onClick={() => patch(v.id, { status: "DRAFT" })}>{t("actUnpublish")}</DropdownMenuItem>
                   <DropdownMenuItem onClick={() => patch(v.id, { status: "SOLD" })}>{t("actMarkSold")}</DropdownMenuItem>
@@ -333,6 +340,16 @@ function DealerInventory() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Full stock editor — all listing info + unlimited photo manager */}
+      <ListingEditorDialog
+        vehicleId={editorId}
+        open={editorOpen}
+        onOpenChange={(o) => {
+          setEditorOpen(o);
+          if (!o) refetch();
+        }}
+      />
     </div>
   );
 }

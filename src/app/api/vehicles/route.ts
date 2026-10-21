@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { db } from "@/lib/db";
-import { getDemoUser, getCurrentUser } from "@/lib/session";
+import { getDemoUser, getCurrentUser, isGuestRequest } from "@/lib/session";
 import { listVehicles } from "@/lib/api/vehicle-filters";
 
 export const dynamic = "force-dynamic";
@@ -30,7 +30,7 @@ const createVehicleSchema = z.object({
   transmission: z.enum(["AUTOMATIC", "MANUAL"]),
   fuel: z.enum(["PETROL", "DIESEL", "HYBRID", "ELECTRIC"]),
   engineCc: z.number().int().optional().nullable(),
-  drivetrain: z.enum(["FWD", "RWD", "AWD"]).optional().nullable(),
+  drivetrain: z.enum(["FWD", "RWD", "AWD", "4WD"]).optional().nullable(),
   bodyType: z.enum(["SUV", "SEDAN", "PICKUP", "HATCHBACK", "VAN", "COUPE"]),
   exteriorColor: z.string().optional().nullable(),
   city: z.string().default("Phnom Penh"),
@@ -49,6 +49,11 @@ const createVehicleSchema = z.object({
 
 export async function POST(req: Request) {
   try {
+    // Listing creation is an account action — guests must register first.
+    if (await isGuestRequest()) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
     let json: unknown;
     try {
       json = await req.json();
@@ -98,6 +103,11 @@ export async function POST(req: Request) {
     const vehicle = await db.vehicle.create({
       data: {
         sellerId: seller.id,
+        // Remember who actually created the listing ("my listings" ownership
+        // + edit authorization), and file it under the tenant stock when the
+        // author belongs to a dealership so it lands in their inventory tab.
+        createdById: actor.id,
+        ...(membership ? { tenantId: membership.tenantId } : {}),
         make: data.make,
         model: data.model,
         variant: data.variant ?? null,

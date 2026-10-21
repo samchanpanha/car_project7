@@ -1,9 +1,40 @@
 import { NextResponse } from "next/server";
+import { z } from "zod";
 import { db } from "@/lib/db";
+import { getCurrentUser } from "@/lib/session";
+import { canWriteTenant, toErrorResponse } from "@/lib/api/guards";
 import { toCardDTO, toDetailDTO, vehicleCardInclude } from "@/lib/api/mappers";
 import type { VehicleCardDTO } from "@/lib/types";
+import type { DemoUser } from "@/lib/session";
 
 export const dynamic = "force-dynamic";
+
+/** Vehicle fields needed for ownership checks (no relations). */
+type VehicleOwnership = {
+  id: string;
+  sellerId: string;
+  createdById: string | null;
+  tenantId: string | null;
+};
+
+/**
+ * True when `actor` may manage (edit info / manage images of) this listing:
+ * platform admin, the display seller, the creating user, or a write-capable
+ * member of the tenant that owns it.
+ */
+async function canManageVehicle(vehicle: VehicleOwnership, actor: DemoUser): Promise<boolean> {
+  if (actor.role === "ADMIN" || actor.role === "SUPER_ADMIN") return true;
+  if (vehicle.sellerId === actor.id) return true;
+  if (vehicle.createdById && vehicle.createdById === actor.id) return true;
+  if (vehicle.tenantId) {
+    const membership = await db.tenantMember.findFirst({
+      where: { userId: actor.id, tenantId: vehicle.tenantId, status: "ACTIVE" },
+      select: { role: true },
+    });
+    if (membership && canWriteTenant(membership.role)) return true;
+  }
+  return false;
+}
 
 export async function GET(_req: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
@@ -14,13 +45,22 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
       include: vehicleCardInclude,
     });
 
-    // Never expose DRAFT/REJECTED listings; missing → 404 too.
-    if (!vehicle || vehicle.status === "DRAFT" || vehicle.status === "REJECTED") {
+    if (!vehicle) {
       return NextResponse.json({ error: "Vehicle not found" }, { status: 404 });
     }
 
-    // Count the view.
-    await db.vehicle.update({ where: { id }, data: { views: { increment: 1 } } });
+    // Managers (owner/tenant staff/admin) may open their own DRAFT/REJECTED
+    // listings for editing — the public 404 behaviour only applies to visitors.
+    const actor = await getCurrentUser();
+    const manage = await canManageVehicle(vehicle, actor);
+    if (!manage && (vehicle.status === "DRAFT" || vehicle.status === "REJECTED")) {
+      return NextResponse.json({ error: "Vehicle not found" }, { status: 404 });
+    }
+
+    // Count the view for public visitors only (managers poll their own listing).
+    if (!manage) {
+      await db.vehicle.update({ where: { id }, data: { views: { increment: 1 } } });
+    }
 
     const [latestReport, similarRows] = await Promise.all([
       db.vehicleHistoryReport.findFirst({
@@ -28,20 +68,23 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
         orderBy: { createdAt: "desc" },
         select: { id: true, createdAt: true, overallConfidence: true },
       }),
-      db.vehicle.findMany({
-        where: {
-          status: "PUBLISHED",
-          id: { not: id },
-          OR: [{ bodyType: vehicle.bodyType }, { make: vehicle.make }],
-        },
-        orderBy: { createdAt: "desc" },
-        take: 4,
-        include: vehicleCardInclude,
-      }),
+      // Similar listings are a public-page concern; skip the extra query for managers.
+      manage
+        ? Promise.resolve([])
+        : db.vehicle.findMany({
+            where: {
+              status: "PUBLISHED",
+              id: { not: id },
+              OR: [{ bodyType: vehicle.bodyType }, { make: vehicle.make }],
+            },
+            orderBy: { createdAt: "desc" },
+            take: 4,
+            include: vehicleCardInclude,
+          }),
     ]);
 
     const detail = toDetailDTO(vehicle);
-    detail.views = vehicle.views + 1; // reflect the just-counted view
+    detail.views = manage ? vehicle.views : vehicle.views + 1; // reflect the just-counted view
     detail.report = latestReport
       ? {
           id: latestReport.id,
@@ -52,9 +95,139 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
 
     const similar: VehicleCardDTO[] = similarRows.map(toCardDTO);
 
-    return NextResponse.json({ vehicle: detail, similar });
+    return NextResponse.json({ vehicle: { ...detail, manage }, similar });
   } catch (err) {
     console.error("[api/vehicles/[id]] GET failed:", err);
     return NextResponse.json({ error: "Failed to load vehicle" }, { status: 500 });
+  }
+}
+
+// ---------- PATCH — full listing edit (info + image management) ----------
+
+const patchSchema = z
+  .object({
+    make: z.string().min(1).max(60),
+    model: z.string().min(1).max(80),
+    variant: z.string().max(80).optional().nullable(),
+    year: z.number().int().min(1990).max(2026),
+    priceUsd: z.number().positive(),
+    mileageKm: z.number().int().min(0),
+    transmission: z.enum(["AUTOMATIC", "MANUAL"]),
+    fuel: z.enum(["PETROL", "DIESEL", "HYBRID", "ELECTRIC"]),
+    engineCc: z.number().int().min(0).optional().nullable(),
+    drivetrain: z.enum(["FWD", "RWD", "AWD", "4WD"]).optional().nullable(),
+    bodyType: z.enum(["SUV", "SEDAN", "PICKUP", "HATCHBACK", "VAN", "COUPE"]),
+    exteriorColor: z.string().max(40).optional().nullable(),
+    city: z.string().min(1).max(60),
+    district: z.string().max(60).optional().nullable(),
+    condition: z.enum(["LIKE_NEW", "USED"]),
+    accidentDeclared: z.enum(["NONE_DECLARED", "MINOR_DECLARED", "MAJOR_DECLARED", "UNKNOWN"]),
+    ownershipCount: z.number().int().min(0).optional().nullable(),
+    vinLast6: z.string().max(6).optional().nullable(),
+    plateNo: z.string().max(20).optional().nullable(),
+    importOrigin: z.enum(["USA", "KOREA", "JAPAN", "THAILAND", "DUBAI", "LOCAL"]).optional().nullable(),
+    description: z.string().max(4000).optional().nullable(),
+    descriptionKm: z.string().max(4000).optional().nullable(),
+    status: z.enum(["DRAFT", "PUBLISHED", "SOLD", "ARCHIVED"]),
+    // Full desired image list, in display order (first = cover). The server
+    // replaces the stored rows with this list — covers add / remove / reorder
+    // in one idempotent call. Unlimited photo count (sane abuse cap below).
+    images: z.array(z.string().min(1).max(200_000)).max(500),
+  })
+  .partial()
+  .refine((v) => Object.keys(v).length > 0, { message: "At least one field is required" });
+
+export async function PATCH(req: Request, { params }: { params: Promise<{ id: string }> }) {
+  try {
+    const { id } = await params;
+
+    let json: unknown;
+    try {
+      json = await req.json();
+    } catch {
+      return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
+    }
+
+    const parsed = patchSchema.safeParse(json);
+    if (!parsed.success) {
+      const first = parsed.error.issues[0];
+      return NextResponse.json(
+        { error: `Validation failed: ${first?.path.join(".") ?? "body"} — ${first?.message ?? "invalid"}` },
+        { status: 400 },
+      );
+    }
+
+    const vehicle = await db.vehicle.findUnique({
+      where: { id },
+      select: { id: true, sellerId: true, createdById: true, tenantId: true, status: true, featured: true },
+    });
+    if (!vehicle) {
+      return NextResponse.json({ error: "Vehicle not found" }, { status: 404 });
+    }
+
+    const actor = await getCurrentUser();
+    if (!(await canManageVehicle(vehicle, actor))) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
+
+    const data = parsed.data;
+    const changed: string[] = [];
+
+    // Scalar fields — only touch the ones present in the payload.
+    const scalar: Record<string, unknown> = {};
+    const SCALAR_KEYS = [
+      "make", "model", "variant", "year", "priceUsd", "mileageKm", "transmission", "fuel",
+      "engineCc", "drivetrain", "bodyType", "exteriorColor", "city", "district", "condition",
+      "accidentDeclared", "ownershipCount", "vinLast6", "plateNo", "importOrigin",
+      "description", "descriptionKm", "status",
+    ] as const;
+    for (const key of SCALAR_KEYS) {
+      if (data[key] !== undefined) {
+        scalar[key] = data[key];
+        changed.push(key);
+      }
+    }
+    if (Object.keys(scalar).length > 0) {
+      await db.vehicle.update({ where: { id }, data: scalar });
+    }
+
+    // Image management — replace with the desired ordered list.
+    let imagesAdded = 0;
+    let imagesRemoved = 0;
+    if (data.images !== undefined) {
+      const desired = Array.from(new Set(data.images.map((u) => u.trim()).filter(Boolean)));
+      const current = await db.vehicleImage.findMany({
+        where: { vehicleId: id },
+        select: { url: true },
+      });
+      const currentUrls = new Set(current.map((i) => i.url));
+      const desiredSet = new Set(desired);
+      imagesAdded = desired.filter((u) => !currentUrls.has(u)).length;
+      imagesRemoved = current.filter((i) => !desiredSet.has(i.url)).length;
+
+      await db.vehicleImage.deleteMany({ where: { vehicleId: id } });
+      if (desired.length > 0) {
+        await db.vehicleImage.createMany({
+          data: desired.map((url, idx) => ({ vehicleId: id, url, sortOrder: idx })),
+        });
+      }
+      changed.push("images");
+    }
+
+    if (changed.length > 0) {
+      await db.auditLog.create({
+        data: {
+          actorId: actor.id,
+          action: "LISTING_UPDATED",
+          entity: "Vehicle",
+          entityId: id,
+          metaJson: JSON.stringify({ fields: changed, imagesAdded, imagesRemoved }),
+        },
+      });
+    }
+
+    return NextResponse.json({ ok: true });
+  } catch (err) {
+    return toErrorResponse(err, "api/vehicles/[id] PATCH", "Failed to update vehicle");
   }
 }
