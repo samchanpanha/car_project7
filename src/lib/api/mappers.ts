@@ -15,7 +15,18 @@ export type VehicleWithCardRelations = Prisma.VehicleGetPayload<{
     seller: { include: { sellerProfile: true } };
     reports: { select: { id: true; status: true } };
   };
-}>;
+}> & {
+  branchId?: string | null;
+  branch?: {
+    id: string;
+    name: string;
+    address?: string | null;
+    phone?: string | null;
+    city?: string | null;
+    district?: string | null;
+    isMain?: boolean;
+  } | null;
+};
 
 export type UserWithSellerProfile = User & { sellerProfile: SellerProfile | null };
 
@@ -107,6 +118,8 @@ function baseCard(vehicle: VehicleWithCardRelations): VehicleCardDTO {
     seller: toSellerSummary(vehicle.seller),
     images,
     trust: { docsProvided, reportAvailable },
+    branchId: vehicle.branchId ?? null,
+    branchName: vehicle.branch?.name ?? null,
   };
 }
 
@@ -129,6 +142,8 @@ export function toDetailDTO(vehicle: VehicleWithCardRelations): VehicleDetailDTO
     importOrigin: vehicle.importOrigin ?? null,
     description: vehicle.description ?? null,
     descriptionKm: vehicle.descriptionKm ?? null,
+    branchAddress: vehicle.branch?.address ?? null,
+    branchPhone: vehicle.branch?.phone ?? null,
     updatedAt: vehicle.updatedAt.toISOString(),
     documents: toDocumentDTOs(vehicle.documents),
     sellerFull: toSellerFullDTO(vehicle.seller),
@@ -142,4 +157,5 @@ export const vehicleCardInclude = {
   documents: true,
   seller: { include: { sellerProfile: true } },
   reports: { select: { id: true, status: true } },
-} satisfies Prisma.VehicleInclude;
+  branch: true,
+} as const;

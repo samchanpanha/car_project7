@@ -29,8 +29,12 @@ export function isAbaPayWayMessage(text: string): boolean {
   const lower = text.toLowerCase();
   return (
     lower.includes("payway by aba") ||
+    lower.includes("payway") ||
     lower.includes("aba khqr") ||
-    (lower.includes("trx") && lower.includes("apv"))
+    (lower.includes("trx") && lower.includes("apv")) ||
+    (lower.includes("trx") && lower.includes("paid by")) ||
+    ((lower.includes("trx. id") || lower.includes("trx id") || lower.includes("transaction id")) &&
+      (lower.includes("paid by") || lower.includes("៛") || lower.includes("$") || lower.includes("khr") || lower.includes("usd")))
   );
 }
 
@@ -42,15 +46,18 @@ export function parseAbaPayWayMessage(
   fallbackDate: Date = new Date(),
 ): ParsedAbaTransaction | null {
   if (!rawText) return null;
-  const text = rawText.trim();
+  // Strip bot mention and /aba or /payway prefix if present
+  let text = rawText.trim();
+  text = text.replace(/^\/(?:aba|payway)(?:@\w+)?\s+/i, "");
+  text = text.replace(/^@\w+\s+/i, "");
 
   // 1. Transaction ID (required to uniquely identify the transaction)
-  const trxMatch = /(?:Trx\.?\s*ID|Transaction\s*ID|Txn\s*ID|Trx):\s*([A-Za-z0-9_-]+)/i.exec(text);
+  const trxMatch = /(?:Trx\.?\s*ID|Transaction\s*ID|Txn\s*ID|TrxID|Trx)\b[:\s]*([A-Za-z0-9_-]+)/i.exec(text);
   if (!trxMatch) return null;
   const trxId = trxMatch[1].trim();
 
   // 2. APV (Approval code)
-  const apvMatch = /APV:\s*([A-Za-z0-9_-]+)/i.exec(text);
+  const apvMatch = /APV\b[:\s]*([A-Za-z0-9_-]+)/i.exec(text);
   const apv = apvMatch ? apvMatch[1].trim() : null;
 
   // 3. Amount and Currency
@@ -78,13 +85,12 @@ export function parseAbaPayWayMessage(
       : Math.round(amount * 100) / 100;
 
   // 4. Payer name and account mask (*674)
-  // "paid by Sam Chanpanha (*674) on" or "paid by Sam Chanpanha on"
   let payerName: string | null = null;
   let payerAccount: string | null = null;
 
-  const payerMatch = /paid by\s+(.+?)(?:\s+\((\*?[A-Za-z0-9]+)\))?\s+on\s+/i.exec(text);
+  const payerMatch = /paid by\s+([\s\S]+?)(?:\s+\((\*?[A-Za-z0-9]+)\))?\s+on\s+/i.exec(text);
   if (payerMatch) {
-    payerName = payerMatch[1].trim();
+    payerName = payerMatch[1].replace(/\r?\n/g, " ").trim();
     payerAccount = payerMatch[2] ? payerMatch[2].trim() : null;
   }
 
@@ -92,7 +98,11 @@ export function parseAbaPayWayMessage(
   let transactionDateRaw: string | null = null;
   let transactionDate: Date = fallbackDate;
 
+  // Match: "on Oct 22, 01:05 PM" or "on Oct 22, 2026 12:36 PM"
   const dateMatch = /on\s+([A-Za-z]{3}\s+\d{1,2}(?:,\s+\d{4})?,?\s+\d{1,2}:\d{2}\s*(?:AM|PM)?)/i.exec(text);
+  // Fallback match: "[22/10/26 12:36 PM]" or "22/10/26 12:36 PM"
+  const bracketDateMatch = /\[?(\d{1,2}\/\d{1,2}\/\d{2,4}\s+\d{1,2}:\d{2}\s*(?:AM|PM)?)\]?/i.exec(text);
+
   if (dateMatch) {
     transactionDateRaw = dateMatch[1].trim();
     try {
@@ -112,22 +122,24 @@ export function parseAbaPayWayMessage(
     } catch {
       transactionDate = fallbackDate;
     }
+  } else if (bracketDateMatch) {
+    transactionDateRaw = bracketDateMatch[1].trim();
   }
 
   // 6. Bank Code / Payment Channel
   // "via ABA KHQR (AMRTKHPPXXX) at"
   let bankCode: string | null = null;
-  const bankMatch = /via\s+(.+?)\s+at\s+/i.exec(text);
+  const bankMatch = /via\s+([\s\S]+?)\s+at\s+/i.exec(text);
   if (bankMatch) {
-    bankCode = bankMatch[1].trim();
+    bankCode = bankMatch[1].replace(/\r?\n/g, " ").trim();
   }
 
   // 7. Merchant Name
   // "at SAM CHAN PANHA. Trx. ID"
   let merchantName: string | null = null;
-  const merchantMatch = /at\s+([^.]+)\./i.exec(text);
+  const merchantMatch = /at\s+([^.]+?)(?:\.|\n|Trx|$)/i.exec(text);
   if (merchantMatch) {
-    merchantName = merchantMatch[1].trim();
+    merchantName = merchantMatch[1].replace(/\r?\n/g, " ").trim();
   }
 
   return {

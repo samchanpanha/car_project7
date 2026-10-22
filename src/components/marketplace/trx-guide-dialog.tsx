@@ -36,54 +36,129 @@ export function KhqrZoomDialog({
   planTitle?: string;
   currency?: "USD" | "KHR";
 }) {
+  const [copiedPayee, setCopiedPayee] = useState(false);
+  const [copiedAmount, setCopiedAmount] = useState(false);
+
+  const copyPayee = () => {
+    navigator.clipboard?.writeText(accountName);
+    setCopiedPayee(true);
+    toast.success(`Copied Payee: ${accountName}`);
+    setTimeout(() => setCopiedPayee(false), 2000);
+  };
+
+  const copyAmount = () => {
+    if (!amountText) return;
+    const cleanNum = amountText.replace(/[^0-9.]/g, "");
+    navigator.clipboard?.writeText(cleanNum || amountText);
+    setCopiedAmount(true);
+    toast.success(`Copied Amount: ${cleanNum || amountText}`);
+    setTimeout(() => setCopiedAmount(false), 2000);
+  };
+
+  const downloadQr = () => {
+    const link = document.createElement("a");
+    link.href = qrSrc;
+    link.download = `KHQR-${planTitle || "Payment"}-${currency}.jpg`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    toast.success("KHQR image downloaded to your device!");
+  };
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-md p-6 text-center">
+      <DialogContent className="sm:max-w-xl md:max-w-2xl p-6 text-center max-h-[92vh] overflow-y-auto">
         <DialogHeader className="items-center text-center">
           <div className="flex items-center gap-2">
-            <QrCode className="h-5 w-5 text-amber-600" />
-            <DialogTitle className="text-base font-bold text-slate-900">
-              PayWay by ABA KHQR · Full Size
+            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-red-600 text-white font-black text-xs shadow-xs">
+              KHQR
+            </div>
+            <DialogTitle className="text-lg font-bold text-slate-900 dark:text-white">
+              PayWay by ABA KHQR · Full Scan View
             </DialogTitle>
           </div>
           <DialogDescription className="text-xs text-slate-500">
-            Scan directly with ABA Mobile or any banking app supporting Bakong
+            Enlarged high-resolution QR code for quick scanning with ABA Mobile or any Bakong banking app
           </DialogDescription>
         </DialogHeader>
 
-        <div className="my-2 flex flex-col items-center justify-center rounded-2xl border-2 border-amber-300 bg-white p-4 shadow-sm">
-          <img
-            src={qrSrc}
-            alt="Enlarged KHQR Code"
-            className="h-72 w-72 sm:h-80 sm:w-80 object-contain rounded-xl"
-          />
+        <div className="my-3 flex flex-col items-center justify-center rounded-2xl border-2 border-red-500/80 bg-white p-5 sm:p-7 shadow-lg">
+          <div className="w-full flex items-center justify-between border-b border-slate-100 pb-2 mb-3 px-2">
+            <span className="font-extrabold text-xs tracking-wider text-red-600 flex items-center gap-1.5">
+              <span className="inline-block h-2.5 w-2.5 rounded-full bg-red-600 animate-pulse" />
+              OFFICIAL BAKONG KHQR
+            </span>
+            <span className="text-[11px] font-semibold text-slate-500">
+              {planTitle ?? "Subscription"}
+            </span>
+          </div>
 
-          <div className="mt-3 text-center space-y-1">
-            <p className="text-sm font-bold text-slate-900">
-              Payee: <span className="text-amber-800">{accountName}</span>
-            </p>
+          <div className="relative p-2 bg-white rounded-2xl border border-slate-200/80 shadow-inner">
+            <img
+              src={qrSrc}
+              alt="Enlarged KHQR Code"
+              className="h-72 w-72 sm:h-96 sm:w-96 md:h-[420px] md:w-[420px] object-contain rounded-xl transition-all"
+            />
+          </div>
+
+          <div className="mt-4 w-full text-center space-y-2">
+            <div className="flex flex-wrap items-center justify-center gap-2">
+              <span className="text-sm font-bold text-slate-800">
+                Payee: <span className="text-red-700 font-extrabold">{accountName}</span>
+              </span>
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                onClick={copyPayee}
+                className="h-6 px-2 text-[11px] font-semibold text-slate-600 hover:text-slate-900 hover:bg-slate-100"
+              >
+                {copiedPayee ? <Check className="h-3 w-3 mr-1 text-emerald-600" /> : <Copy className="h-3 w-3 mr-1" />}
+                {copiedPayee ? "Copied" : "Copy Payee"}
+              </Button>
+            </div>
+
             {amountText && (
-              <Badge className="bg-emerald-100 text-emerald-800 border-emerald-300 text-xs font-black px-3 py-1">
-                {amountText}
-              </Badge>
-            )}
-            {planTitle && (
-              <p className="text-xs text-slate-500 font-medium">
-                For {planTitle} ({currency})
-              </p>
+              <div className="flex items-center justify-center gap-2">
+                <Badge className="bg-emerald-100 text-emerald-900 border-emerald-300 text-sm font-black px-4 py-1 shadow-xs">
+                  {amountText}
+                </Badge>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={copyAmount}
+                  className="h-7 px-2.5 text-xs font-semibold text-emerald-700 hover:bg-emerald-50 border-emerald-300"
+                >
+                  {copiedAmount ? <Check className="h-3.5 w-3.5 mr-1 text-emerald-600" /> : <Copy className="h-3.5 w-3.5 mr-1" />}
+                  {copiedAmount ? "Copied" : "Copy Amount"}
+                </Button>
+              </div>
             )}
           </div>
         </div>
 
-        <p className="text-[11px] text-slate-600 leading-relaxed">
-          💡 You can scan this code with another phone, or take a screenshot to upload directly into your banking app.
+        <div className="flex flex-wrap items-center justify-center gap-3">
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={downloadQr}
+            className="text-xs font-semibold border-slate-300 text-slate-700 hover:bg-slate-50"
+          >
+            📥 Download QR Image to Device
+          </Button>
+        </div>
+
+        <p className="text-[11px] text-slate-500 leading-relaxed mt-2">
+          💡 Tip: Point your phone camera at this enlarged QR code, or save the image to your gallery and scan with ABA Mobile &gt; QR &gt; Photos.
         </p>
 
-        <DialogFooter className="sm:justify-center">
+        <DialogFooter className="sm:justify-center mt-2">
           <Button
             type="button"
             onClick={() => onOpenChange(false)}
-            className="w-full bg-slate-900 text-white hover:bg-slate-800 text-xs font-semibold h-9"
+            className="w-full sm:w-auto px-8 bg-slate-900 text-white hover:bg-slate-800 text-xs font-semibold h-9"
           >
             Close Full Size View
           </Button>

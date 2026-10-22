@@ -58,6 +58,8 @@ export interface VehicleCardDTO {
     docsProvided: number;
     reportAvailable: boolean;
   };
+  branchId?: string | null;
+  branchName?: string | null;
 }
 
 export interface VehicleDocumentDTO {
@@ -77,6 +79,8 @@ export interface VehicleDetailDTO extends VehicleCardDTO {
   importOrigin?: string | null;
   description?: string | null;
   descriptionKm?: string | null;
+  branchAddress?: string | null;
+  branchPhone?: string | null;
   updatedAt: string;
   documents: VehicleDocumentDTO[];
   sellerFull: SellerSummaryDTO & {

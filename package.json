@@ -12,7 +12,8 @@
     "db:migrate": "prisma migrate dev",
     "db:reset": "prisma migrate reset",
     "db:seed": "node prisma/seed.ts",
-    "db:verify": "node prisma/verify-seed.ts"
+    "db:verify": "node prisma/verify-seed.ts",
+    "tg:daemon": "tsx scripts/telegram-daemon.ts"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",

@@ -138,6 +138,7 @@ const patchSchema = z
     importOrigin: z.enum(["USA", "KOREA", "JAPAN", "THAILAND", "DUBAI", "LOCAL"]).optional().nullable(),
     description: z.string().max(4000).optional().nullable(),
     descriptionKm: z.string().max(4000).optional().nullable(),
+    branchId: z.string().max(40).optional().nullable(),
     status: z.enum(["DRAFT", "PUBLISHED", "SOLD", "ARCHIVED"]),
     // Full desired image list, in display order (first = cover). The server
     // replaces the stored rows with this list — covers add / remove / reorder
@@ -192,7 +193,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
       "make", "model", "variant", "year", "priceUsd", "mileageKm", "transmission", "fuel",
       "engineCc", "drivetrain", "bodyType", "exteriorColor", "city", "district", "condition",
       "accidentDeclared", "ownershipCount", "vinLast6", "plateNo", "importOrigin",
-      "description", "descriptionKm", "status",
+      "description", "descriptionKm", "status", "branchId",
     ] as const;
     for (const key of SCALAR_KEYS) {
       if (data[key] !== undefined) {

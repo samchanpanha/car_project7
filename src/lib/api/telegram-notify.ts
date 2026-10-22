@@ -190,34 +190,59 @@ export async function updateTelegramMessageResolution(
     ? { inline_keyboard: [[{ text: statusBadgeText, callback_data: "noop" }]] }
     : { inline_keyboard: [] };
 
+  // Telegram photo caption limit is 1024 characters
+  const safeCaption = updatedTextOrCaption.length > 1020
+    ? updatedTextOrCaption.slice(0, 1017) + "..."
+    : updatedTextOrCaption;
+
   const tryEditCaption = async () => {
-    const res = await fetch(`https://api.telegram.org/bot${token}/editMessageCaption`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        chat_id: chatId,
-        message_id: messageId,
-        caption: updatedTextOrCaption,
-        reply_markup: replyMarkup,
-      }),
-      signal: AbortSignal.timeout(TG_TIMEOUT_MS),
-    });
-    return res.ok;
+    try {
+      const res = await fetch(`https://api.telegram.org/bot${token}/editMessageCaption`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          chat_id: chatId,
+          message_id: messageId,
+          caption: safeCaption,
+          reply_markup: replyMarkup,
+        }),
+        signal: AbortSignal.timeout(TG_TIMEOUT_MS),
+      });
+      if (!res.ok) {
+        const errJson = await res.json().catch(() => null);
+        console.warn(`[Telegram editMessageCaption] HTTP ${res.status}:`, errJson?.description || "failed");
+        return false;
+      }
+      return true;
+    } catch (e) {
+      console.warn("[Telegram editMessageCaption] Error:", e);
+      return false;
+    }
   };
 
   const tryEditText = async () => {
-    const res = await fetch(`https://api.telegram.org/bot${token}/editMessageText`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        chat_id: chatId,
-        message_id: messageId,
-        text: updatedTextOrCaption,
-        reply_markup: replyMarkup,
-      }),
-      signal: AbortSignal.timeout(TG_TIMEOUT_MS),
-    });
-    return res.ok;
+    try {
+      const res = await fetch(`https://api.telegram.org/bot${token}/editMessageText`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          chat_id: chatId,
+          message_id: messageId,
+          text: updatedTextOrCaption,
+          reply_markup: replyMarkup,
+        }),
+        signal: AbortSignal.timeout(TG_TIMEOUT_MS),
+      });
+      if (!res.ok) {
+        const errJson = await res.json().catch(() => null);
+        console.warn(`[Telegram editMessageText] HTTP ${res.status}:`, errJson?.description || "failed");
+        return false;
+      }
+      return true;
+    } catch (e) {
+      console.warn("[Telegram editMessageText] Error:", e);
+      return false;
+    }
   };
 
   try {

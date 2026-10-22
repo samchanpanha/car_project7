@@ -111,6 +111,7 @@ model Tenant {
   updatedAt    DateTime @updatedAt
 
   members      TenantMember[]
+  branches     TenantBranch[]
   vehicles     Vehicle[]
   profiles     SellerProfile[]
   subscription Subscription?
@@ -130,6 +131,29 @@ model TenantMember {
   createdAt DateTime @default(now())
 
   @@unique([tenantId, userId])
+}
+
+model TenantBranch {
+  id           String    @id @default(cuid())
+  tenantId     String
+  tenant       Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  name         String
+  nameKm       String?
+  city         String    @default("Phnom Penh")
+  district     String?
+  address      String
+  phone        String?
+  telegram     String?
+  isMain       Boolean   @default(false)
+  status       String    @default("ACTIVE") // ACTIVE | INACTIVE
+  openingHours String?
+  imageUrl     String?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  vehicles     Vehicle[]
+
+  @@index([tenantId])
 }
 
 // ---------- Subscriptions (Monetization) ----------
@@ -349,6 +373,8 @@ model Vehicle {
   purchaseRequests PurchaseRequest[]
   tenantId      String?
   tenant        Tenant?          @relation(fields: [tenantId], references: [id])
+  branchId      String?
+  branch        TenantBranch?    @relation(fields: [branchId], references: [id], onDelete: SetNull)
 }
 
 model VehicleImage {

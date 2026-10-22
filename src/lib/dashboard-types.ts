@@ -90,6 +90,58 @@ export interface TenantMemberDTO {
   createdAt: string;
 }
 
+export interface TenantBranchDTO {
+  id: string;
+  tenantId: string;
+  name: string;
+  nameKm?: string | null;
+  city: string;
+  district?: string | null;
+  address: string;
+  phone?: string | null;
+  telegram?: string | null;
+  isMain: boolean;
+  status: "ACTIVE" | "INACTIVE";
+  openingHours?: string | null;
+  imageUrl?: string | null;
+  vehicleCount?: number;
+  createdAt: string;
+}
+
+export interface TenantAnalyticsDTO {
+  summary: {
+    totalInventoryValue: number;
+    avgPrice: number;
+    totalListings: number;
+    totalViews: number;
+    totalLeads: number;
+    conversionRate: number;
+    appointmentCount: number;
+  };
+  timeline: {
+    date: string;
+    views: number;
+    leads: number;
+    appointments: number;
+  }[];
+  statusBreakdown: {
+    status: string;
+    count: number;
+    value: number;
+  }[];
+  bodyTypeBreakdown: {
+    type: string;
+    count: number;
+  }[];
+  branchBreakdown: {
+    branchId: string;
+    name: string;
+    count: number;
+    views: number;
+    leads: number;
+  }[];
+}
+
 // ---------- Super Admin ----------
 
 export interface AdminOverviewDTO {

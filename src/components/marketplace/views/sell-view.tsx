@@ -5,6 +5,7 @@ import { useT } from "@/hooks/use-t";
 import { useFetch, apiSend } from "@/lib/client-hooks";
 import type { MetaDTO } from "@/lib/types";
 import type { MyListingRowDTO } from "@/lib/listing-types";
+import type { TenantBranchDTO } from "@/lib/dashboard-types";
 import { GuestPanel } from "@/components/marketplace/guest-panel";
 import {
   PhotoUploader, DocumentsEditor, ListingEditorDialog, type DocumentRow,
@@ -43,6 +44,7 @@ const IMPORTS = ["USA", "KOREA", "JAPAN", "THAILAND", "DUBAI", "LOCAL"];
 const ACCIDENTS = ["NONE_DECLARED", "MINOR_DECLARED", "MAJOR_DECLARED", "UNKNOWN"];
 
 interface SellForm {
+  branchId?: string;
   make: string;
   model: string;
   variant: string;
@@ -69,6 +71,7 @@ interface SellForm {
 }
 
 const EMPTY: SellForm = {
+  branchId: "",
   make: "", model: "", variant: "", year: "", mileageKm: "", bodyType: "", fuel: "", transmission: "",
   engineCc: "", drivetrain: "", images: [], documents: [], condition: "USED", accidentDeclared: "UNKNOWN",
   ownershipCount: "", vinLast6: "", plateNo: "", importOrigin: "", priceUsd: "", city: "Phnom Penh",
@@ -81,6 +84,10 @@ export function SellView() {
   const navigate = useAppStore((s) => s.navigate);
   const me = useAppStore((s) => s.me);
   const { data: meta } = useFetch<MetaDTO>("/api/meta");
+  const { data: branchData } = useFetch<{ branches: TenantBranchDTO[] }>(
+    me?.tenant ? "/api/tenant/branches" : null
+  );
+  const branches = branchData?.branches ?? [];
   const [step, setStep] = useState(1);
   const [form, setForm] = useState<SellForm>(EMPTY);
   const [submitting, setSubmitting] = useState(false);
@@ -155,6 +162,7 @@ export function SellView() {
         plateNo: form.plateNo.trim() || undefined,
         ownershipCount: form.ownershipCount ? Number(form.ownershipCount) : undefined,
         importOrigin: form.importOrigin || undefined,
+        branchId: form.branchId || undefined,
         images: form.images,
         ...(form.documents.length > 0
           ? {
@@ -407,6 +415,31 @@ export function SellView() {
         {/* STEP 3 — price & contact */}
         {step === 3 && (
           <div className="space-y-4">
+            {branches.length > 0 && (
+              <Field
+                label={locale === "km" ? "សាខាបង្ហាញរថយន្ត" : "Showroom Branch"}
+                hint={locale === "km" ? "ជ្រើសរើសសាខាដែលរថយន្តនេះកំពុងចត" : "Select which showroom branch this vehicle is located at"}
+              >
+                <SelectInput
+                  value={form.branchId || ""}
+                  onChange={(bId) => {
+                    const b = branches.find((x) => x.id === bId);
+                    set({
+                      branchId: bId,
+                      ...(b ? { city: b.city, district: b.district || form.district } : {}),
+                    });
+                  }}
+                  options={[
+                    { value: "", label: locale === "km" ? "— សាខាចម្បង / ទីតាំងដើម —" : "— Main / Default Showroom —" },
+                    ...branches.map((b) => ({
+                      value: b.id,
+                      label: `${b.name}${b.isMain ? " (Main)" : ""} · ${b.city}${b.district ? `, ${b.district}` : ""}`,
+                    })),
+                  ]}
+                  placeholder={locale === "km" ? "ជ្រើសរើសសាខា" : "Select branch"}
+                />
+              </Field>
+            )}
             <div className="grid grid-cols-2 gap-3">
               <Field label={t("formPrice")}>
                 <Input type="number" min={100} value={form.priceUsd} onChange={(e) => set({ priceUsd: e.target.value })} placeholder="18500" />
@@ -478,14 +511,15 @@ function MyListingsSection() {
   const t = useT();
   const [editorId, setEditorId] = useState<string | null>(null);
   const [editorOpen, setEditorOpen] = useState(false);
-  const [page, setPage] = useState(1); // 1-based client-side pagination
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(8);
   const { data, loading, error, refetch } = useFetch<MyListingRowDTO[]>("/api/vehicles/mine");
 
   // Page the own-listings list client-side; refetches keep the current page.
   const totalRows = data?.length ?? 0;
-  const pageCount = Math.max(1, Math.ceil(totalRows / MY_LISTINGS_PAGE_SIZE));
+  const pageCount = Math.max(1, Math.ceil(totalRows / pageSize));
   const currentPage = Math.min(page, pageCount);
-  const rows = (data ?? []).slice((currentPage - 1) * MY_LISTINGS_PAGE_SIZE, currentPage * MY_LISTINGS_PAGE_SIZE);
+  const rows = (data ?? []).slice((currentPage - 1) * pageSize, currentPage * pageSize);
 
   return (
     <section className="mt-8" aria-label={t("myListings")}>
@@ -556,16 +590,19 @@ function MyListingsSection() {
       </div>
 
       {/* Pagination — paged over your own listings */}
-      {data && data.length > MY_LISTINGS_PAGE_SIZE && (
-        <div className="mt-3 space-y-1.5">
-          <p className="text-center text-xs text-slate-400">
-            {t("paginationShowing", {
-              from: (currentPage - 1) * MY_LISTINGS_PAGE_SIZE + 1,
-              to: Math.min(currentPage * MY_LISTINGS_PAGE_SIZE, data.length),
-              n: data.length,
-            })}
-          </p>
-          <Pagination page={currentPage} pageCount={pageCount} onPageChange={setPage} />
+      {totalRows > 0 && (
+        <div className="mt-4">
+          <Pagination
+            page={currentPage}
+            pageCount={pageCount}
+            onPageChange={setPage}
+            pageSize={pageSize}
+            onPageSizeChange={(sz) => {
+              setPageSize(sz);
+              setPage(1);
+            }}
+            totalItems={totalRows}
+          />
         </div>
       )}
 

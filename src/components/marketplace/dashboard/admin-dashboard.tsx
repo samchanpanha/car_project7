@@ -1226,7 +1226,7 @@ function AdminAbaTransactionsView({ onVerified }: { onVerified?: () => void }) {
     }
   };
 
-  // Auto-sync polling every 12 seconds while on this tab
+  // Auto-sync polling every 6 seconds while on this tab
   useEffect(() => {
     const timer = setInterval(() => {
       fetch("/api/admin/aba-transactions", {
@@ -1247,7 +1247,7 @@ function AdminAbaTransactionsView({ onVerified }: { onVerified?: () => void }) {
           }
         })
         .catch(() => {});
-    }, 12_000);
+    }, 6_000);
     return () => clearInterval(timer);
   }, []);
 
@@ -1350,11 +1350,20 @@ function AdminAbaTransactionsView({ onVerified }: { onVerified?: () => void }) {
       <div className="rounded-xl border border-sky-200 bg-sky-50/70 p-4 shadow-xs">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="max-w-2xl">
-            <h3 className="flex items-center gap-2 text-sm font-bold text-slate-900">
-              <Send className="h-4 w-4 text-sky-600" />
-              Telegram Group Payment Syncer & Reconciler
-            </h3>
-            <p className="mt-0.5 text-xs text-slate-600 leading-relaxed">
+            <div className="flex flex-wrap items-center gap-2">
+              <h3 className="flex items-center gap-2 text-sm font-bold text-slate-900">
+                <Send className="h-4 w-4 text-sky-600" />
+                Telegram Group Payment Syncer & Reconciler
+              </h3>
+              <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-bold text-emerald-800">
+                <span className="relative flex h-2 w-2">
+                  <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75"></span>
+                  <span className="relative inline-flex h-2 w-2 rounded-full bg-emerald-500"></span>
+                </span>
+                24/7 Live Daemon Active
+              </span>
+            </div>
+            <p className="mt-1 text-xs text-slate-600 leading-relaxed">
               Captures all automated <span className="font-semibold text-slate-800">PayWay by ABA</span> alerts from Telegram group{" "}
               <code className="rounded bg-sky-100 px-1.5 py-0.5 font-mono text-[11px] text-sky-900">-1004489863210</code> (MyABApayway) day-by-day.
               Automatically checks deduplication, verifies concurrent same-time transactions, and auto-activates subscriptions.
@@ -1405,16 +1414,16 @@ function AdminAbaTransactionsView({ onVerified }: { onVerified?: () => void }) {
         <div className="mt-2.5 rounded-lg border border-sky-200/90 bg-sky-100/70 p-2.5 text-xs text-sky-950 space-y-1">
           <p className="font-bold flex items-center gap-1.5 text-sky-950">
             <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600" />
-            Live Telegram Group Approvals & Commands:
+            Live Telegram Group Approvals & Commands Guide:
           </p>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-[11px] leading-relaxed text-sky-900 pt-1">
             <div>
-              <p>• <strong>1-Tap Mobile Approval:</strong> Click <code>[✅ Approve & Activate]</code> or <code>[❌ Reject]</code> on any card in the Telegram group. Subscription activates instantly and the message caption updates with your admin name & Phnom Penh timestamp.</p>
-              <p className="mt-1">• <strong>Group Commands:</strong> Type <code>/pending</code> to list awaiting payments with buttons, or <code>/approve &lt;TrxID&gt;</code> to approve by text.</p>
+              <p>• <strong>1-Tap Mobile Approval:</strong> Tap <code>[✅ Approve & Activate]</code> or <code>[❌ Reject]</code> on any card in the Telegram group. Subscriptions activate instantly and message caption updates with <code>✅ Processing Complete · Approved by @YourName</code>.</p>
+              <p className="mt-1">• <strong>Group Commands:</strong> Type <code>/pending</code> to list awaiting payments with buttons, or <code>/approve &lt;TrxID&gt;</code> / <code>/reject &lt;TrxID&gt;</code> to decide directly.</p>
             </div>
             <div>
-              <p>• <strong>Automated ABA PayWay Alerts:</strong> Any ABA PayWay alert in group <code>-1004489863210</code> is automatically recorded, deduplicated, and matched.</p>
-              <p className="mt-1">• <strong>Direct Bot Forwarding:</strong> You can also forward any ABA notification directly to <code>@KhmerSmartRestaurantBot</code> in a private chat to sync instantly.</p>
+              <p>• <strong>Group Privacy Tip:</strong> In @BotFather, send <code>/setprivacy</code> → select <code>@KhmerSmartRestaurantBot</code> → select <strong>Disable</strong> to allow the bot to read all PayWay alerts in group <code>-1004489863210</code> automatically.</p>
+              <p className="mt-1">• <strong>Direct Capture:</strong> You can also type <code>/aba &lt;paste alert&gt;</code> or mention <code>@KhmerSmartRestaurantBot</code> in the group, or forward any ABA alert to the bot in private chat.</p>
             </div>
           </div>
         </div>

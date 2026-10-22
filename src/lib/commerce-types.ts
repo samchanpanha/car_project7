@@ -36,6 +36,7 @@ export interface SubscriptionPaymentDTO {
   tenantId: string;
   tenantName?: string;
   reviewedAt?: string | null;
+  verifiedByName?: string | null;
   createdAt: string;
 }
 

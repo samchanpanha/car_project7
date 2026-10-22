@@ -33,7 +33,7 @@ import {
 import {
   Loader2, Send, ExternalLink, QrCode, ClipboardList, ShieldOff,
   Camera, Check, CheckCircle2, Clock, Image as ImageIcon, FileText,
-  RefreshCw, TriangleAlert, Zap,
+  RefreshCw, TriangleAlert, Zap, Copy, Download,
 } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
@@ -66,8 +66,15 @@ export function RequestSubscriptionDialog({
   const [note, setNote] = useState("");
   const [readingImage, setReadingImage] = useState(false);
   const [submittedRef, setSubmittedRef] = useState<string | null>(null);
+  const [submittedPaymentId, setSubmittedPaymentId] = useState<string | null>(null);
+  const [verifiedPayment, setVerifiedPayment] = useState<SubscriptionPaymentDTO | null>(null);
+  const [rejectionReason, setRejectionReason] = useState<string | null>(null);
+  const [checkingStatus, setCheckingStatus] = useState(false);
   const [zoomQrOpen, setZoomQrOpen] = useState(false);
   const [guideOpen, setGuideOpen] = useState(false);
+  const [copiedAmount, setCopiedAmount] = useState(false);
+  const [copiedPayee, setCopiedPayee] = useState(false);
+  const [countdown, setCountdown] = useState(4);
   const fileInput = useRef<HTMLInputElement>(null);
 
   // reset on open
@@ -80,8 +87,80 @@ export function RequestSubscriptionDialog({
       setCreating(false);
       setReadingImage(false);
       setSubmittedRef(null);
+      setSubmittedPaymentId(null);
+      setVerifiedPayment(null);
+      setRejectionReason(null);
+      setCountdown(4);
     }
   }, [open]);
+
+  // Live polling for verification when submitted
+  useEffect(() => {
+    if (!open || (!submittedPaymentId && !submittedRef) || verifiedPayment) return;
+    const interval = setInterval(async () => {
+      try {
+        const payments = await apiSend<SubscriptionPaymentDTO[]>("/api/tenant/payments", "GET");
+        const match = payments.find(
+          (p) =>
+            (submittedPaymentId && p.id === submittedPaymentId) ||
+            (submittedRef && (p.reference === submittedRef || p.manualRef === submittedRef)),
+        );
+        if (match) {
+          if (match.status === "VERIFIED") {
+            setVerifiedPayment(match);
+            sessionStorage.setItem("subscription_verified_alert", plan?.plan || match.plan || "PRO");
+            toast.success(`🎉 Processing Completed! Your ${match.plan} subscription is now ACTIVE.`);
+            onDone();
+          } else if (match.status === "REJECTED") {
+            setRejectionReason(match.rejectionReason || "Payment was rejected by administrator.");
+          }
+        }
+      } catch {}
+    }, 2500);
+    return () => clearInterval(interval);
+  }, [open, submittedPaymentId, submittedRef, verifiedPayment, plan?.plan, onDone]);
+
+  // Countdown auto-reload upon verification
+  useEffect(() => {
+    if (!verifiedPayment) return;
+    const timer = setInterval(() => {
+      setCountdown((c) => {
+        if (c <= 1) {
+          clearInterval(timer);
+          window.location.reload();
+          return 0;
+        }
+        return c - 1;
+      });
+    }, 1000);
+    return () => clearInterval(timer);
+  }, [verifiedPayment]);
+
+  const manualCheck = async () => {
+    setCheckingStatus(true);
+    try {
+      const payments = await apiSend<SubscriptionPaymentDTO[]>("/api/tenant/payments", "GET");
+      const match = payments.find(
+        (p) =>
+          (submittedPaymentId && p.id === submittedPaymentId) ||
+          (submittedRef && (p.reference === submittedRef || p.manualRef === submittedRef)),
+      );
+      if (match?.status === "VERIFIED") {
+        setVerifiedPayment(match);
+        sessionStorage.setItem("subscription_verified_alert", plan?.plan || match.plan || "PRO");
+        toast.success(`🎉 Processing Completed! Your ${match.plan} subscription is now ACTIVE.`);
+        onDone();
+      } else if (match?.status === "REJECTED") {
+        setRejectionReason(match.rejectionReason || "Payment was rejected by administrator.");
+      } else {
+        toast.info("Still awaiting bank/admin approval. Checking continuously in background...");
+      }
+    } catch {
+      toast.error("Could not check payment status");
+    } finally {
+      setCheckingStatus(false);
+    }
+  };
 
   const pickImage = async (file: File | undefined) => {
     if (!file) return;
@@ -111,13 +190,14 @@ export function RequestSubscriptionDialog({
         },
       );
       if (res.payment?.status === "VERIFIED") {
+        setVerifiedPayment(res.payment);
+        sessionStorage.setItem("subscription_verified_alert", plan?.plan || "PRO");
         toast.success("🎉 Payment auto-approved via ABA PayWay! Subscription active.");
         onDone();
-        onOpenChange(false);
         return;
       }
-      // stay in the dialog: show the "wait up to 10 minutes" screen
-      setSubmittedRef(manualRef.trim() || null);
+      setSubmittedPaymentId(res.payment?.id || null);
+      setSubmittedRef(manualRef.trim() || res.payment?.reference || null);
     } catch (e) {
       toast.error(e instanceof Error ? e.message : t("errorGeneric"));
     } finally {
@@ -128,6 +208,10 @@ export function RequestSubscriptionDialog({
   const finish = () => {
     onDone();
     onOpenChange(false);
+  };
+
+  const reloadPage = () => {
+    window.location.reload();
   };
 
   const manual = config.data?.manual;
@@ -142,155 +226,392 @@ export function RequestSubscriptionDialog({
     (cycle === "YEARLY" ? "/khqr/khqr-yearly.jpg" : "/khqr/khqr-monthly.jpg");
   const canSubmit = manualRef.trim().length >= 4 || evidenceImage !== null;
 
+  const copyPayee = () => {
+    const name = manual?.accountName || "SAM CHAN PANHA";
+    navigator.clipboard?.writeText(name);
+    setCopiedPayee(true);
+    toast.success(`Copied Payee: ${name}`);
+    setTimeout(() => setCopiedPayee(false), 2000);
+  };
+
+  const copyAmount = () => {
+    const amt = currency === "USD" ? `${priceUsd}` : `${priceUsd * 4100}`;
+    navigator.clipboard?.writeText(amt);
+    setCopiedAmount(true);
+    toast.success(`Copied Amount: ${amt} ${currency}`);
+    setTimeout(() => setCopiedAmount(false), 2000);
+  };
+
+  const downloadQr = () => {
+    if (!qrSrc) return;
+    const link = document.createElement("a");
+    link.href = qrSrc;
+    link.download = `KHQR-${plan?.plan || "PRO"}-${currency}.jpg`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    toast.success("KHQR image downloaded to your device!");
+  };
+
   const steps = [
     { icon: QrCode, text: t("payStepPay") },
     { icon: Camera, text: t("payStepUpload") },
     { icon: ClipboardList, text: t("payStepSubmit") },
   ];
 
-  // ---------- success screen: submitted, awaiting manual approval ----------
-  if (submittedRef !== null) {
+  // ---------- SCREEN 1: APPROVED & VERIFIED (Celebration & Auto-Reload) ----------
+  if (verifiedPayment !== null) {
     return (
       <Dialog open={open} onOpenChange={onOpenChange}>
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <CheckCircle2 className="h-5 w-5 text-emerald-600" aria-hidden />
-              {t("payWaitTitle")}
-            </DialogTitle>
-            <DialogDescription>
-              {plan?.plan ?? ""} · {formatUsd(priceUsd)}
-            </DialogDescription>
-          </DialogHeader>
-          <div className="space-y-4 py-1">
-            <div className="flex items-start gap-3 rounded-xl border border-amber-200 bg-amber-50/70 p-3">
-              <Clock className="mt-0.5 h-5 w-5 shrink-0 text-amber-600" aria-hidden />
-              <div>
-                <p className="text-sm font-semibold text-amber-900">{t("payPendingBanner")}</p>
-                <p className="mt-1 text-xs leading-relaxed text-amber-800/90">{t("payWaitDesc")}</p>
+        <DialogContent className="sm:max-w-lg p-0 overflow-hidden rounded-2xl border-2 border-emerald-400 bg-white dark:bg-slate-900 shadow-2xl">
+          <div className="h-2 w-full bg-gradient-to-r from-emerald-500 via-teal-500 to-emerald-400" />
+          <div className="p-6 text-center space-y-4">
+            <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-emerald-100 text-emerald-600 shadow-md ring-8 ring-emerald-50">
+              <CheckCircle2 className="h-10 w-10 text-emerald-600 animate-in zoom-in-75 duration-300" />
+            </div>
+            <div>
+              <Badge className="bg-emerald-100 text-emerald-900 border-emerald-300 text-xs font-black uppercase px-3 py-1">
+                Processing Completed
+              </Badge>
+              <h3 className="mt-2 text-xl font-bold text-slate-900 dark:text-white">
+                🎉 Subscription Activated!
+              </h3>
+              <p className="mt-1 text-xs text-slate-600 dark:text-slate-300 leading-relaxed">
+                Your payment has been verified &amp; approved. Your <strong className="text-emerald-700 dark:text-emerald-400">{verifiedPayment.plan || plan?.plan || "PRO"}</strong> plan is now active!
+              </p>
+            </div>
+
+            <div className="rounded-xl border border-emerald-200 bg-emerald-50/70 p-3.5 text-xs text-left space-y-1.5 text-emerald-950">
+              <div className="flex justify-between">
+                <span className="text-emerald-800 font-medium">Plan:</span>
+                <span className="font-bold">{verifiedPayment.plan || plan?.plan} ({verifiedPayment.billingCycle || cycle})</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-emerald-800 font-medium">Amount:</span>
+                <span className="font-bold">${(verifiedPayment.amountUsd ?? priceUsd).toFixed(2)} USD</span>
+              </div>
+              {verifiedPayment.verifiedByName && (
+                <div className="flex justify-between">
+                  <span className="text-emerald-800 font-medium">Approved by:</span>
+                  <span className="font-bold">{verifiedPayment.verifiedByName}</span>
+                </div>
+              )}
+              <div className="flex justify-between">
+                <span className="text-emerald-800 font-medium">Status:</span>
+                <span className="font-extrabold text-emerald-700">● ACTIVE</span>
               </div>
             </div>
-            <p className="text-center text-xs text-slate-500">
-              {t("payWaitRef")}: <code className="rounded bg-slate-100 px-1.5 py-0.5 font-semibold text-slate-700">{submittedRef}</code>
+
+            <p className="text-xs text-slate-500 font-medium">
+              Reloading page in <strong className="text-slate-800 dark:text-slate-200">{countdown}s</strong> to unlock all PRO features...
             </p>
-            <p className="flex items-center justify-center gap-1.5 text-[11px] text-slate-400">
-              <Send className="h-3 w-3" aria-hidden />
-              {t("payAutoTelegram")}
-            </p>
-          </div>
-          <DialogFooter>
-            <Button size="sm" onClick={finish}
-              className="w-full bg-amber-500 hover:bg-amber-400 text-slate-950 font-semibold">
-              {t("payWaitDone")}
+
+            <Button
+              type="button"
+              onClick={reloadPage}
+              className="w-full h-10 bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-sm shadow-md cursor-pointer"
+            >
+              Reload Page &amp; Unlock PRO Now
             </Button>
-          </DialogFooter>
+          </div>
         </DialogContent>
       </Dialog>
     );
   }
 
+  // ---------- SCREEN 2: REJECTED NOTICE ----------
+  if (rejectionReason !== null) {
+    return (
+      <Dialog open={open} onOpenChange={onOpenChange}>
+        <DialogContent className="sm:max-w-md p-6 text-center space-y-4">
+          <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-rose-100 text-rose-600">
+            <TriangleAlert className="h-8 w-8" />
+          </div>
+          <div>
+            <h3 className="text-lg font-bold text-slate-900">Payment Rejected</h3>
+            <p className="mt-2 text-xs text-rose-800 bg-rose-50 border border-rose-200 rounded-lg p-3 text-left">
+              <strong>Reason:</strong> {rejectionReason}
+            </p>
+          </div>
+          <Button
+            type="button"
+            onClick={() => {
+              setSubmittedPaymentId(null);
+              setSubmittedRef(null);
+              setRejectionReason(null);
+            }}
+            className="w-full bg-slate-900 text-white hover:bg-slate-800 text-xs font-semibold cursor-pointer"
+          >
+            Try Again / Re-upload Details
+          </Button>
+        </DialogContent>
+      </Dialog>
+    );
+  }
+
+  // ---------- SCREEN 3: AWAITING APPROVAL (Live Listening Screen) ----------
+  if (submittedRef !== null) {
+    return (
+      <Dialog open={open} onOpenChange={onOpenChange}>
+        <DialogContent className="sm:max-w-md p-0 overflow-hidden rounded-2xl border-amber-300 shadow-xl bg-white dark:bg-slate-900">
+          <div className="h-1.5 w-full bg-gradient-to-r from-amber-500 via-orange-500 to-amber-400" />
+          <div className="p-6 space-y-4">
+            <div className="flex items-center gap-3">
+              <div className="relative flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-amber-100 text-amber-700">
+                <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-amber-400 opacity-30" />
+                <Clock className="h-6 w-6 relative" />
+              </div>
+              <div>
+                <h3 className="text-base font-bold text-slate-900 dark:text-white">
+                  {t("payWaitTitle")}
+                </h3>
+                <p className="text-xs text-slate-500">
+                  {plan?.plan ?? "PRO"} · {currency === "USD" ? `${formatUsd(priceUsd)} USD` : `៛${(priceUsd * 4100).toLocaleString()} KHR`}
+                </p>
+              </div>
+            </div>
+
+            <div className="rounded-xl border border-amber-200 bg-amber-50/80 p-3 text-xs space-y-1.5 text-amber-950">
+              <p className="font-semibold">{t("payPendingBanner")}</p>
+              <p className="text-[11px] leading-relaxed text-amber-900/90">{t("payWaitDesc")}</p>
+              <div className="pt-1.5 flex items-center justify-between border-t border-amber-200/60 text-[11px]">
+                <span className="text-slate-600">Reference:</span>
+                <code className="rounded bg-amber-100 px-2 py-0.5 font-bold font-mono text-amber-950">{submittedRef}</code>
+              </div>
+            </div>
+
+            <div className="flex items-center justify-center gap-2 rounded-lg bg-emerald-50 border border-emerald-200 px-3 py-2 text-xs font-semibold text-emerald-800">
+              <span className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse" />
+              Live listening for approval... Automatically reloads when approved!
+            </div>
+
+            <p className="flex items-center justify-center gap-1.5 text-[11px] text-slate-400">
+              <Send className="h-3 w-3" />
+              {t("payAutoTelegram")}
+            </p>
+
+            <div className="flex gap-2 pt-2">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={manualCheck}
+                disabled={checkingStatus}
+                className="flex-1 text-xs font-semibold h-9 cursor-pointer"
+              >
+                {checkingStatus && <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" />}
+                <RefreshCw className={cn("h-3.5 w-3.5 mr-1.5", checkingStatus && "hidden")} />
+                Check Status Now
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                onClick={finish}
+                className="flex-1 bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs h-9 cursor-pointer"
+              >
+                Close to Dashboard
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+    );
+  }
+
+  // ---------- SCREEN 4: MAIN PAYMENT FORM (Scrollable, Large QR Image, Copy & Download) ----------
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-md">
-        <DialogHeader>
-          <div className="flex items-center justify-between">
-            <DialogTitle>{t("payTitle")} — {plan?.plan ?? ""}</DialogTitle>
-            <div className="inline-flex rounded-lg border border-slate-200 bg-slate-100 p-0.5 text-xs font-bold">
+      <DialogContent className="sm:max-w-xl md:max-w-2xl max-h-[88vh] flex flex-col p-0 overflow-hidden rounded-2xl border-amber-300 shadow-2xl bg-white dark:bg-slate-900">
+        <div className="h-1.5 w-full bg-gradient-to-r from-amber-500 via-orange-500 to-amber-400 shrink-0" />
+        
+        {/* Header */}
+        <DialogHeader className="px-5 sm:px-6 pt-4 pb-3 border-b border-slate-100 dark:border-slate-800 shrink-0">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div className="flex items-center gap-2">
+              <DialogTitle className="text-base sm:text-lg font-bold text-slate-900 dark:text-white">
+                {t("payTitle")} — {plan?.plan ?? "PRO"}
+              </DialogTitle>
+              <Badge className="bg-amber-100 text-amber-900 border-amber-300 font-black text-xs uppercase px-2 py-0.5">
+                {plan?.plan ?? "PRO"}
+              </Badge>
+            </div>
+
+            {/* Currency Switcher */}
+            <div className="inline-flex rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-100 dark:bg-slate-800 p-0.5 text-xs font-bold shadow-inner">
               <button
                 type="button"
                 onClick={() => setCurrency("USD")}
-                className={cn("px-2 py-0.5 rounded cursor-pointer", currency === "USD" ? "bg-white text-emerald-800 shadow-xs" : "text-slate-600")}
+                className={cn(
+                  "px-3 py-1 rounded-lg transition-all cursor-pointer",
+                  currency === "USD"
+                    ? "bg-white dark:bg-slate-900 text-emerald-800 dark:text-emerald-400 shadow-xs font-extrabold"
+                    : "text-slate-600 dark:text-slate-400 hover:text-slate-900",
+                )}
               >
                 USD ($)
               </button>
               <button
                 type="button"
                 onClick={() => setCurrency("KHR")}
-                className={cn("px-2 py-0.5 rounded cursor-pointer", currency === "KHR" ? "bg-white text-emerald-800 shadow-xs" : "text-slate-600")}
+                className={cn(
+                  "px-3 py-1 rounded-lg transition-all cursor-pointer",
+                  currency === "KHR"
+                    ? "bg-white dark:bg-slate-900 text-emerald-800 dark:text-emerald-400 shadow-xs font-extrabold"
+                    : "text-slate-600 dark:text-slate-400 hover:text-slate-900",
+                )}
               >
                 KHR (៛)
               </button>
             </div>
           </div>
-          <DialogDescription>
-            {currency === "USD" ? `${formatUsd(priceUsd)} USD` : `៛${(priceUsd * 4100).toLocaleString()} KHR`} · {cycle === "MONTHLY" ? t("billingMonthly") : t("billingYearly")}
+
+          <DialogDescription className="text-xs sm:text-sm font-semibold text-slate-700 dark:text-slate-300 mt-1">
+            <span className="text-amber-700 dark:text-amber-400 font-extrabold text-sm sm:text-base">
+              {currency === "USD" ? `${formatUsd(priceUsd)} USD` : `៛${(priceUsd * 4100).toLocaleString()} KHR`}
+            </span>{" "}
+            · {cycle === "MONTHLY" ? t("billingMonthly") : t("billingYearly")}
           </DialogDescription>
         </DialogHeader>
 
         {disabled ? (
-          <Alert className="border-amber-300 bg-amber-50">
-            <ShieldOff className="h-4 w-4 text-amber-700" aria-hidden />
-            <AlertDescription className="text-xs font-medium text-amber-900">
-              {t("payDisabledNotice")}
-            </AlertDescription>
-          </Alert>
+          <div className="p-6">
+            <Alert className="border-amber-300 bg-amber-50">
+              <ShieldOff className="h-4 w-4 text-amber-700" aria-hidden />
+              <AlertDescription className="text-xs font-medium text-amber-900">
+                {t("payDisabledNotice")}
+              </AlertDescription>
+            </Alert>
+          </div>
         ) : (
-          <div className="space-y-3">
-            {/* how it works */}
-            <ol className="space-y-1.5">
+          /* Scrollable Body with smooth customized scrollbar */
+          <div className="flex-1 overflow-y-auto px-5 sm:px-6 py-4 space-y-4 [scrollbar-width:thin] [&::-webkit-scrollbar]:w-2 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-amber-300 dark:[&::-webkit-scrollbar-thumb]:bg-slate-700">
+            {/* Steps Guide */}
+            <ol className="grid grid-cols-1 sm:grid-cols-3 gap-2 bg-slate-50 dark:bg-slate-800/50 p-2.5 rounded-xl border border-slate-100 dark:border-slate-800">
               {steps.map((s, i) => (
-                <li key={i} className="flex items-center gap-2 text-xs text-slate-600">
-                  <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-amber-100 text-[10px] font-bold text-amber-800">{i + 1}</span>
-                  <s.icon className="h-3.5 w-3.5 shrink-0 text-slate-400" aria-hidden />
-                  {s.text}
+                <li key={i} className="flex items-center gap-2 text-[11px] font-medium text-slate-700 dark:text-slate-300">
+                  <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-amber-100 text-[10px] font-bold text-amber-800">
+                    {i + 1}
+                  </span>
+                  <s.icon className="h-3.5 w-3.5 shrink-0 text-amber-600" aria-hidden />
+                  <span className="truncate">{s.text}</span>
                 </li>
               ))}
             </ol>
-            <p className="flex items-center gap-1.5 rounded-lg bg-sky-50 border border-sky-100 px-2.5 py-1.5 text-[11px] font-medium text-sky-800">
-              <Send className="h-3.5 w-3.5 shrink-0" aria-hidden />
+
+            <p className="flex items-center gap-1.5 rounded-lg bg-sky-50 dark:bg-sky-950/40 border border-sky-100 dark:border-sky-900 px-3 py-1.5 text-[11px] font-medium text-sky-800 dark:text-sky-300">
+              <Send className="h-3.5 w-3.5 shrink-0 text-sky-600" aria-hidden />
               {t("payAutoTelegram")}
             </p>
 
+            {/* LARGE QR SCAN CARD — Built for effortless phone scanning */}
             {qrSrc ? (
-              <div className="text-center">
+              <div className="rounded-2xl border-2 border-red-500/80 bg-white dark:bg-slate-900 p-4 sm:p-5 shadow-sm text-center">
+                <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-2 mb-3 px-1">
+                  <span className="font-extrabold text-[11px] tracking-wider text-red-600 flex items-center gap-1.5">
+                    <span className="inline-block h-2 w-2 rounded-full bg-red-600 animate-pulse" />
+                    BAKONG KHQR · SCAN TO PAY
+                  </span>
+                  <span className="text-[11px] font-bold text-slate-500">
+                    {cycle === "YEARLY" ? "12-Month Plan" : "Monthly"}
+                  </span>
+                </div>
+
+                {/* Big QR Code with Click-to-Zoom */}
                 <div
                   role="button"
                   tabIndex={0}
                   onClick={() => setZoomQrOpen(true)}
                   onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") setZoomQrOpen(true); }}
-                  className="group relative inline-block cursor-pointer rounded-2xl border border-slate-200 bg-white p-3 shadow-sm transition hover:border-amber-400 hover:shadow-md"
-                  title="Click to zoom / enlarge KHQR"
+                  className="group relative inline-block cursor-pointer rounded-2xl border-2 border-slate-200 dark:border-slate-700 bg-white p-3 shadow-inner transition hover:border-amber-400 hover:shadow-md"
+                  title="Click to open Full-Screen Zoom View"
                 >
                   <img
                     src={qrSrc}
                     alt={t("payScanQr")}
-                    className="mx-auto h-48 w-48 rounded-xl object-contain transition group-hover:scale-105"
+                    className="mx-auto h-64 w-64 sm:h-72 sm:w-72 md:h-80 md:w-80 rounded-xl object-contain transition group-hover:scale-102"
                   />
-                  <div className="absolute inset-0 flex items-center justify-center rounded-2xl bg-slate-900/40 opacity-0 backdrop-blur-[1px] transition-opacity group-hover:opacity-100">
-                    <span className="rounded-full bg-white px-3 py-1 text-xs font-bold text-slate-900 shadow">
-                      🔍 Click to Zoom / Scan
-                    </span>
-                  </div>
-                  <div className="mt-2 flex items-center justify-center gap-1.5">
-                    <span className="rounded-full bg-amber-100 px-2.5 py-0.5 text-[11px] font-bold text-amber-900">
-                      {cycle === "YEARLY" ? "KHQR · 1 Year Plan (12 Mo)" : "KHQR · 1 Month Plan"}
+                  <div className="absolute inset-0 flex items-center justify-center rounded-2xl bg-slate-950/40 opacity-0 backdrop-blur-[1px] transition-opacity group-hover:opacity-100">
+                    <span className="rounded-full bg-white px-3.5 py-1.5 text-xs font-bold text-slate-900 shadow-md flex items-center gap-1.5">
+                      🔍 Click to Full-Size View
                     </span>
                   </div>
                 </div>
-                <p className="mt-1.5 text-xs font-medium text-slate-500">
-                  {t("payScanQr")} · <button type="button" onClick={() => setZoomQrOpen(true)} className="text-amber-600 underline font-semibold hover:text-amber-700 cursor-pointer">Click to enlarge</button>
-                </p>
+
+                {/* Payee and Amount with 1-Click Copy */}
+                <div className="mt-3 space-y-1.5">
+                  <div className="flex flex-wrap items-center justify-center gap-2">
+                    <span className="text-xs sm:text-sm font-bold text-slate-800 dark:text-slate-200">
+                      Payee: <span className="text-red-700 dark:text-red-400 font-extrabold">{manual?.accountName || "SAM CHAN PANHA"}</span>
+                    </span>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      onClick={copyPayee}
+                      className="h-6 px-2 text-[11px] font-semibold text-slate-600 hover:text-slate-900 hover:bg-slate-100 cursor-pointer"
+                    >
+                      {copiedPayee ? <Check className="h-3 w-3 mr-1 text-emerald-600" /> : <Copy className="h-3 w-3 mr-1" />}
+                      {copiedPayee ? "Copied" : "Copy"}
+                    </Button>
+                  </div>
+
+                  <div className="flex items-center justify-center gap-2">
+                    <Badge className="bg-emerald-100 text-emerald-900 border-emerald-300 text-xs sm:text-sm font-black px-3 py-1">
+                      {currency === "USD" ? `${formatUsd(priceUsd)} USD` : `៛${(priceUsd * 4100).toLocaleString()} KHR`}
+                    </Badge>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={copyAmount}
+                      className="h-6 px-2 text-[11px] font-semibold text-emerald-700 hover:bg-emerald-50 border-emerald-300 cursor-pointer"
+                    >
+                      {copiedAmount ? <Check className="h-3 w-3 mr-1 text-emerald-600" /> : <Copy className="h-3 w-3 mr-1" />}
+                      {copiedAmount ? "Copied" : "Copy"}
+                    </Button>
+                  </div>
+                </div>
+
+                {/* Action Buttons Row */}
+                <div className="mt-3 flex flex-wrap items-center justify-center gap-2 pt-2 border-t border-slate-100 dark:border-slate-800">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setZoomQrOpen(true)}
+                    className="h-7 text-xs font-semibold text-amber-800 dark:text-amber-300 border-amber-300 hover:bg-amber-50 cursor-pointer"
+                  >
+                    🔍 Full-Screen Scan View
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={downloadQr}
+                    className="h-7 text-xs font-semibold text-slate-700 dark:text-slate-300 border-slate-300 hover:bg-slate-50 cursor-pointer"
+                  >
+                    <Download className="h-3 w-3 mr-1" />
+                    Download QR Image
+                  </Button>
+                </div>
               </div>
             ) : manual?.hasKhqr ? (
-              <Skeleton className="mx-auto h-48 w-48 rounded-xl" />
+              <Skeleton className="mx-auto h-64 w-64 rounded-xl" />
             ) : (
               <Alert>
                 <AlertDescription className="text-xs">{t("payManualNoQr")}</AlertDescription>
               </Alert>
             )}
-            {manual?.accountName && (
-              <p className="text-center text-xs text-slate-500">
-                {t("payConfigAccountName")}: <span className="font-semibold text-slate-700">{manual.accountName}</span>
-              </p>
-            )}
+
             {(locale === "km" ? manual?.instructionsKm : manual?.instructionsEn) && (
               <p className={cn(
-                "whitespace-pre-line rounded-lg bg-slate-50 border border-slate-100 px-3 py-2 text-xs text-slate-600",
+                "whitespace-pre-line rounded-lg bg-slate-50 dark:bg-slate-800/60 border border-slate-100 dark:border-slate-800 px-3 py-2 text-xs text-slate-600 dark:text-slate-300",
                 locale === "km" && "font-khmer",
               )}>
                 {locale === "km" ? manual?.instructionsKm : manual?.instructionsEn}
               </p>
             )}
+
             {tgLink && (
               <a
                 href={tgLink}
@@ -304,24 +625,41 @@ export function RequestSubscriptionDialog({
               </a>
             )}
 
-            {/* screenshot upload */}
-            <div>
-              <Label className="text-xs text-slate-500">{t("payUploadLabel")}</Label>
+            {/* SCREENSHOT UPLOAD */}
+            <div className="rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800/40 p-3.5 space-y-2">
+              <Label className="text-xs font-bold text-slate-700 dark:text-slate-300 flex items-center justify-between">
+                <span>{t("payUploadLabel")}</span>
+                <span className="text-[11px] font-normal text-slate-400">Step 2: Attach confirmation</span>
+              </Label>
               {evidenceImage ? (
-                <div className="mt-1.5 flex items-center gap-3 rounded-lg border border-slate-200 p-2">
-                  <img src={evidenceImage} alt={t("payScreenshotChip")} className="h-16 w-16 rounded-md border border-slate-100 object-cover" />
+                <div className="flex items-center gap-3 rounded-lg border border-slate-200 dark:border-slate-700 p-2 bg-slate-50 dark:bg-slate-900">
+                  <img
+                    src={evidenceImage}
+                    alt={t("payScreenshotChip")}
+                    className="h-16 w-16 rounded-md border border-slate-200 object-cover shrink-0"
+                  />
                   <div className="flex min-w-0 flex-1 flex-col gap-1.5">
-                    <p className="flex items-center gap-1 truncate text-[11px] text-emerald-700">
-                      <ImageIcon className="h-3.5 w-3.5 shrink-0" aria-hidden />
-                      {t("payScreenshotChip")}
+                    <p className="flex items-center gap-1 truncate text-xs font-semibold text-emerald-700 dark:text-emerald-400">
+                      <CheckCircle2 className="h-3.5 w-3.5 shrink-0" aria-hidden />
+                      {t("payScreenshotChip")} attached
                     </p>
                     <div className="flex gap-1.5">
-                      <Button type="button" variant="outline" size="sm" className="h-7 text-[11px]"
-                        onClick={() => fileInput.current?.click()}>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        className="h-7 text-[11px] cursor-pointer"
+                        onClick={() => fileInput.current?.click()}
+                      >
                         {t("payUploadChange")}
                       </Button>
-                      <Button type="button" variant="ghost" size="sm" className="h-7 text-[11px] text-rose-600 hover:bg-rose-50"
-                        onClick={() => setEvidenceImage(null)}>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        className="h-7 text-[11px] text-rose-600 hover:bg-rose-50 cursor-pointer"
+                        onClick={() => setEvidenceImage(null)}
+                      >
                         {t("payUploadRemove")}
                       </Button>
                     </div>
@@ -333,12 +671,12 @@ export function RequestSubscriptionDialog({
                   onClick={() => fileInput.current?.click()}
                   disabled={readingImage}
                   className={cn(
-                    "mt-1.5 flex min-h-[44px] w-full cursor-pointer items-center justify-center gap-2 rounded-lg border border-dashed border-slate-300 bg-slate-50 px-3 py-2.5 text-xs font-medium text-slate-600 transition-colors hover:border-amber-400 hover:bg-amber-50/50",
+                    "flex min-h-[48px] w-full cursor-pointer items-center justify-center gap-2 rounded-xl border-2 border-dashed border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-900/40 px-3 py-3 text-xs font-medium text-slate-600 dark:text-slate-300 transition-colors hover:border-amber-400 hover:bg-amber-50/50",
                     readingImage && "opacity-60",
                   )}
                 >
                   {readingImage
-                    ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
+                    ? <Loader2 className="h-4 w-4 animate-spin text-amber-600" aria-hidden />
                     : <Camera className="h-4 w-4 text-slate-400" aria-hidden />}
                   {t("payUploadChoose")}
                 </button>
@@ -353,50 +691,89 @@ export function RequestSubscriptionDialog({
               />
             </div>
 
-            <div>
+            {/* BANK TRANSACTION REFERENCE */}
+            <div className="rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800/40 p-3.5 space-y-2">
               <div className="flex items-center justify-between">
-                <Label htmlFor="pay-ref" className="text-xs text-slate-500">{t("payBankRefLabel")}</Label>
+                <Label htmlFor="pay-ref" className="text-xs font-bold text-slate-700 dark:text-slate-300">
+                  {t("payBankRefLabel")}
+                </Label>
                 <Button
                   type="button"
                   variant="ghost"
                   size="sm"
                   onClick={() => setGuideOpen(true)}
-                  className="h-6 px-1.5 text-[11px] font-semibold text-amber-700 hover:text-amber-800 hover:bg-amber-100/60"
+                  className="h-6 px-1.5 text-[11px] font-semibold text-amber-700 dark:text-amber-400 hover:text-amber-800 hover:bg-amber-100/60 cursor-pointer"
                 >
                   <FileText className="h-3 w-3 mr-1" />
                   Where to find Trx ID? (Sample)
                 </Button>
               </div>
-              <Input id="pay-ref" value={manualRef} onChange={(e) => setManualRef(e.target.value)}
-                placeholder={t("payBankRefPlaceholder")} className="mt-1.5 h-9" maxLength={80} />
-              <p className="mt-1 text-[11px] text-slate-400">{t("payScreenshotRequired")}</p>
+              <Input
+                id="pay-ref"
+                value={manualRef}
+                onChange={(e) => setManualRef(e.target.value)}
+                placeholder={t("payBankRefPlaceholder")}
+                className="h-9"
+                maxLength={80}
+              />
+              <p className="text-[11px] text-slate-400">{t("payScreenshotRequired")}</p>
             </div>
-            <div>
-              <Label htmlFor="pay-evidence" className="text-xs text-slate-500">{t("payEvidenceLabel")}</Label>
-              <Input id="pay-evidence" value={evidenceUrl} onChange={(e) => setEvidenceUrl(e.target.value)}
-                placeholder="https://…" className="mt-1.5 h-9" />
+
+            {/* OPTIONAL EVIDENCE URL & NOTE */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <Label htmlFor="pay-evidence" className="text-xs text-slate-500">{t("payEvidenceLabel")}</Label>
+                <Input
+                  id="pay-evidence"
+                  value={evidenceUrl}
+                  onChange={(e) => setEvidenceUrl(e.target.value)}
+                  placeholder="https://…"
+                  className="mt-1 h-8 text-xs"
+                />
+              </div>
+              <div>
+                <Label htmlFor="pay-note" className="text-xs text-slate-500">{t("payNoteLabel")}</Label>
+                <Input
+                  id="pay-note"
+                  value={note}
+                  onChange={(e) => setNote(e.target.value)}
+                  placeholder="Optional message..."
+                  className="mt-1 h-8 text-xs"
+                  maxLength={300}
+                />
+              </div>
             </div>
-            <div>
-              <Label htmlFor="pay-note" className="text-xs text-slate-500">{t("payNoteLabel")}</Label>
-              <Textarea id="pay-note" value={note} onChange={(e) => setNote(e.target.value)} rows={2} className="mt-1.5" maxLength={300} />
-            </div>
-            <DialogFooter>
-              <Button variant="outline" size="sm" onClick={() => onOpenChange(false)} disabled={creating}>{t("cancel")}</Button>
-              <Button size="sm" onClick={submitManual} disabled={creating || !canSubmit}
-                className="bg-amber-500 hover:bg-amber-400 text-slate-950 font-semibold">
-                {creating && <Loader2 className="h-4 w-4 mr-1.5 animate-spin" aria-hidden />}
-                {t("paySubmitManual")}
-              </Button>
-            </DialogFooter>
           </div>
         )}
+
+        {/* Sticky DialogFooter */}
+        <DialogFooter className="px-5 sm:px-6 py-3 border-t border-slate-100 dark:border-slate-800 bg-slate-50/80 dark:bg-slate-900/80 shrink-0 flex items-center justify-between gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => onOpenChange(false)}
+            disabled={creating}
+            className="cursor-pointer"
+          >
+            {t("cancel")}
+          </Button>
+          <Button
+            size="sm"
+            onClick={submitManual}
+            disabled={creating || !canSubmit}
+            className="bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold px-5 cursor-pointer shadow-sm"
+          >
+            {creating && <Loader2 className="h-4 w-4 mr-1.5 animate-spin" aria-hidden />}
+            {t("paySubmitManual")}
+          </Button>
+        </DialogFooter>
       </DialogContent>
 
       <KhqrZoomDialog
         open={zoomQrOpen}
         onOpenChange={setZoomQrOpen}
         qrSrc={qrSrc}
-        planTitle={`${plan?.plan ?? "Plan"} (${cycle === "YEARLY" ? "Yearly" : "Monthly"})`}
+        planTitle={`${plan?.plan ?? "PRO"} (${cycle === "YEARLY" ? "Yearly" : "Monthly"})`}
         amountText={currency === "USD" ? `${formatUsd(priceUsd)} USD` : `៛${(priceUsd * 4100).toLocaleString()} KHR`}
         currency={currency}
         accountName={manual?.accountName || "SAM CHAN PANHA"}
@@ -412,33 +789,85 @@ export function RequestSubscriptionDialog({
 
 /**
  * Live "waiting for manual approval" banner — polls the tenant's payment list
- * so the seller sees the request disappear the moment the admin verifies it.
+ * every 3 seconds while pending, and auto-reloads when approved with celebration!
  */
 export function PendingPaymentBanner() {
   const t = useT();
   const locale = useAppStore((s) => s.locale);
   const { data, refetch } = useFetch<SubscriptionPaymentDTO[]>("/api/tenant/payments");
+  const hadPending = useRef(false);
+  const [checking, setChecking] = useState(false);
 
-  // poll while mounted (the tab only mounts when visited — cheap enough)
+  // Poll every 3 seconds while mounted so approval is picked up instantly
   useEffect(() => {
-    const id = setInterval(refetch, 20_000);
+    const id = setInterval(refetch, 3_000);
     return () => clearInterval(id);
   }, [refetch]);
 
   const pending = data?.filter((p) => p.status === "AWAITING_VERIFICATION") ?? [];
+
+  useEffect(() => {
+    if (data && pending.length > 0) {
+      hadPending.current = true;
+    } else if (data && hadPending.current && pending.length === 0) {
+      // Previously had a pending payment, now it disappeared / resolved!
+      const latestVerified = data.find((p) => p.status === "VERIFIED");
+      if (latestVerified) {
+        hadPending.current = false;
+        sessionStorage.setItem("subscription_verified_alert", latestVerified.plan || "PRO");
+        toast.success(`🎉 Processing Completed! Your ${latestVerified.plan || "PRO"} subscription is now ACTIVE.`);
+        setTimeout(() => {
+          window.location.reload();
+        }, 1000);
+      }
+    }
+  }, [data, pending.length]);
+
+  const checkNow = async () => {
+    setChecking(true);
+    await refetch();
+    setTimeout(() => setChecking(false), 500);
+  };
+
   if (pending.length === 0) return null;
   const p = pending[0];
 
   return (
-    <Alert className="border-amber-300 bg-amber-50/80">
-      <Clock className="h-4 w-4 text-amber-600" aria-hidden />
-      <AlertTitle className="text-sm font-semibold text-amber-900">{t("payPendingBanner")}</AlertTitle>
-      <AlertDescription className="text-xs text-amber-800/90">
-        {t("payPendingBannerDesc", { ago: timeAgo(p.createdAt, locale) })}
-        <span className="ml-1.5">
-          <code className="rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-semibold text-amber-900">{p.reference}</code>
-        </span>
-      </AlertDescription>
+    <Alert className="border-amber-300 bg-amber-50/90 shadow-sm animate-in fade-in">
+      <div className="flex items-start justify-between gap-3 w-full">
+        <div className="flex items-start gap-2.5">
+          <Clock className="h-5 w-5 text-amber-600 mt-0.5 shrink-0" aria-hidden />
+          <div>
+            <AlertTitle className="text-sm font-bold text-amber-950 flex items-center gap-2">
+              {t("payPendingBanner")}
+              <span className="flex h-2 w-2 rounded-full bg-emerald-500 animate-pulse" title="Live checking" />
+            </AlertTitle>
+            <AlertDescription className="text-xs text-amber-900/90 mt-0.5">
+              {t("payPendingBannerDesc", { ago: timeAgo(p.createdAt, locale) })}
+              <span className="ml-1.5">
+                <code className="rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-bold font-mono text-amber-950">
+                  {p.reference}
+                </code>
+              </span>
+              <span className="block text-[11px] text-amber-800 mt-1">
+                ⚡ Linked to Telegram syncer &amp; Admin verification. Page auto-reloads upon approval.
+              </span>
+            </AlertDescription>
+          </div>
+        </div>
+
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          onClick={checkNow}
+          disabled={checking}
+          className="h-7 text-xs font-semibold shrink-0 bg-white border-amber-300 hover:bg-amber-100/60 text-amber-950 cursor-pointer"
+        >
+          {checking ? <Loader2 className="h-3 w-3 mr-1 animate-spin" /> : <RefreshCw className="h-3 w-3 mr-1" />}
+          Check Status
+        </Button>
+      </div>
     </Alert>
   );
 }

@@ -16,6 +16,9 @@ import { RequestSubscriptionDialog, TenantPaymentHistory, PendingPaymentBanner, 
 import { PurchaseRequestList } from "./purchase-list";
 import { ListingEditorDialog } from "@/components/marketplace/listing-editor";
 import { Pagination } from "@/components/marketplace/pagination";
+import { DealerBranches } from "./dealer-branches";
+import { DealerAnalyticsCharts } from "./dealer-analytics-charts";
+import { AdvancedFilterToolbar, type AdvancedFilterValues } from "@/components/marketplace/advanced-filter-toolbar";
 import {
   AppointmentStatusBadge, AvatarCircle, EmptyState, FetchErrorState, SectionCard, StatCard,
   StatCardSkeleton, TenantRoleBadge, VerificationBadge, VehicleStatusBadge, errorText,
@@ -34,9 +37,10 @@ import {
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { Badge } from "@/components/ui/badge";
 import {
-  CalendarDays, Car, ChevronDown, CreditCard, Eye, Heart, Hourglass, LayoutDashboard, Loader2,
-  MessageSquare, MoreHorizontal, Plus, Settings, Star, Store, TriangleAlert, UserPlus, Users,
+  CalendarDays, Car, CheckCircle2, ChevronDown, CreditCard, Eye, Heart, Hourglass, LayoutDashboard, Loader2,
+  MapPin, MessageSquare, MoreHorizontal, Plus, Search, Settings, Star, Store, TriangleAlert, UserPlus, Users, X,
 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
@@ -55,6 +59,7 @@ export function DealerDashboard({ me }: { me: SessionDTO }) {
   const tabs: DashboardTabDef[] = [
     { id: "overview", label: t("tabOverview"), icon: LayoutDashboard },
     { id: "inventory", label: t("tabInventory"), icon: Car },
+    { id: "branches", label: "Branches", icon: Store },
     { id: "leads", label: t("tabLeads"), icon: MessageSquare },
     { id: "appointments", label: t("tabAppointments"), icon: CalendarDays },
     { id: "staff", label: t("tabStaff"), icon: Users },
@@ -95,6 +100,7 @@ export function DealerDashboard({ me }: { me: SessionDTO }) {
           <DealerInventory />
         )
       )}
+      {active === "branches" && <DealerBranches />}
       {active === "leads" && (
         !me.subscription || me.subscription.status !== "ACTIVE" ? (
           <div className="rounded-xl border border-amber-300 bg-amber-50 p-4 text-xs text-amber-900">
@@ -160,6 +166,8 @@ function DealerOverview() {
         <StatCard icon={Heart} label={t("kpiFavorites")} value={dash.stats.activeFavorites} />
         <StatCard icon={CalendarDays} label={t("kpiAppointments")} value={dash.stats.appointmentsRequested} />
       </div>
+
+      <DealerAnalyticsCharts />
 
       <SectionCard
         title={t("subCurrentPlan")}
@@ -233,8 +241,16 @@ const INVENTORY_PAGE_SIZE = 8;
 function DealerInventory() {
   const t = useT();
   const navigate = useAppStore((s) => s.navigate);
-  const [status, setStatus] = useState<string>("ALL");
-  const [page, setPage] = useState(1); // 1-based client-side pagination
+  const [filters, setFilters] = useState<AdvancedFilterValues>({
+    q: "",
+    status: "ALL",
+    branchId: "ALL",
+    priceMin: "",
+    priceMax: "",
+    sort: "newest",
+  });
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(8);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [editing, setEditing] = useState<TenantVehicleRowDTO | null>(null);
   const [editPrice, setEditPrice] = useState("");
@@ -242,14 +258,29 @@ function DealerInventory() {
   const [editorId, setEditorId] = useState<string | null>(null);
   const [editorOpen, setEditorOpen] = useState(false);
 
-  const url = `/api/tenant/inventory${qs({ status: status === "ALL" ? undefined : status })}`;
+  const branchesRes = useFetch<{ branches: { id: string; name: string }[] }>("/api/tenant/branches");
+  const branchOptions = (branchesRes.data?.branches ?? []).map((b) => ({ value: b.id, label: b.name }));
+
+  const statusOptions = TENANT_STATUSES.map((s) => ({
+    value: s,
+    label: s === "ALL" ? "All Statuses" : t(`vst${s}` as never),
+  }));
+
+  const url = `/api/tenant/inventory${qs({
+    status: filters.status === "ALL" ? undefined : filters.status,
+    branchId: filters.branchId === "ALL" ? undefined : filters.branchId,
+    q: filters.q || undefined,
+    priceMin: filters.priceMin || undefined,
+    priceMax: filters.priceMax || undefined,
+    sort: filters.sort || undefined,
+  })}`;
   const { data, loading, error, refetch } = useFetch<TenantVehicleRowDTO[]>(url);
 
   // Page the full stock list client-side; refetches keep the current page.
   const totalRows = data?.length ?? 0;
-  const pageCount = Math.max(1, Math.ceil(totalRows / INVENTORY_PAGE_SIZE));
+  const pageCount = Math.max(1, Math.ceil(totalRows / pageSize));
   const currentPage = Math.min(page, pageCount);
-  const rows = (data ?? []).slice((currentPage - 1) * INVENTORY_PAGE_SIZE, currentPage * INVENTORY_PAGE_SIZE);
+  const rows = (data ?? []).slice((currentPage - 1) * pageSize, currentPage * pageSize);
 
   const patch = async (id: string, body: Record<string, string | number | boolean>) => {
     setBusyId(id);
@@ -275,26 +306,27 @@ function DealerInventory() {
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <div className="flex flex-wrap gap-1.5">
-          {TENANT_STATUSES.map((s) => (
-            <button
-              key={s}
-              onClick={() => { setStatus(s); setPage(1); }}
-              aria-pressed={status === s}
-              className={cn(
-                "rounded-full border px-3 py-1.5 text-xs font-medium transition-colors cursor-pointer",
-                status === s ? "border-amber-500 bg-amber-50 text-amber-800" : "border-slate-200 bg-white text-slate-600 hover:border-slate-300"
-              )}
-            >
-              {t(`vst${s}` as never)}
-            </button>
-          ))}
-        </div>
+        <h2 className="text-base font-bold text-slate-900 flex items-center gap-2">
+          <Car className="h-5 w-5 text-amber-600" />
+          Dealership Inventory ({totalRows})
+        </h2>
         <Button size="sm" onClick={() => navigate({ name: "sell" })} className="bg-amber-500 hover:bg-amber-400 text-slate-950 font-semibold">
           <Plus className="h-4 w-4 mr-1.5" aria-hidden />
           {t("addListing")}
         </Button>
       </div>
+
+      <AdvancedFilterToolbar
+        values={filters}
+        onChange={(next) => {
+          setFilters(next);
+          setPage(1);
+        }}
+        statusOptions={statusOptions}
+        branchOptions={branchOptions}
+        searchPlaceholder="Filter make, model, VIN, plate number..."
+        totalResults={totalRows}
+      />
 
       {loading && !data ? (
         <div className="space-y-3">{Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} className="h-20 w-full rounded-xl" />)}</div>
@@ -317,9 +349,19 @@ function DealerInventory() {
                 <p className="truncate text-sm font-medium text-slate-900">
                   {v.make} {v.model} {v.variant ?? ""} {v.year}
                 </p>
-                <p className="mt-0.5 text-[11px] text-slate-400">
-                  {formatUsd(v.priceUsd)} · <Eye className="inline h-3 w-3" aria-hidden /> {v.views}
-                </p>
+                <div className="mt-0.5 flex flex-wrap items-center gap-2 text-[11px] text-slate-400">
+                  <span>{formatUsd(v.priceUsd)}</span>
+                  <span>·</span>
+                  <span className="flex items-center gap-0.5">
+                    <Eye className="inline h-3 w-3" aria-hidden /> {v.views}
+                  </span>
+                  {v.branchName && (
+                    <span className="flex items-center gap-1 rounded-md bg-amber-50 border border-amber-200/70 px-1.5 py-0.2 text-[10px] font-semibold text-amber-900">
+                      <MapPin className="h-3 w-3 text-amber-600" />
+                      {v.branchName}
+                    </span>
+                  )}
+                </div>
                 <div className="mt-1.5 flex items-center gap-2">
                   <VehicleStatusBadge status={v.status} />
                   {v.featured && <Star className="h-3.5 w-3.5 fill-amber-400 text-amber-400" aria-label={t("actFeature")} />}
@@ -355,18 +397,20 @@ function DealerInventory() {
         </div>
       )}
 
-      {/* Pagination — paged over the full stock list */}
-      {data && data.length > INVENTORY_PAGE_SIZE && (
-        <div className="space-y-1.5 pt-1">
-          <p className="text-center text-xs text-slate-400">
-            {t("paginationShowing", {
-              from: (currentPage - 1) * INVENTORY_PAGE_SIZE + 1,
-              to: Math.min(currentPage * INVENTORY_PAGE_SIZE, data.length),
-              n: data.length,
-            })}
-          </p>
-          <Pagination page={currentPage} pageCount={pageCount} onPageChange={setPage} disabled={busyId !== null} />
-        </div>
+      {/* Enhanced Pagination bar with item counter & page size selector */}
+      {totalRows > 0 && (
+        <Pagination
+          page={currentPage}
+          pageCount={pageCount}
+          onPageChange={setPage}
+          pageSize={pageSize}
+          onPageSizeChange={(sz) => {
+            setPageSize(sz);
+            setPage(1);
+          }}
+          totalItems={totalRows}
+          disabled={busyId !== null}
+        />
       )}
 
       {/* Edit price dialog */}
@@ -411,54 +455,135 @@ function DealerLeads() {
   const locale = useAppStore((s) => s.locale);
   const navigate = useAppStore((s) => s.navigate);
   const { data, loading, error, refetch } = useFetch<TenantLeadDTO[]>("/api/tenant/leads");
+  const [q, setQ] = useState("");
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(10);
+
+  const allLeads = data ?? [];
+  const filtered = allLeads.filter((l) => {
+    if (!q.trim()) return true;
+    const term = q.toLowerCase();
+    const buyerMatch = l.buyer.name.toLowerCase().includes(term);
+    const carMatch = `${l.vehicle.make} ${l.vehicle.model} ${l.vehicle.year}`.toLowerCase().includes(term);
+    const msgMatch = l.lastMessage?.body?.toLowerCase().includes(term) ?? false;
+    return buyerMatch || carMatch || msgMatch;
+  });
+
+  const pageCount = Math.max(1, Math.ceil(filtered.length / pageSize));
+  const currentPage = Math.min(page, pageCount);
+  const pagedLeads = filtered.slice((currentPage - 1) * pageSize, currentPage * pageSize);
 
   return (
     <div className="space-y-5">
       <PurchaseRequestList url="/api/tenant/purchase-requests" mode="seller" />
 
       <div>
-        <h2 className="mb-3 text-sm font-semibold text-slate-900">{t("recentLeads")}</h2>
-        {loading && !data ? <div className="space-y-3">{Array.from({ length: 3 }).map((_, i) => <Skeleton key={i} className="h-24 w-full rounded-xl" />)}</div>
-        : error && !data ? <FetchErrorState message={error} onRetry={refetch} />
-        : !data || data.length === 0 ? <EmptyState icon={MessageSquare} text={t("leadsEmpty")} hint={t("leadsEmptyHint")} />
-        : (
-        <div className="space-y-3">
-          {data.map((l) => (
-            <div key={l.conversationId} className="rounded-xl border border-slate-200 bg-white p-4">
-              <div className="flex items-start justify-between gap-3">
-                <div className="flex min-w-0 items-start gap-3">
-                  <div className="h-12 w-16 shrink-0 overflow-hidden rounded-lg bg-slate-100">
-                    {l.vehicle.thumbnail ? (
-                      <img src={l.vehicle.thumbnail} alt="" className="h-full w-full object-cover" />
-                    ) : (
-                      <Car className="mx-auto h-5 w-5 text-slate-300" aria-hidden />
-                    )}
-                  </div>
-                  <div className="min-w-0">
-                    <p className="truncate text-sm font-semibold text-slate-900">{l.buyer.name}</p>
-                    <p className="truncate text-xs text-slate-500">
-                      {l.vehicle.make} {l.vehicle.model} {l.vehicle.year} · {formatUsd(l.vehicle.priceUsd)}
-                    </p>
-                    {l.lastMessage && (
-                      <p className="mt-1.5 truncate rounded-lg bg-slate-50 border border-slate-100 px-2.5 py-1 text-xs text-slate-600">
-                        <span className="text-[10px] font-semibold text-slate-400">{l.lastMessage.isMine ? "↗" : "↙"} </span>
-                        {l.lastMessage.body}
+        <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
+          <h2 className="text-sm font-semibold text-slate-900">{t("recentLeads")}</h2>
+          {/* Quick Search */}
+          <div className="relative w-full sm:w-64">
+            <Search className="absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" />
+            <Input
+              value={q}
+              onChange={(e) => {
+                setQ(e.target.value);
+                setPage(1);
+              }}
+              placeholder="Search buyer, vehicle..."
+              className="h-8 pl-8 pr-7 text-xs bg-slate-50/60 focus:bg-white"
+            />
+            {q && (
+              <button
+                type="button"
+                onClick={() => {
+                  setQ("");
+                  setPage(1);
+                }}
+                className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+              >
+                <X className="h-3.5 w-3.5" />
+              </button>
+            )}
+          </div>
+        </div>
+
+        {loading && !data ? (
+          <div className="space-y-3">
+            {Array.from({ length: 3 }).map((_, i) => (
+              <Skeleton key={i} className="h-24 w-full rounded-xl" />
+            ))}
+          </div>
+        ) : error && !data ? (
+          <FetchErrorState message={error} onRetry={refetch} />
+        ) : allLeads.length === 0 ? (
+          <EmptyState icon={MessageSquare} text={t("leadsEmpty")} hint={t("leadsEmptyHint")} />
+        ) : filtered.length === 0 ? (
+          <div className="rounded-xl border border-dashed border-slate-200 p-8 text-center bg-white">
+            <p className="text-xs text-slate-500">No leads match “{q}”</p>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => {
+                setQ("");
+                setPage(1);
+              }}
+              className="mt-2 text-xs text-amber-700"
+            >
+              Clear search
+            </Button>
+          </div>
+        ) : (
+          <div className="space-y-3">
+            {pagedLeads.map((l) => (
+              <div key={l.conversationId} className="rounded-xl border border-slate-200 bg-white p-4">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="flex min-w-0 items-start gap-3">
+                    <div className="h-12 w-16 shrink-0 overflow-hidden rounded-lg bg-slate-100">
+                      {l.vehicle.thumbnail ? (
+                        <img src={l.vehicle.thumbnail} alt="" className="h-full w-full object-cover" />
+                      ) : (
+                        <Car className="mx-auto h-5 w-5 text-slate-300" aria-hidden />
+                      )}
+                    </div>
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-semibold text-slate-900">{l.buyer.name}</p>
+                      <p className="truncate text-xs text-slate-500">
+                        {l.vehicle.make} {l.vehicle.model} {l.vehicle.year} · {formatUsd(l.vehicle.priceUsd)}
                       </p>
-                    )}
+                      {l.lastMessage && (
+                        <p className="mt-1.5 truncate rounded-lg bg-slate-50 border border-slate-100 px-2.5 py-1 text-xs text-slate-600">
+                          <span className="text-[10px] font-semibold text-slate-400">{l.lastMessage.isMine ? "↗" : "↙"} </span>
+                          {l.lastMessage.body}
+                        </p>
+                      )}
+                    </div>
                   </div>
-                </div>
-                <div className="flex shrink-0 flex-col items-end gap-1.5">
-                  <span className="text-[10px] text-slate-400">{timeAgo(l.updatedAt, locale)}</span>
-                  <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-semibold text-slate-600">{l.messageCount}</span>
-                  <Button variant="outline" size="sm" onClick={() => navigate({ name: "messages", conversationId: l.conversationId })}>
-                    <MessageSquare className="h-3.5 w-3.5 mr-1" aria-hidden />
-                    {t("actOpenChat")}
-                  </Button>
+                  <div className="flex shrink-0 flex-col items-end gap-1.5">
+                    <span className="text-[10px] text-slate-400">{timeAgo(l.updatedAt, locale)}</span>
+                    <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-semibold text-slate-600">{l.messageCount}</span>
+                    <Button variant="outline" size="sm" onClick={() => navigate({ name: "messages", conversationId: l.conversationId })}>
+                      <MessageSquare className="h-3.5 w-3.5 mr-1" aria-hidden />
+                      {t("actOpenChat")}
+                    </Button>
+                  </div>
                 </div>
               </div>
-            </div>
-          ))}
-        </div>
+            ))}
+
+            {filtered.length > pageSize && (
+              <Pagination
+                page={currentPage}
+                pageCount={pageCount}
+                onPageChange={setPage}
+                pageSize={pageSize}
+                onPageSizeChange={(sz) => {
+                  setPageSize(sz);
+                  setPage(1);
+                }}
+                totalItems={filtered.length}
+              />
+            )}
+          </div>
         )}
       </div>
     </div>
@@ -472,6 +597,18 @@ function DealerAppointments() {
   const locale = useAppStore((s) => s.locale);
   const { data, loading, error, refetch } = useFetch<TenantAppointmentDTO[]>("/api/tenant/appointments");
   const [busyId, setBusyId] = useState<string | null>(null);
+  const [statusFilter, setStatusFilter] = useState("ALL");
+  const [q, setQ] = useState("");
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(10);
+
+  const APPT_STATUS_FILTERS = [
+    { value: "ALL", label: "All" },
+    { value: "REQUESTED", label: "Requested" },
+    { value: "CONFIRMED", label: "Confirmed" },
+    { value: "COMPLETED", label: "Completed" },
+    { value: "CANCELLED", label: "Cancelled" },
+  ];
 
   const patch = async (id: string, status: string) => {
     setBusyId(id);
@@ -486,41 +623,141 @@ function DealerAppointments() {
     }
   };
 
+  const all = data ?? [];
+  const filtered = all.filter((a) => {
+    if (statusFilter !== "ALL" && a.status !== statusFilter) return false;
+    if (q.trim()) {
+      const term = q.toLowerCase();
+      const buyerMatch = a.buyer.name.toLowerCase().includes(term);
+      const carMatch = `${a.vehicle.make} ${a.vehicle.model} ${a.vehicle.year}`.toLowerCase().includes(term);
+      const notesMatch = a.notes?.toLowerCase().includes(term) ?? false;
+      return buyerMatch || carMatch || notesMatch;
+    }
+    return true;
+  });
+
+  const pageCount = Math.max(1, Math.ceil(filtered.length / pageSize));
+  const currentPage = Math.min(page, pageCount);
+  const paged = filtered.slice((currentPage - 1) * pageSize, currentPage * pageSize);
+
   if (loading && !data) return <div className="space-y-3">{Array.from({ length: 3 }).map((_, i) => <Skeleton key={i} className="h-20 w-full rounded-xl" />)}</div>;
   if (error && !data) return <FetchErrorState message={error} onRetry={refetch} />;
   if (!data || data.length === 0) return <EmptyState icon={CalendarDays} text={t("apptEmpty")} hint={t("apptEmptyHint")} />;
 
   return (
-    <div className="space-y-2.5">
-      {data.map((a) => (
-        <div key={a.id} className="flex flex-wrap items-center gap-3 rounded-xl border border-slate-200 bg-white p-3.5">
-          <div className="min-w-0 flex-1">
-            <p className="truncate text-sm font-medium text-slate-900">
-              {a.buyer.name} · {a.vehicle.make} {a.vehicle.model} {a.vehicle.year}
-            </p>
-            <p className="mt-0.5 text-xs text-slate-500">{formatDateTime(a.scheduledAt, locale)}</p>
-            {a.notes && <p className="mt-1 truncate text-xs italic text-slate-400">“{a.notes}”</p>}
-          </div>
-          <div className="flex shrink-0 flex-wrap items-center gap-2">
-            <AppointmentStatusBadge status={a.status} />
-            {a.status === "REQUESTED" && (
-              <Button variant="outline" size="sm" disabled={busyId === a.id} onClick={() => patch(a.id, "CONFIRMED")} className="border-emerald-200 text-emerald-700 hover:bg-emerald-50">
-                {t("actConfirmAppt")}
-              </Button>
-            )}
-            {a.status === "CONFIRMED" && (
-              <Button variant="outline" size="sm" disabled={busyId === a.id} onClick={() => patch(a.id, "COMPLETED")} className="border-teal-200 text-teal-700 hover:bg-teal-50">
-                {t("actCompleteAppt")}
-              </Button>
-            )}
-            {(a.status === "REQUESTED" || a.status === "CONFIRMED") && (
-              <Button variant="ghost" size="sm" disabled={busyId === a.id} onClick={() => patch(a.id, "CANCELLED")} className="text-rose-600 hover:bg-rose-50 hover:text-rose-700">
-                {t("actCancelAppt")}
-              </Button>
-            )}
-          </div>
+    <div className="space-y-4">
+      {/* Filter and search bar */}
+      <div className="flex flex-wrap items-center justify-between gap-2.5 rounded-xl border border-slate-200 bg-white p-3">
+        <div className="flex flex-wrap items-center gap-1.5">
+          {APPT_STATUS_FILTERS.map((f) => {
+            const active = statusFilter === f.value;
+            return (
+              <button
+                key={f.value}
+                type="button"
+                onClick={() => {
+                  setStatusFilter(f.value);
+                  setPage(1);
+                }}
+                className={cn(
+                  "rounded-full px-2.5 py-1 text-xs font-medium transition-colors cursor-pointer",
+                  active ? "bg-amber-500 text-slate-950 font-semibold shadow-xs" : "bg-slate-100 text-slate-600 hover:bg-slate-200/70"
+                )}
+              >
+                {f.label}
+              </button>
+            );
+          })}
         </div>
-      ))}
+        <div className="relative min-w-[180px]">
+          <Search className="absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" />
+          <Input
+            value={q}
+            onChange={(e) => {
+              setQ(e.target.value);
+              setPage(1);
+            }}
+            placeholder="Search appointments..."
+            className="h-8 pl-8 pr-7 text-xs bg-slate-50/60 focus:bg-white"
+          />
+          {q && (
+            <button
+              type="button"
+              onClick={() => {
+                setQ("");
+                setPage(1);
+              }}
+              className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+            >
+              <X className="h-3 w-3" />
+            </button>
+          )}
+        </div>
+      </div>
+
+      {filtered.length === 0 ? (
+        <div className="rounded-xl border border-dashed border-slate-200 p-8 text-center bg-white">
+          <p className="text-xs text-slate-500">No appointments found matching your filters.</p>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => {
+              setStatusFilter("ALL");
+              setQ("");
+              setPage(1);
+            }}
+            className="mt-2 text-xs text-amber-700"
+          >
+            Reset filters
+          </Button>
+        </div>
+      ) : (
+        <div className="space-y-2.5">
+          {paged.map((a) => (
+            <div key={a.id} className="flex flex-wrap items-center gap-3 rounded-xl border border-slate-200 bg-white p-3.5">
+              <div className="min-w-0 flex-1">
+                <p className="truncate text-sm font-medium text-slate-900">
+                  {a.buyer.name} · {a.vehicle.make} {a.vehicle.model} {a.vehicle.year}
+                </p>
+                <p className="mt-0.5 text-xs text-slate-500">{formatDateTime(a.scheduledAt, locale)}</p>
+                {a.notes && <p className="mt-1 truncate text-xs italic text-slate-400">“{a.notes}”</p>}
+              </div>
+              <div className="flex shrink-0 flex-wrap items-center gap-2">
+                <AppointmentStatusBadge status={a.status} />
+                {a.status === "REQUESTED" && (
+                  <Button variant="outline" size="sm" disabled={busyId === a.id} onClick={() => patch(a.id, "CONFIRMED")} className="border-emerald-200 text-emerald-700 hover:bg-emerald-50">
+                    {t("actConfirmAppt")}
+                  </Button>
+                )}
+                {a.status === "CONFIRMED" && (
+                  <Button variant="outline" size="sm" disabled={busyId === a.id} onClick={() => patch(a.id, "COMPLETED")} className="border-teal-200 text-teal-700 hover:bg-teal-50">
+                    {t("actCompleteAppt")}
+                  </Button>
+                )}
+                {(a.status === "REQUESTED" || a.status === "CONFIRMED") && (
+                  <Button variant="ghost" size="sm" disabled={busyId === a.id} onClick={() => patch(a.id, "CANCELLED")} className="text-rose-600 hover:bg-rose-50 hover:text-rose-700">
+                    {t("actCancelAppt")}
+                  </Button>
+                )}
+              </div>
+            </div>
+          ))}
+
+          {filtered.length > pageSize && (
+            <Pagination
+              page={currentPage}
+              pageCount={pageCount}
+              onPageChange={setPage}
+              pageSize={pageSize}
+              onPageSizeChange={(sz) => {
+                setPageSize(sz);
+                setPage(1);
+              }}
+              totalItems={filtered.length}
+            />
+          )}
+        </div>
+      )}
     </div>
   );
 }
@@ -687,10 +924,20 @@ function DealerSubscription() {
   const [requesting, setRequesting] = useState<PlanDTO | null>(null);
   const [downgrading, setDowngrading] = useState(false);
   const [historyKey, setHistoryKey] = useState(0);
+  const [verifiedAlert, setVerifiedAlert] = useState<string | null>(null);
 
   useEffect(() => {
     if (data?.subscription) setCycle(data.subscription.billingCycle);
   }, [data?.subscription?.billingCycle]);
+
+  useEffect(() => {
+    const alertPlan = sessionStorage.getItem("subscription_verified_alert");
+    if (alertPlan) {
+      setVerifiedAlert(alertPlan);
+      sessionStorage.removeItem("subscription_verified_alert");
+      toast.success(`🎉 Processing Completed! Your ${alertPlan} subscription is now ACTIVE.`);
+    }
+  }, []);
 
   const downgrade = async () => {
     setDowngrading(true);
@@ -715,6 +962,37 @@ function DealerSubscription() {
 
   return (
     <div className="space-y-4">
+      {verifiedAlert && (
+        <div className="flex items-center justify-between rounded-2xl border-2 border-emerald-400 bg-gradient-to-r from-emerald-50 via-teal-50 to-emerald-50 p-4 shadow-md animate-in fade-in slide-in-from-top-2">
+          <div className="flex items-center gap-3">
+            <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-emerald-600 text-white shadow-md shrink-0">
+              <CheckCircle2 className="h-6 w-6" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <Badge className="bg-emerald-600 text-white font-extrabold text-[10px] tracking-wide uppercase px-2 py-0.5">
+                  Processing Completed
+                </Badge>
+                <h4 className="text-sm font-bold text-emerald-950">
+                  🎉 {verifiedAlert} Subscription Active!
+                </h4>
+              </div>
+              <p className="text-xs text-emerald-800 mt-0.5">
+                Your payment was approved and verified. All PRO features (multiple branches, unlimited image uploads, advanced filters, analytics charts) are now unlocked!
+              </p>
+            </div>
+          </div>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => setVerifiedAlert(null)}
+            className="h-8 text-xs font-semibold text-emerald-800 hover:bg-emerald-100 hover:text-emerald-950 cursor-pointer"
+          >
+            Dismiss
+          </Button>
+        </div>
+      )}
+
       {paymentsDisabled && (
         <Alert className="border-amber-300 bg-amber-50">
           <AlertDescription className="text-xs font-medium text-amber-900">{t("payDisabledNotice")}</AlertDescription>

@@ -611,13 +611,19 @@ export async function processTelegramCallbackQuery(
     if (chatId && messageId) {
       const timestamp = new Date().toLocaleString("en-US", { timeZone: "Asia/Phnom_Penh" });
       const updatedCaption = [
-        originalText,
-        "",
+        originalText.split("━━━━━━━━━━━━━━━━━━━━━━━━━━━")[0].replace(/⚡ Tap below to verify[\s\S]*$/, "").trim() ||
+          `🔐 KhLan — Subscription Payment (${payment.reference})`,
         `━━━━━━━━━━━━━━━━━━━━━━━━━━━`,
-        `✅ VERIFIED & ACTIVATED by ${adminName}`,
+        `🏢 Dealer / Tenant: ${payment.tenant.name}`,
+        `📋 Plan: ${payment.plan} (${payment.billingCycle})`,
+        `💰 Amount: $${payment.amountUsd.toFixed(2)}`,
+        payment.manualRef ? `🏦 Bank Ref: ${payment.manualRef}` : null,
+        "",
+        `✅ PROCESSING COMPLETE · APPROVED & ACTIVATED`,
+        `👤 Verified by: ${adminName}`,
         `📅 ${timestamp} (Phnom Penh)`,
-        `🎉 Subscription: ACTIVE (${payment.plan} · ${payment.billingCycle})`,
-      ].join("\n");
+        `🎉 Status: ACTIVE · Auto-Updated in System`,
+      ].filter(Boolean).join("\n");
 
       await updateTelegramMessageResolution(
         botToken,
@@ -625,8 +631,31 @@ export async function processTelegramCallbackQuery(
         messageId,
         updatedCaption,
         isPhoto,
-        `✅ Approved by ${adminName}`,
+        `✅ Processing Complete · Approved by ${adminName}`,
       );
+
+      // Post confirmation announcement in the Telegram group
+      try {
+        await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            chat_id: chatId,
+            text: [
+              `🎉 Payment Verified & Processing Complete!`,
+              `━━━━━━━━━━━━━━━━━━━━━━━━━━━`,
+              `🏢 Dealer / Tenant: ${payment.tenant.name}`,
+              `📋 Plan: ${payment.plan} (${payment.billingCycle})`,
+              `💰 Amount: $${payment.amountUsd.toFixed(2)}`,
+              `🔖 Reference: ${payment.reference}`,
+              payment.manualRef ? `🏦 Bank Ref: ${payment.manualRef}` : null,
+              `👤 Approved by: ${adminName}`,
+              `📅 ${timestamp} (Phnom Penh)`,
+              `⚡ Status: PROCESSING COMPLETE · SUBSCRIPTION ACTIVE!`,
+            ].filter(Boolean).join("\n"),
+          }),
+        });
+      } catch {}
     }
 
     return { ok: true, action: "approve", paymentId };
@@ -650,17 +679,22 @@ export async function processTelegramCallbackQuery(
       },
     });
 
-    await answerTelegramCallbackQuery(botToken, query.id, "❌ Payment Rejected");
+    await answerTelegramCallbackQuery(botToken, query.id, `❌ Payment Rejected for ${payment.tenant.name}`);
 
     if (chatId && messageId) {
       const timestamp = new Date().toLocaleString("en-US", { timeZone: "Asia/Phnom_Penh" });
       const updatedCaption = [
-        originalText,
-        "",
+        originalText.split("━━━━━━━━━━━━━━━━━━━━━━━━━━━")[0].replace(/⚡ Tap below to verify[\s\S]*$/, "").trim() ||
+          `🔐 KhLan — Subscription Payment (${payment.reference})`,
         `━━━━━━━━━━━━━━━━━━━━━━━━━━━`,
+        `🏢 Dealer / Tenant: ${payment.tenant.name}`,
+        `📋 Plan: ${payment.plan} (${payment.billingCycle})`,
+        `💰 Amount: $${payment.amountUsd.toFixed(2)}`,
+        `🔖 Reference: ${payment.reference}`,
+        "",
         `❌ REJECTED by ${adminName}`,
         `📅 ${timestamp} (Phnom Penh)`,
-        `Status: REJECTED (Subscription not activated)`,
+        `⚠️ Status: REJECTED (Subscription NOT activated)`,
       ].join("\n");
 
       await updateTelegramMessageResolution(
@@ -671,6 +705,26 @@ export async function processTelegramCallbackQuery(
         isPhoto,
         `❌ Rejected by ${adminName}`,
       );
+
+      // Post rejection notice in the Telegram group
+      try {
+        await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            chat_id: chatId,
+            text: [
+              `❌ Payment Rejected`,
+              `━━━━━━━━━━━━━━━━━━━━━━━━━━━`,
+              `🏢 Dealer / Tenant: ${payment.tenant.name}`,
+              `🔖 Reference: ${payment.reference}`,
+              `👤 Rejected by: ${adminName}`,
+              `📅 ${timestamp} (Phnom Penh)`,
+              `⚠️ Status: REJECTED (Subscription NOT activated)`,
+            ].join("\n"),
+          }),
+        });
+      } catch {}
     }
 
     return { ok: true, action: "reject", paymentId };
@@ -680,7 +734,7 @@ export async function processTelegramCallbackQuery(
 }
 
 /**
- * Handles text commands posted in the Telegram group (/status, /pending, /approve, /reject, /sync, /help)
+ * Handles text commands posted in the Telegram group (/status, /pending, /approve, /reject, /aba, /sync, /help)
  */
 async function handleTelegramGroupCommand(
   text: string,
@@ -690,6 +744,59 @@ async function handleTelegramGroupCommand(
 ): Promise<boolean> {
   const trimmed = text.trim();
   const lower = trimmed.toLowerCase();
+
+  // /aba <alert> or /payway <alert>
+  if (lower.startsWith("/aba") || lower.startsWith("/payway")) {
+    const rawAlert = trimmed.replace(/^\/(?:aba|payway)(?:@\w+)?/i, "").trim();
+    if (!rawAlert) {
+      try {
+        await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            chat_id: chatId,
+            text: `ℹ️ Usage: /aba <paste PayWay notification message>\nExample: /aba PayWay by ABA: ៛200 paid by Sam Chanpanha (*674) on Oct 22, 01:05 PM via ABA KHQR at SAM CHAN PANHA. Trx. ID: 179264913984347, APV: 135160.`,
+          }),
+        });
+      } catch {}
+      return true;
+    }
+
+    const parsed = parseAbaPayWayMessage(rawAlert);
+    if (!parsed) {
+      try {
+        await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            chat_id: chatId,
+            text: `⚠️ Could not parse Trx ID or Amount from the message. Please ensure it contains 'Trx. ID: ...' and an amount.`,
+          }),
+        });
+      } catch {}
+      return true;
+    }
+
+    const res = await recordAbaTransaction(parsed, {
+      chatId: String(chatId),
+      botToken,
+    });
+
+    const replyMsg = res.isDuplicate
+      ? `ℹ️ Duplicate Trx ID ${parsed.trxId}: already recorded in database. Duplicate count incremented.`
+      : res.matched
+      ? `✅ Auto-Matched & Activated! Trx ID ${parsed.trxId} matched pending subscription payment. Processing complete!`
+      : `📥 Saved Trx ${parsed.trxId} (${parsed.currency === "KHR" ? "៛" : "$"}${parsed.amount.toLocaleString()}) to database (Status: UNMATCHED).`;
+
+    try {
+      await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ chat_id: chatId, text: replyMsg }),
+      });
+    } catch {}
+    return true;
+  }
 
   // /status
   if (lower === "/status" || lower.startsWith("/status@")) {
@@ -829,13 +936,44 @@ async function handleTelegramGroupCommand(
       data: { verifiedByName: senderName, notifiedSeller: true, notifiedAt: new Date() },
     });
 
+    // Link matching ABA transaction
+    if (payment.manualRef) {
+      const trimmedRef = payment.manualRef.trim();
+      await db.abaTransaction.updateMany({
+        where: {
+          OR: [{ trxId: trimmedRef }, { apv: trimmedRef }],
+          status: { in: ["UNMATCHED", "UNDERPAID", "AMBIGUOUS"] },
+        },
+        data: {
+          status: "MATCHED",
+          subscriptionPaymentId: payment.id,
+          matchedAt: new Date(),
+          matchedBy: `TELEGRAM:${senderName}`,
+          verificationNote: `Approved via Telegram /approve by ${senderName}`,
+        },
+      });
+    }
+
+    // Update original card in Telegram if messageId exists
+    if (payment.telegramGroupId && payment.telegramMessageId) {
+      const timestamp = new Date().toLocaleString("en-US", { timeZone: "Asia/Phnom_Penh" });
+      await updateTelegramMessageResolution(
+        botToken,
+        payment.telegramGroupId,
+        payment.telegramMessageId,
+        `🔐 KhLan — Subscription Payment (${payment.reference})\n━━━━━━━━━━━━━━━━━━━━━━━━━━━\n🏢 Tenant: ${payment.tenant.name}\n📋 Plan: ${payment.plan} (${payment.billingCycle})\n💰 Amount: $${payment.amountUsd.toFixed(2)}\n\n✅ VERIFIED & ACTIVATED by ${senderName}\n📅 ${timestamp} (Phnom Penh)\n⚡ Status: Processing Complete · ACTIVE`,
+        Boolean(payment.evidenceImage),
+        `✅ Processing Complete · Approved by ${senderName}`,
+      );
+    }
+
     try {
       await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           chat_id: chatId,
-          text: `✅ Payment ${payment.reference} APPROVED & ACTIVATED for ${payment.tenant.name} (${payment.plan}) by ${senderName}!`,
+          text: `✅ Payment ${payment.reference} APPROVED & ACTIVATED for ${payment.tenant.name} (${payment.plan}) by ${senderName}! Processing complete.`,
         }),
       });
     } catch {}
@@ -889,6 +1027,18 @@ async function handleTelegramGroupCommand(
       where: { id: payment.id },
       data: { verifiedByName: senderName, notifiedSeller: true, notifiedAt: new Date() },
     });
+
+    if (payment.telegramGroupId && payment.telegramMessageId) {
+      const timestamp = new Date().toLocaleString("en-US", { timeZone: "Asia/Phnom_Penh" });
+      await updateTelegramMessageResolution(
+        botToken,
+        payment.telegramGroupId,
+        payment.telegramMessageId,
+        `🔐 KhLan — Subscription Payment (${payment.reference})\n━━━━━━━━━━━━━━━━━━━━━━━━━━━\n🏢 Tenant: ${payment.tenant.name}\n📋 Plan: ${payment.plan} (${payment.billingCycle})\n💰 Amount: $${payment.amountUsd.toFixed(2)}\n\n❌ REJECTED by ${senderName}\n📅 ${timestamp} (Phnom Penh)\nStatus: REJECTED (Subscription NOT activated)`,
+        Boolean(payment.evidenceImage),
+        `❌ Rejected by ${senderName}`,
+      );
+    }
 
     try {
       await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
@@ -957,6 +1107,10 @@ export async function syncTelegramGroupUpdates(
     const json = (await res.json()) as { ok: boolean; result?: any[]; description?: string };
 
     if (!json.ok || !Array.isArray(json.result)) {
+      if (json.description?.includes("terminated by other getUpdates request")) {
+        // The 24/7 background daemon has active ownership of the update stream.
+        return outcome;
+      }
       outcome.errors.push(json.description || "Failed to fetch updates from Telegram");
       return outcome;
     }

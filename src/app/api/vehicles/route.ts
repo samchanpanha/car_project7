@@ -45,6 +45,7 @@ const createVehicleSchema = z.object({
     .enum(["NONE_DECLARED", "MINOR_DECLARED", "MAJOR_DECLARED", "UNKNOWN"])
     .default("UNKNOWN"),
   importOrigin: z.enum(["USA", "KOREA", "JAPAN", "THAILAND", "DUBAI", "LOCAL"]).optional().nullable(),
+  branchId: z.string().optional().nullable(),
   images: z.array(z.string().min(1)).optional(),
   // Optional vehicle papers — sellers declare them at creation time too.
   documents: z.array(documentInputSchema.omit({ id: true })).max(30).optional(),
@@ -130,6 +131,7 @@ export async function POST(req: Request) {
         // author belongs to a dealership so it lands in their inventory tab.
         createdById: actor.id,
         ...(membership ? { tenantId: membership.tenantId } : {}),
+        branchId: data.branchId ?? null,
         make: data.make,
         model: data.model,
         variant: data.variant ?? null,
@@ -165,7 +167,7 @@ export async function POST(req: Request) {
             fileUrl: d.fileUrl?.trim() || null,
           })),
         },
-      },
+      } as any,
       select: { id: true },
     });
 

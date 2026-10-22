@@ -19,15 +19,84 @@ export async function GET(req: Request) {
         ? (statusParam as VehicleStatus)
         : undefined;
 
-    // All tenant vehicles in any status (inventory manager view).
+    const branchId = sp.get("branchId") || undefined;
+    const q = sp.get("q")?.trim() || undefined;
+    const priceMin = sp.get("priceMin") ? Number(sp.get("priceMin")) : undefined;
+    const priceMax = sp.get("priceMax") ? Number(sp.get("priceMax")) : undefined;
+    const sort = sp.get("sort") || "newest";
+
+    const where: any = {
+      tenantId: tenant.id,
+      ...(status ? { status } : {}),
+      ...(branchId ? { branchId } : {}),
+    };
+
+    if (q) {
+      where.OR = [
+        { make: { contains: q } },
+        { model: { contains: q } },
+        { vinLast6: { contains: q } },
+        { plateNo: { contains: q } },
+      ];
+    }
+
+    if (priceMin !== undefined || priceMax !== undefined) {
+      where.priceUsd = {
+        ...(priceMin !== undefined ? { gte: priceMin } : {}),
+        ...(priceMax !== undefined ? { lte: priceMax } : {}),
+      };
+    }
+
+    let orderBy: any = { createdAt: "desc" };
+    if (sort === "price_asc") orderBy = { priceUsd: "asc" };
+    else if (sort === "price_desc") orderBy = { priceUsd: "desc" };
+    else if (sort === "views") orderBy = { views: "desc" };
+    else if (sort === "year_desc") orderBy = { year: "desc" };
+
+    const total = await db.vehicle.count({ where });
+
+    const pageParam = sp.get("page");
+    const limitParam = sp.get("limit");
+
+    if (pageParam || sp.get("paged") === "true") {
+      const page = Math.max(1, parseInt(pageParam || "1", 10));
+      const limit = Math.min(100, Math.max(1, parseInt(limitParam || "20", 10)));
+      const skip = (page - 1) * limit;
+
+      const rows = await db.vehicle.findMany({
+        where,
+        include: vehicleCardInclude,
+        orderBy,
+        skip,
+        take: limit,
+      });
+
+      const items: TenantVehicleRowDTO[] = rows.map(toCardDTO);
+      const pageCount = Math.max(1, Math.ceil(total / limit));
+
+      return NextResponse.json({
+        items,
+        total,
+        page,
+        limit,
+        pageCount,
+      });
+    }
+
+    // Default unpaged behavior (backward compatible, returns array with up to 500 records)
     const rows = await db.vehicle.findMany({
-      where: { tenantId: tenant.id, ...(status ? { status } : {}) },
+      where,
       include: vehicleCardInclude,
-      orderBy: { createdAt: "desc" },
+      orderBy,
+      take: 500,
     });
 
-    const items: TenantVehicleRowDTO[] = rows.slice(0, 100).map(toCardDTO);
-    return NextResponse.json(items);
+    const items: TenantVehicleRowDTO[] = rows.map(toCardDTO);
+    return NextResponse.json(items, {
+      headers: {
+        "x-total-count": String(total),
+      },
+    });
   } catch (err) {
     return toErrorResponse(err, "api/tenant/inventory GET", "Failed to load tenant inventory");
   }

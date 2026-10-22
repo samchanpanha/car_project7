@@ -26,7 +26,7 @@ function toDTO(
     method: string; status: string; reference: string; manualRef: string | null;
     evidenceUrl: string | null; evidenceImage: string | null; telegramSentAt: Date | null;
     telegramError: string | null; note: string | null; rejectionReason: string | null;
-    tenantId: string; reviewedAt: Date | null; createdAt: Date;
+    tenantId: string; reviewedAt: Date | null; verifiedByName?: string | null; createdAt: Date;
   },
   tenantName?: string,
   opts?: { includeImage?: boolean },
@@ -51,6 +51,7 @@ function toDTO(
     tenantId: p.tenantId,
     tenantName,
     reviewedAt: p.reviewedAt?.toISOString() ?? null,
+    verifiedByName: p.verifiedByName ?? null,
     createdAt: p.createdAt.toISOString(),
   };
 }

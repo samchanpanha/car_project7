@@ -26,7 +26,8 @@ function hasRequiredDelegates(client: unknown): boolean {
     typeof client === "object" &&
     client !== null &&
     typeof (client as Record<string, unknown>).tenantMember !== "undefined" &&
-    typeof (client as Record<string, unknown>).abaTransaction !== "undefined"
+    typeof (client as Record<string, unknown>).abaTransaction !== "undefined" &&
+    typeof (client as Record<string, unknown>).tenantBranch !== "undefined"
   );
 }
 
@@ -79,6 +80,7 @@ function ensureClient(): PrismaClient {
 
 export type AppDbClient = PrismaClient & {
   abaTransaction: any;
+  tenantBranch: any;
 };
 
 export const db: AppDbClient = ensureClient() as AppDbClient;

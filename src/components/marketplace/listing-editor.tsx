@@ -10,6 +10,7 @@ import { useT } from "@/hooks/use-t";
 import { useAppStore } from "@/lib/store";
 import { apiSend, useFetch } from "@/lib/client-hooks";
 import { fileToDataUrl } from "@/lib/image-client";
+import { uploadImagesParallel, type UploadProgress } from "@/lib/image-uploader";
 import type { ManageableVehicleDetailDTO } from "@/lib/listing-types";
 import type { MetaDTO } from "@/lib/types";
 import { Button } from "@/components/ui/button";
@@ -19,8 +20,9 @@ import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Progress } from "@/components/ui/progress";
 import {
-  CarFront, ChevronLeft, ChevronRight, FileText, FileUp, GripVertical, ImagePlus, Link2, Loader2, Plus, Star, TriangleAlert, X,
+  CarFront, ChevronLeft, ChevronRight, FileText, FileUp, GripVertical, ImagePlus, Link2, Loader2, Plus, Star, Trash2, TriangleAlert, UploadCloud, X,
 } from "lucide-react";
 import { fuelLabels, transmissionLabels } from "@/lib/i18n";
 import { toast } from "sonner";
@@ -300,7 +302,8 @@ export function PhotoUploader({
 }) {
   const t = useT();
   const inputRef = useRef<HTMLInputElement>(null);
-  const [uploading, setUploading] = useState(0);
+  const [progress, setProgress] = useState<UploadProgress | null>(null);
+  const [isDropActive, setIsDropActive] = useState(false);
   const [urlInput, setUrlInput] = useState("");
   // Latest list ref so in-flight uploads never resurrect a just-removed photo.
   const latest = useRef(images);
@@ -350,22 +353,25 @@ export function PhotoUploader({
   const uploadFiles = async (files: File[]) => {
     const list = files.filter((f) => f.type.startsWith("image/"));
     if (list.length === 0) return;
-    setUploading(list.length);
-    let failed = 0;
-    const added: string[] = [];
-    for (const file of list) {
-      try {
-        const dataUrl = await fileToDataUrl(file, 1280, 0.82);
-        const res = await apiSend<{ url: string }>("/api/uploads", "POST", { dataUrl });
-        added.push(res.url);
-      } catch {
-        failed += 1;
-      } finally {
-        setUploading((n) => Math.max(0, n - 1));
-      }
+    try {
+      const { urls, failedCount } = await uploadImagesParallel(list, (p) => setProgress(p), 3);
+      if (urls.length > 0) commit([...latest.current, ...urls]);
+      if (failedCount > 0) toast.error(t("uploadFailedCount", { n: failedCount }));
+      else if (urls.length > 0) toast.success(`Uploaded ${urls.length} photo${urls.length > 1 ? "s" : ""}`);
+    } catch {
+      toast.error(t("errorGeneric"));
+    } finally {
+      setTimeout(() => setProgress(null), 1200);
     }
-    if (added.length > 0) commit([...latest.current, ...added]);
-    if (failed > 0) toast.error(t("uploadFailedCount", { n: failed }));
+  };
+
+  const handleDropzoneDrop = (e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    setIsDropActive(false);
+    if (disabled) return;
+    if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+      void uploadFiles(Array.from(e.dataTransfer.files));
+    }
   };
 
   const addUrl = () => {
@@ -379,13 +385,32 @@ export function PhotoUploader({
   };
 
   const removeAt = (idx: number) => commit(images.filter((_, i) => i !== idx));
+  const clearAll = () => commit([]);
   const makeCover = (idx: number) => {
     if (idx === 0) return;
     commit([images[idx], ...images.filter((_, i) => i !== idx)]);
   };
+
+  const isUploading = progress?.active ?? false;
+
   return (
-    <div>
-      <div className="flex flex-wrap items-center gap-2">
+    <div className="space-y-3">
+      {/* Dropzone container */}
+      <div
+        onDragOver={(e) => {
+          e.preventDefault();
+          if (!disabled) setIsDropActive(true);
+        }}
+        onDragLeave={() => setIsDropActive(false)}
+        onDrop={handleDropzoneDrop}
+        className={cn(
+          "relative flex flex-col items-center justify-center rounded-xl border-2 border-dashed p-4 text-center transition-all",
+          isDropActive
+            ? "border-amber-500 bg-amber-50/70 scale-[1.01]"
+            : "border-slate-200 bg-slate-50/50 hover:border-amber-400 hover:bg-amber-50/20",
+          disabled && "opacity-60 cursor-not-allowed",
+        )}
+      >
         <input
           ref={inputRef}
           type="file"
@@ -393,35 +418,56 @@ export function PhotoUploader({
           multiple
           className="hidden"
           aria-label={t("uploadPhotos")}
+          disabled={disabled || isUploading}
           onChange={(e) => {
             if (e.target.files) void uploadFiles(Array.from(e.target.files));
             e.target.value = "";
           }}
         />
-        <Button
-          type="button"
-          variant="outline"
-          size="sm"
-          className="h-9 border-amber-300 text-amber-800 hover:bg-amber-50 hover:text-amber-900"
-          disabled={disabled || uploading > 0}
-          onClick={() => inputRef.current?.click()}
-        >
-          {uploading > 0 ? (
-            <>
-              <Loader2 className="h-4 w-4 mr-1.5 animate-spin" aria-hidden />
-              {t("uploadingPhotos", { n: uploading })}
-            </>
-          ) : (
-            <>
-              <ImagePlus className="h-4 w-4 mr-1.5" aria-hidden />
-              {t("uploadPhotos")}
-            </>
-          )}
-        </Button>
-        <span className="text-[11px] text-slate-400">{t("photosUnlimitedHint")}</span>
+
+        <div className="flex flex-col items-center gap-1.5">
+          <div className="flex h-10 w-10 items-center justify-center rounded-full bg-amber-100 text-amber-800">
+            {isUploading ? (
+              <Loader2 className="h-5 w-5 animate-spin" />
+            ) : (
+              <UploadCloud className="h-5 w-5" />
+            )}
+          </div>
+          <div>
+            <p className="text-xs font-semibold text-slate-800">
+              Drag & drop car photos here, or{" "}
+              <button
+                type="button"
+                onClick={() => inputRef.current?.click()}
+                disabled={disabled || isUploading}
+                className="text-amber-700 underline font-bold hover:text-amber-800 cursor-pointer"
+              >
+                browse files
+              </button>
+            </p>
+            <p className="mt-0.5 text-[11px] text-slate-400">
+              Unlimited photos supported · Auto-optimized (JPEG/PNG/WebP up to 15MB each)
+            </p>
+          </div>
+        </div>
+
+        {/* Progress bar during batch upload */}
+        {progress && (
+          <div className="mt-3 w-full max-w-xs space-y-1">
+            <div className="flex justify-between text-[11px] text-slate-600 font-medium">
+              <span>Uploading {progress.completed} of {progress.total} photos...</span>
+              <span>{Math.round((progress.completed / Math.max(1, progress.total)) * 100)}%</span>
+            </div>
+            <Progress
+              value={(progress.completed / Math.max(1, progress.total)) * 100}
+              className="h-1.5"
+            />
+          </div>
+        )}
       </div>
 
-      <div className="mt-2 flex gap-2">
+      {/* Direct URL input + Clear all action */}
+      <div className="flex items-center gap-2">
         <Input
           value={urlInput}
           onChange={(e) => setUrlInput(e.target.value)}
@@ -431,13 +477,35 @@ export function PhotoUploader({
               addUrl();
             }
           }}
-          placeholder="https://…"
-          className="h-9 text-xs"
+          placeholder="https://... (or paste image link)"
+          className="h-8 text-xs"
           aria-label={t("addPhotoUrl")}
+          disabled={disabled || isUploading}
         />
-        <Button type="button" variant="outline" size="sm" className="h-9" disabled={disabled} onClick={addUrl}>
-          <Link2 className="h-4 w-4" aria-hidden />
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          className="h-8 shrink-0 text-xs"
+          disabled={disabled || isUploading}
+          onClick={addUrl}
+        >
+          <Link2 className="h-3.5 w-3.5 mr-1" aria-hidden />
+          Add URL
         </Button>
+        {images.length > 3 && (
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            className="h-8 text-xs text-rose-600 hover:bg-rose-50 hover:text-rose-700"
+            disabled={disabled || isUploading}
+            onClick={clearAll}
+          >
+            <Trash2 className="h-3.5 w-3.5 mr-1" />
+            Clear
+          </Button>
+        )}
       </div>
 
       {images.length > 0 && (
@@ -553,6 +621,7 @@ interface EditorForm {
   importOrigin: string;
   description: string;
   descriptionKm: string;
+  branchId: string;
   status: string;
   images: string[];
   documents: DocumentRow[];
@@ -582,6 +651,7 @@ function toForm(v: ManageableVehicleDetailDTO): EditorForm {
     importOrigin: v.importOrigin ?? "",
     description: v.description ?? "",
     descriptionKm: v.descriptionKm ?? "",
+    branchId: v.branchId ?? "",
     status: v.status,
     images: v.images,
     documents: (v.documents ?? []).map((d) => ({
@@ -608,6 +678,7 @@ export function ListingEditorDialog({
   const t = useT();
   const locale = useAppStore((s) => s.locale);
   const { data: meta } = useFetch<MetaDTO>(open ? "/api/meta" : null);
+  const branches = useFetch<{ branches: { id: string; name: string; city: string }[] }>(open ? "/api/tenant/branches" : null);
   // GET /api/vehicles/[id] returns { vehicle, similar } — unwrap the vehicle.
   const detail = useFetch<{ vehicle: ManageableVehicleDetailDTO; similar: unknown }>(
     open && vehicleId ? `/api/vehicles/${vehicleId}` : null,
@@ -681,6 +752,7 @@ export function ListingEditorDialog({
         importOrigin: form.importOrigin || null,
         description: form.description.trim() || null,
         descriptionKm: form.descriptionKm.trim() || null,
+        branchId: form.branchId.trim() || null,
         status: form.status,
         images: form.images, // full ordered list — add/remove/reorder in one call
         documents: form.documents.map((d) => ({
@@ -834,6 +906,21 @@ export function ListingEditorDialog({
                     placeholder={t("sectionStatus")}
                   />
                 </EditField>
+                {branches.data?.branches && branches.data.branches.length > 0 && (
+                  <div className="col-span-2">
+                    <EditField label="Dealership Showroom Branch">
+                      <EditSelect
+                        value={form.branchId || "none"}
+                        onChange={(v) => set({ branchId: v === "none" ? "" : v })}
+                        options={[
+                          { value: "none", label: "Main / Central Showroom" },
+                          ...branches.data.branches.map((b) => ({ value: b.id, label: `${b.name} (${b.city})` })),
+                        ]}
+                        placeholder="Select showroom branch"
+                      />
+                    </EditField>
+                  </div>
+                )}
               </div>
             </section>
 

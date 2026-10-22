@@ -14,10 +14,15 @@ const patchSchema = z
     status: z.enum(["DRAFT", "PENDING_REVIEW", "PUBLISHED", "REJECTED", "SOLD", "ARCHIVED"]).optional(),
     priceUsd: z.number().positive().optional(),
     featured: z.boolean().optional(),
+    branchId: z.string().nullable().optional(),
   })
   .refine(
-    (v) => v.status !== undefined || v.priceUsd !== undefined || v.featured !== undefined,
-    { message: "At least one of status, priceUsd or featured is required" },
+    (v) =>
+      v.status !== undefined ||
+      v.priceUsd !== undefined ||
+      v.featured !== undefined ||
+      v.branchId !== undefined,
+    { message: "At least one of status, priceUsd, featured, or branchId is required" },
   );
 
 export async function PATCH(req: Request, { params }: { params: Promise<{ id: string }> }) {
@@ -69,10 +74,11 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
       }
     }
 
-    const data: { status?: string; priceUsd?: number; featured?: boolean } = {};
+    const data: { status?: string; priceUsd?: number; featured?: boolean; branchId?: string | null } = {};
     if (parsed.data.status !== undefined) data.status = parsed.data.status;
     if (parsed.data.priceUsd !== undefined) data.priceUsd = parsed.data.priceUsd;
     if (parsed.data.featured !== undefined) data.featured = parsed.data.featured;
+    if (parsed.data.branchId !== undefined) data.branchId = parsed.data.branchId;
     await db.vehicle.update({ where: { id }, data });
 
     if (parsed.data.status !== undefined && parsed.data.status !== vehicle.status) {
