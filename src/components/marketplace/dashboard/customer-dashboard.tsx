@@ -14,6 +14,7 @@ import { DashboardShell, type DashboardTabDef } from "./shell";
 import { PurchaseRequestList } from "./purchase-list";
 import { SellerInventory, SellerSubscription } from "./seller-tabs";
 import { SellerTelegram } from "./seller-telegram";
+import { SubscriptionPaywallCard } from "./payment-flow";
 import {
   AppointmentStatusBadge, ConfidenceRing, EmptyState, FetchErrorState, SectionCard, StatCard,
   StatCardSkeleton, errorText, formatDateTime, isForbidden,
@@ -78,6 +79,14 @@ export function CustomerDashboard({ me }: { me: SessionDTO }) {
       active={active}
       onTab={setTab}
     >
+      {isSellerish && (!me.subscription || me.subscription.status !== "ACTIVE") && (
+        <SubscriptionPaywallCard
+          role={me.user.role === "DEALER" ? "DEALER" : "SELLER"}
+          onActivated={() => {
+            window.location.reload();
+          }}
+        />
+      )}
       {active === "overview" && <CustomerOverview />}
       {active === "purchases" && <PurchaseRequestList url="/api/account/purchases" mode="buyer" />}
       {active === "favorites" && <CustomerFavorites />}
@@ -85,9 +94,25 @@ export function CustomerDashboard({ me }: { me: SessionDTO }) {
       {active === "appointments" && <CustomerAppointments />}
       {active === "reports" && <CustomerReports />}
       {active === "sales" && me.user.role === "SELLER" && (
-        <PurchaseRequestList url="/api/seller/purchase-requests" mode="seller" />
+        !me.subscription || me.subscription.status !== "ACTIVE" ? (
+          <div className="rounded-xl border border-amber-300 bg-amber-50 p-4 text-xs text-amber-900">
+            <p className="font-bold">Sales Management Locked</p>
+            <p className="mt-1">Please complete your subscription payment above to manage buyer purchase requests.</p>
+          </div>
+        ) : (
+          <PurchaseRequestList url="/api/seller/purchase-requests" mode="seller" />
+        )
       )}
-      {active === "inventory" && isSellerish && <SellerInventory />}
+      {active === "inventory" && isSellerish && (
+        !me.subscription || me.subscription.status !== "ACTIVE" ? (
+          <div className="rounded-xl border border-amber-300 bg-amber-50 p-4 text-xs text-amber-900">
+            <p className="font-bold">Inventory & Vehicle Listings Locked</p>
+            <p className="mt-1">Please complete your subscription payment above to create and manage vehicle listings.</p>
+          </div>
+        ) : (
+          <SellerInventory />
+        )
+      )}
       {active === "subscription" && isSellerish && <SellerSubscription />}
       {active === "telegram" && isSellerish && <SellerTelegram />}
     </DashboardShell>

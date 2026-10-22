@@ -28,6 +28,9 @@ export interface ManualPaymentConfig {
   khqrImageUrl: string | null; // fallback: URL of a QR image
   /** uploaded QR image (data URL) — what sellers actually scan, takes display precedence */
   khqrImage: string | null;
+  /** Per-cycle KHQR images — allows showing different QR codes for monthly vs yearly */
+  khqrImageMonthly: string | null; // data URL or public path for monthly plan QR
+  khqrImageYearly: string | null;  // data URL or public path for yearly plan QR
   instructionsEn: string | null;
   instructionsKm: string | null;
   telegram: string | null; // admin Telegram contact, e.g. "@khlan_admin" (shown to sellers)
@@ -45,6 +48,8 @@ const DEFAULT_CONFIG: ManualPaymentConfig = {
   khqrPayload: null,
   khqrImageUrl: null,
   khqrImage: null,
+  khqrImageMonthly: null,
+  khqrImageYearly: null,
   instructionsEn: null,
   instructionsKm: null,
   telegram: null,
@@ -52,6 +57,20 @@ const DEFAULT_CONFIG: ManualPaymentConfig = {
   telegramChatId: null,
   freePlan: { enabled: true, listingsLimit: 3, featuredLimit: 0, seats: 1 },
 };
+
+/**
+ * Resolve Telegram bot token and chat ID — .env values take precedence,
+ * then fall back to whatever the admin stored in PlatformSettings.
+ */
+export function resolveTelegramConfig(config: ManualPaymentConfig): {
+  botToken: string | null;
+  chatId: string | null;
+} {
+  return {
+    botToken: process.env.TELEGRAM_BOT_TOKEN || config.telegramBotToken || null,
+    chatId: process.env.TELEGRAM_GROUP_CHAT_ID || config.telegramChatId || null,
+  };
+}
 
 function clampLimit(n: unknown, fallback: number): number {
   const v = typeof n === "number" && Number.isFinite(n) ? Math.floor(n) : fallback;

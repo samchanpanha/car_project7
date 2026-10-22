@@ -1,0 +1,112 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 600 760" width="100%" height="100%" style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;">
+  <defs>
+    <linearGradient id="headerGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#004F71" />
+      <stop offset="100%" stop-color="#002D42" />
+    </linearGradient>
+    <linearGradient id="highlightGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#FEF3C7" />
+      <stop offset="100%" stop-color="#FDE68A" />
+    </linearGradient>
+    <filter id="cardShadow" x="-10%" y="-5%" width="120%" height="115%" filterUnits="userSpaceOnUse">
+      <feDropShadow dx="0" dy="8" stdDeviation="16" flood-color="#0f172a" flood-opacity="0.12" />
+    </filter>
+  </defs>
+
+  <!-- Background -->
+  <rect width="600" height="760" rx="24" fill="#F8FAFC" />
+
+  <!-- Main Card -->
+  <g filter="url(#cardShadow)">
+    <rect x="40" y="30" width="520" height="700" rx="20" fill="#FFFFFF" stroke="#E2E8F0" stroke-width="1.5" />
+  </g>
+
+  <!-- Top Blue Accent Header -->
+  <rect x="40" y="30" width="520" height="100" rx="20" fill="url(#headerGrad)" />
+  <!-- Flatten bottom corners of header -->
+  <rect x="40" y="100" width="520" height="30" fill="url(#headerGrad)" />
+
+  <!-- ABA / PayWay Branding -->
+  <text x="70" y="75" fill="#FFFFFF" font-size="20" font-weight="800" letter-spacing="1">ABA' Mobile</text>
+  <rect x="420" y="55" width="110" height="30" rx="6" fill="#00354E" />
+  <text x="435" y="76" fill="#38BDF8" font-size="12" font-weight="700" letter-spacing="0.5">KHQR PayWay</text>
+
+  <!-- Success Icon Circle -->
+  <circle cx="300" cy="130" r="34" fill="#FFFFFF" />
+  <circle cx="300" cy="130" r="28" fill="#10B981" />
+  <!-- Checkmark -->
+  <path d="M290 130 L297 137 L312 121" fill="none" stroke="#FFFFFF" stroke-width="4.5" stroke-linecap="round" stroke-linejoin="round" />
+
+  <!-- Title & Amount -->
+  <text x="300" y="195" text-anchor="middle" fill="#0F172A" font-size="18" font-weight="700">Payment Successful</text>
+  <text x="300" y="215" text-anchor="middle" fill="#64748B" font-size="12" font-weight="500">22 Oct 2026, 01:05 PM</text>
+
+  <text x="300" y="258" text-anchor="middle" fill="#0F172A" font-size="34" font-weight="900">$49.00 USD</text>
+  <text x="300" y="280" text-anchor="middle" fill="#059669" font-size="13" font-weight="700">(៛200,900 KHR)</text>
+
+  <!-- Divider -->
+  <line x1="70" y1="305" x2="530" y2="305" stroke="#E2E8F0" stroke-width="1.5" stroke-dasharray="6 4" />
+
+  <!-- Transaction Details List -->
+  <g transform="translate(70, 335)">
+    <!-- Payee -->
+    <text x="0" y="0" fill="#64748B" font-size="13" font-weight="500">Paid to (Payee)</text>
+    <text x="460" y="0" text-anchor="end" fill="#0F172A" font-size="14" font-weight="700">SAM CHAN PANHA</text>
+
+    <!-- Source -->
+    <text x="0" y="32" fill="#64748B" font-size="13" font-weight="500">From Account</text>
+    <text x="460" y="32" text-anchor="end" fill="#0F172A" font-size="13" font-weight="600">Sam Chanpanha (*674)</text>
+
+    <!-- Payment Type -->
+    <text x="0" y="64" fill="#64748B" font-size="13" font-weight="500">Payment Method</text>
+    <text x="460" y="64" text-anchor="end" fill="#0F172A" font-size="13" font-weight="600">ABA KHQR (Bakong)</text>
+  </g>
+
+  <!-- HIGHLIGHTED TRANSACTION ID BOX (THE CORE USER GUIDE ELEMENT) -->
+  <g transform="translate(60, 425)">
+    <!-- Glow / Outline Box -->
+    <rect x="0" y="0" width="480" height="135" rx="14" fill="url(#highlightGrad)" stroke="#F59E0B" stroke-width="2.5" />
+
+    <!-- "COPY THIS" Callout Tag -->
+    <rect x="330" y="-12" width="135" height="26" rx="13" fill="#D97706" />
+    <text x="397" y="5" text-anchor="middle" fill="#FFFFFF" font-size="11" font-weight="800" letter-spacing="0.5">⭐ COPY THIS NUMBER</text>
+
+    <!-- Header inside callout -->
+    <text x="20" y="28" fill="#92400E" font-size="12" font-weight="800" letter-spacing="0.5">BANK CONFIRMATION REFERENCE</text>
+
+    <!-- Trx ID Row -->
+    <text x="20" y="62" fill="#78350F" font-size="14" font-weight="600">Trx. ID:</text>
+    <rect x="85" y="42" width="230" height="28" rx="6" fill="#FFFFFF" stroke="#F59E0B" stroke-width="1" />
+    <text x="200" y="61" text-anchor="middle" fill="#B45309" font-size="15" font-family="monospace" font-weight="800">179264913984347</text>
+
+    <!-- APV Row -->
+    <text x="340" y="62" fill="#78350F" font-size="13" font-weight="600">APV:</text>
+    <rect x="380" y="42" width="80" height="28" rx="6" fill="#FFFFFF" stroke="#F59E0B" stroke-width="1" />
+    <text x="420" y="61" text-anchor="middle" fill="#B45309" font-size="14" font-family="monospace" font-weight="800">135160</text>
+
+    <!-- Instruction Subtext -->
+    <text x="20" y="105" fill="#92400E" font-size="12" font-weight="600">
+      👆 Enter this 15-digit Trx ID into the KhLan bank reference field
+    </text>
+    <text x="20" y="122" fill="#B45309" font-size="11" font-weight="500">
+      Our automated ABA system will instantly match &amp; activate your plan!
+    </text>
+  </g>
+
+  <!-- Telegram Alert Preview Box -->
+  <g transform="translate(60, 580)">
+    <rect x="0" y="0" width="480" height="75" rx="10" fill="#F1F5F9" stroke="#CBD5E1" stroke-width="1" />
+    <text x="15" y="22" fill="#475569" font-size="11" font-weight="700">Telegram / SMS Alert Preview:</text>
+    <text x="15" y="42" fill="#1E293B" font-size="11" font-family="monospace">
+      PayWay by ABA: $49 paid by Sam (*674) at SAM CHAN PANHA.
+    </text>
+    <text x="15" y="60" fill="#0369A1" font-size="11" font-family="monospace" font-weight="700">
+      Trx. ID: 179264913984347, APV: 135160
+    </text>
+  </g>
+
+  <!-- Bottom Info -->
+  <text x="300" y="695" text-anchor="middle" fill="#94A3B8" font-size="11" font-weight="500">
+    Supported across ABA Mobile, Bakong App, ACLEDA, Wing, Canadia &amp; Sathapana
+  </text>
+</svg>

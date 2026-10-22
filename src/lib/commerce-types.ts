@@ -53,6 +53,9 @@ export interface PaymentConfigDTO {
     khqrDataUrl: string | null;
     /** uploaded QR image (data URL) — takes display precedence over khqrDataUrl */
     khqrImage: string | null;
+    /** Per-cycle KHQR images — different QR codes for monthly vs yearly billing */
+    khqrImageMonthly: string | null;
+    khqrImageYearly: string | null;
   };
   /** admin-configured FREE tier */
   freePlan: {

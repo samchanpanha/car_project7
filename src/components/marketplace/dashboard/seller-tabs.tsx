@@ -10,9 +10,10 @@ import { useT } from "@/hooks/use-t";
 import { useFetch } from "@/lib/client-hooks";
 import { formatUsd, timeAgo } from "@/lib/format";
 import type { MyListingRowDTO } from "@/lib/listing-types";
-import type { SellerSubscriptionDTO } from "@/lib/dashboard-types";
+import type { PlanDTO, SellerSubscriptionDTO } from "@/lib/dashboard-types";
 import { ListingEditorDialog } from "@/components/marketplace/listing-editor";
 import { Pagination } from "@/components/marketplace/pagination";
+import { RequestSubscriptionDialog, PendingPaymentBanner, TenantPaymentHistory, SubscriptionPaywallCard } from "./payment-flow";
 import {
   EmptyState, FetchErrorState, SectionCard, StatCard, VehicleStatusBadge, formatDateTime,
 } from "./bits";
@@ -171,10 +172,45 @@ export function SellerInventory() {
 
 // ---------------- subscription (free trial) ----------------
 
+const SELLER_PLANS: PlanDTO[] = [
+  {
+    plan: "BASIC",
+    name: "Basic Plan",
+    priceUsdMonthly: 19,
+    priceUsdYearly: 190,
+    listingsLimit: 15,
+    featuredLimit: 3,
+    seats: 1,
+    features: [{ en: "Up to 15 car listings", km: "រថយន្តរហូតដល់ ១៥ គ្រឿង" }],
+  },
+  {
+    plan: "PRO",
+    name: "Professional Plan",
+    priceUsdMonthly: 49,
+    priceUsdYearly: 490,
+    listingsLimit: 50,
+    featuredLimit: 10,
+    seats: 5,
+    features: [{ en: "Up to 50 car listings", km: "រថយន្តរហូតដល់ ៥០ គ្រឿង" }],
+  },
+  {
+    plan: "ENTERPRISE",
+    name: "Enterprise Dealership",
+    priceUsdMonthly: 149,
+    priceUsdYearly: 1490,
+    listingsLimit: 999,
+    featuredLimit: 30,
+    seats: 20,
+    features: [{ en: "Unlimited car listings", km: "រថយន្តមិនកំណត់" }],
+  },
+];
+
 export function SellerSubscription() {
   const t = useT();
   const locale = useAppStore((s) => s.locale);
   const sub = useFetch<SellerSubscriptionDTO>("/api/seller/subscription");
+  const [cycle, setCycle] = useState<"MONTHLY" | "YEARLY">("MONTHLY");
+  const [requesting, setRequesting] = useState<PlanDTO | null>(null);
 
   if (sub.loading && !sub.data) {
     return (
@@ -243,12 +279,27 @@ export function SellerSubscription() {
       </SectionCard>
 
       {!active && (
-        <Alert className="border-rose-200 bg-rose-50 text-rose-900">
-          <TriangleAlert className="h-4 w-4" aria-hidden />
-          <AlertTitle>{t("subTrialExpiredTitle")}</AlertTitle>
-          <AlertDescription>{t("subTrialExpiredHint")}</AlertDescription>
-        </Alert>
+        <div className="space-y-4">
+          <SubscriptionPaywallCard
+            role="SELLER"
+            onActivated={() => {
+              sub.refetch();
+            }}
+          />
+          <TenantPaymentHistory />
+        </div>
       )}
+
+      <RequestSubscriptionDialog
+        open={requesting !== null}
+        onOpenChange={(o) => { if (!o) setRequesting(null); }}
+        plan={requesting}
+        cycle={cycle}
+        priceUsd={requesting ? (cycle === "YEARLY" ? requesting.priceUsdYearly : requesting.priceUsdMonthly) : 0}
+        onDone={() => {
+          sub.refetch();
+        }}
+      />
 
       <SectionCard title={t("subWhatNextTitle")}>
         <ul className="space-y-2.5 text-xs leading-relaxed text-slate-600">

@@ -21,11 +21,12 @@ import { PrismaClient } from "@prisma/client";
 
 type PrismaClientCtor = new (options?: { log?: string[] }) => PrismaClient;
 
-function hasTenantDelegate(client: unknown): boolean {
+function hasRequiredDelegates(client: unknown): boolean {
   return (
     typeof client === "object" &&
     client !== null &&
-    typeof (client as Record<string, unknown>).tenantMember !== "undefined"
+    typeof (client as Record<string, unknown>).tenantMember !== "undefined" &&
+    typeof (client as Record<string, unknown>).abaTransaction !== "undefined"
   );
 }
 
@@ -54,26 +55,30 @@ const globalForPrisma = globalThis as unknown as {
 
 function ensureClient(): PrismaClient {
   const existing = globalForPrisma.prisma;
-  if (existing && hasTenantDelegate(existing)) return existing;
+  if (existing && hasRequiredDelegates(existing)) return existing;
 
-  // Existing client is missing (or predates the multi-tenant models) — try a
+  // Existing client is missing (or predates the multi-tenant / ABA models) — try a
   // freshly required client first, then fall back to the statically imported one.
   const freshCtor = loadFreshCtor();
   if (freshCtor) {
     const fresh = new freshCtor({ log: ["query"] });
-    if (hasTenantDelegate(fresh)) {
+    if (hasRequiredDelegates(fresh)) {
       globalForPrisma.prisma = fresh;
       return fresh;
     }
   }
 
-  const db =
+  const client =
     existing ??
     new PrismaClient({
       log: ["query"],
     });
-  globalForPrisma.prisma = db;
-  return db;
+  globalForPrisma.prisma = client;
+  return client;
 }
 
-export const db = ensureClient();
+export type AppDbClient = PrismaClient & {
+  abaTransaction: any;
+};
+
+export const db: AppDbClient = ensureClient() as AppDbClient;

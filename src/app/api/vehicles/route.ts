@@ -77,29 +77,48 @@ export async function POST(req: Request) {
     const seller = await getDemoUser();
 
     // plan gate — a signed-in tenant member can only hold as many published
-    // listings as their (admin-configured) subscription allows. Listing
-    // attribution itself keeps the demo-user behaviour; this check only
-    // reads the authenticated actor's tenant membership.
+    // Subscription & Free Trial Gate:
+    // Selling cars requires an active subscription or free trial. Staff (ADMIN / SUPER_ADMIN) are exempt.
     const actor = await getCurrentUser();
+    const isStaff = actor.role === "ADMIN" || actor.role === "SUPER_ADMIN";
+
     const membership = await db.tenantMember.findFirst({
       where: { userId: actor.id, status: "ACTIVE" },
-      select: { tenantId: true },
+      include: { tenant: { include: { subscription: true } } },
     });
-    if (membership) {
-      const sub = await db.subscription.findUnique({ where: { tenantId: membership.tenantId } });
-      if (sub && sub.status === "ACTIVE") {
-        const publishedCount = await db.vehicle.count({
-          where: { tenantId: sub.tenantId, status: "PUBLISHED" },
-        });
-        if (publishedCount >= sub.listingsLimit) {
-          return NextResponse.json(
-            {
-              error: `Listing limit reached (${sub.listingsLimit}) on the ${sub.plan} plan — upgrade your subscription to publish more vehicles`,
-              code: "PLAN_LIMIT_LISTINGS",
-            },
-            { status: 402 },
-          );
-        }
+
+    if (!isStaff) {
+      const { readPlatformSettings, sellerTrialWindow } = await import("@/lib/platform-settings");
+      const settings = await readPlatformSettings();
+      const trial = sellerTrialWindow(actor.createdAt, settings.freeTrialDays, settings.freeTrialEnabled);
+      const hasActiveTrial = trial.enabled && !trial.expired;
+
+      const tenantSub = membership?.tenant?.subscription;
+      const hasActivePaidSub = Boolean(tenantSub && tenantSub.status === "ACTIVE" && tenantSub.plan !== "FREE");
+
+      if (!hasActiveTrial && !hasActivePaidSub) {
+        return NextResponse.json(
+          {
+            error: "Selling cars requires an active subscription or free trial. Please complete payment for a subscription plan to publish vehicle listings.",
+            code: "SUBSCRIPTION_REQUIRED",
+          },
+          { status: 403 },
+        );
+      }
+
+      // Check published listings limit
+      const listingsLimit = hasActivePaidSub ? (tenantSub?.listingsLimit ?? 15) : (settings.freeTrialEnabled ? 15 : 0);
+      const publishedCount = await db.vehicle.count({
+        where: membership ? { tenantId: membership.tenantId, status: "PUBLISHED" } : { createdById: actor.id, status: "PUBLISHED" },
+      });
+      if (publishedCount >= listingsLimit) {
+        return NextResponse.json(
+          {
+            error: `Listing limit reached (${listingsLimit}) — please upgrade your subscription to publish more vehicles`,
+            code: "PLAN_LIMIT_LISTINGS",
+          },
+          { status: 402 },
+        );
       }
     }
 

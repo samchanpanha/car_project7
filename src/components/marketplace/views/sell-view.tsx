@@ -10,6 +10,7 @@ import {
   PhotoUploader, DocumentsEditor, ListingEditorDialog, type DocumentRow,
 } from "@/components/marketplace/listing-editor";
 import { VehicleStatusBadge } from "@/components/marketplace/dashboard/bits";
+import { SubscriptionPaywallCard } from "@/components/marketplace/dashboard/payment-flow";
 import { Pagination } from "@/components/marketplace/pagination";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -179,8 +180,40 @@ export function SellView() {
 
   // Selling is an account action — guests get the register prompt, the public
   // can still browse every listing freely.
-  if (isGuest(me)) {
+  if (!me || isGuest(me)) {
     return <GuestPanel icon={<CarFront className="h-6 w-6" aria-hidden />} />;
+  }
+
+  const isStaff = me.user.role === "ADMIN" || me.user.role === "SUPER_ADMIN";
+  const hasActiveSub = me.subscription?.status === "ACTIVE";
+
+  if (!isStaff && !hasActiveSub) {
+    return (
+      <div className="mx-auto max-w-3xl px-4 py-8 pb-28 md:pb-10 space-y-4">
+        <div className="rounded-2xl border-2 border-amber-400 bg-amber-50/80 p-5 shadow-xs">
+          <div className="flex items-start gap-3">
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-amber-500 text-slate-950 font-bold shadow-xs">
+              <TriangleAlert className="h-5 w-5" />
+            </div>
+            <div>
+              <h2 className="text-base font-bold text-slate-950">
+                Active Subscription or Free Trial Required to Sell Cars
+              </h2>
+              <p className="mt-1 text-xs text-amber-900 leading-relaxed">
+                Free trial is currently inactive or your subscription has expired. In order to list and sell your vehicle on the KhLan marketplace, please choose a subscription plan below and complete payment via ABA KHQR.
+              </p>
+            </div>
+          </div>
+        </div>
+
+        <SubscriptionPaywallCard
+          role={me.user.role === "DEALER" ? "DEALER" : "SELLER"}
+          onActivated={() => {
+            window.location.reload();
+          }}
+        />
+      </div>
+    );
   }
 
   return (

@@ -10,6 +10,7 @@ import {
   getActivePersonaId,
   getCurrentUser,
 } from "@/lib/session";
+import { readPlatformSettings, sellerTrialWindow } from "@/lib/platform-settings";
 import type { PersonaDTO, SessionDTO, TenantRole, UserRole } from "@/lib/dashboard-types";
 import type { SellerType } from "@/lib/types";
 import type { Locale } from "@/lib/i18n";
@@ -60,7 +61,7 @@ async function buildSessionFor(userId: string): Promise<SessionDTO> {
     db.user.findUnique({ where: { id: userId }, include: { sellerProfile: true } }),
     db.tenantMember.findFirst({
       where: { userId, status: "ACTIVE" },
-      include: { tenant: true },
+      include: { tenant: { include: { subscription: true } } },
     }),
     db.user.findMany({ where: { id: { in: [...ALLOWED_PERSONA_IDS] } } }),
   ]);
@@ -101,6 +102,28 @@ async function buildSessionFor(userId: string): Promise<SessionDTO> {
 
   const authed = await isAuthedUser(user.id);
 
+  let subscription: SessionDTO["subscription"] = null;
+  if (user.role === "SELLER" || user.role === "DEALER") {
+    const settings = await readPlatformSettings();
+    const realSub = membership?.tenant?.subscription;
+    if (realSub && realSub.status === "ACTIVE" && realSub.plan !== "FREE") {
+      subscription = {
+        plan: realSub.plan,
+        status: "ACTIVE",
+        isTrial: false,
+        currentPeriodEnd: realSub.currentPeriodEnd.toISOString(),
+      };
+    } else {
+      const trial = sellerTrialWindow(user.createdAt, settings.freeTrialDays, settings.freeTrialEnabled);
+      subscription = {
+        plan: "FREE_TRIAL",
+        status: trial.enabled && !trial.expired ? "ACTIVE" : "EXPIRED",
+        isTrial: true,
+        currentPeriodEnd: trial.currentPeriodEnd.toISOString(),
+      };
+    }
+  }
+
   const session: SessionDTO = {
     user: {
       id: user.id,
@@ -124,6 +147,7 @@ async function buildSessionFor(userId: string): Promise<SessionDTO> {
     telegramLinked: Boolean(user.telegramId),
     phoneVerified: user.phoneVerified,
     personas,
+    subscription,
   };
   return session;
 }

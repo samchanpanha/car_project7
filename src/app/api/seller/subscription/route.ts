@@ -25,15 +25,30 @@ export async function GET() {
     }
 
     const settings = await readPlatformSettings();
-    const trial = sellerTrialWindow(user.createdAt, settings.freeTrialDays);
+    const trial = sellerTrialWindow(user.createdAt, settings.freeTrialDays, settings.freeTrialEnabled);
+
+    // Also check if they have a real paid subscription in their tenant:
+    const membership = await db.tenantMember.findFirst({
+      where: { userId: user.id, status: "ACTIVE" },
+      include: { tenant: { include: { subscription: true } } },
+    });
+    const realSub = membership?.tenant?.subscription;
+    const isPaidActive = realSub && realSub.status === "ACTIVE" && realSub.plan !== "FREE";
 
     const dto: SellerSubscriptionDTO = {
-      plan: "FREE_TRIAL",
-      status: trial.expired ? "EXPIRED" : "ACTIVE",
-      startedAt: trial.startedAt.toISOString(),
-      currentPeriodEnd: trial.currentPeriodEnd.toISOString(),
-      daysLeft: trial.daysLeft,
+      plan: isPaidActive ? realSub.plan : "FREE_TRIAL",
+      status: isPaidActive
+        ? "ACTIVE"
+        : trial.enabled && !trial.expired
+        ? "ACTIVE"
+        : trial.enabled
+        ? "EXPIRED"
+        : "INACTIVE",
+      startedAt: isPaidActive ? realSub.startedAt.toISOString() : trial.startedAt.toISOString(),
+      currentPeriodEnd: isPaidActive ? realSub.currentPeriodEnd.toISOString() : trial.currentPeriodEnd.toISOString(),
+      daysLeft: isPaidActive ? 30 : trial.daysLeft,
       freeTrialDays: settings.freeTrialDays,
+      freeTrialEnabled: settings.freeTrialEnabled,
     };
     return NextResponse.json(dto);
   } catch (err) {

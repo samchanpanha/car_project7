@@ -8,7 +8,6 @@ export const dynamic = "force-dynamic";
 /** Payment options available to the seller — QR is rendered server-side. */
 export async function GET() {
   try {
-    await requireTenantMember();
     const config = await getManualPaymentConfig();
     const dto: PaymentConfigDTO = {
       enabled: config.enabled,
@@ -17,9 +16,12 @@ export async function GET() {
         instructionsEn: config.instructionsEn,
         instructionsKm: config.instructionsKm,
         telegram: config.telegram,
-        hasKhqr: Boolean(config.khqrImage || config.khqrPayload || config.khqrImageUrl),
+        hasKhqr: Boolean(config.khqrImage || config.khqrPayload || config.khqrImageUrl || config.khqrImageMonthly || config.khqrImageYearly),
         khqrDataUrl: await khqrDataUrl(config),
         khqrImage: config.khqrImage,
+        // Per-cycle KHQR images — fall back to static placeholders
+        khqrImageMonthly: config.khqrImageMonthly || "/khqr/khqr-monthly.jpg",
+        khqrImageYearly: config.khqrImageYearly || "/khqr/khqr-yearly.jpg",
       },
       freePlan: config.freePlan,
     };

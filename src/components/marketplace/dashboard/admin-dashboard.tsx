@@ -41,7 +41,8 @@ import {
 import {
   BadgeCheck, Car, ChevronDown, CreditCard, DollarSign, FileCheck2, Gauge, Hourglass, Image as ImageIcon,
   LayoutDashboard, Loader2, MessageSquare, MoreHorizontal, ScrollText, Send, Settings, ShieldCheck, Sparkles,
-  Star, Store, TriangleAlert, Upload, Users, Wallet,
+  Star, Store, TriangleAlert, Upload, Users, Wallet, RefreshCw, Link2, Search, Check, CheckCircle2,
+  Calendar, Clock, Copy, Repeat, Trash2,
 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
@@ -685,6 +686,7 @@ function AdminSettings() {
         featuredListingPriceUsd: Number(form.featuredListingPriceUsd) || 0,
         autoApproveListings: form.autoApproveListings,
         maintenanceMode: form.maintenanceMode,
+        freeTrialEnabled: form.freeTrialEnabled ?? true,
         freeTrialDays: Math.max(0, Math.min(365, Math.round(Number(form.freeTrialDays) || 0))),
       });
       setForm(saved);
@@ -728,14 +730,55 @@ function AdminSettings() {
             onChange={(e) => setForm({ ...form, featuredListingPriceUsd: Number(e.target.value) })}
           />
         </div>
-        <div>
-          <Label htmlFor="adm-trial" className="text-xs text-slate-500">{t("setFreeTrialDays")}</Label>
-          <Input
-            id="adm-trial" type="number" min={0} max={365} className="mt-1.5 h-9"
-            value={form.freeTrialDays}
-            onChange={(e) => setForm({ ...form, freeTrialDays: Number(e.target.value) })}
-          />
-          <p className="mt-1 text-[11px] leading-relaxed text-slate-400">{t("setFreeTrialDaysHint")}</p>
+
+        {/* Free Trial Active / Inactive Status Section */}
+        <div className="rounded-xl border border-slate-200 p-3.5 space-y-3 sm:col-span-2 bg-slate-50/70">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <div className="flex items-center gap-2">
+                <Label htmlFor="adm-trial-status" className="text-xs font-bold text-slate-800 cursor-pointer">
+                  {t("setFreeTrialDays")}
+                </Label>
+                <span className={cn(
+                  "rounded-full px-2 py-0.5 text-[10px] font-bold border",
+                  form.freeTrialEnabled
+                    ? "bg-emerald-50 text-emerald-700 border-emerald-300"
+                    : "bg-rose-50 text-rose-700 border-rose-300"
+                )}>
+                  {form.freeTrialEnabled ? "ACTIVE" : "INACTIVE"}
+                </span>
+              </div>
+              <p className="mt-1 text-[11px] leading-relaxed text-slate-500">
+                {form.freeTrialEnabled
+                  ? "When ACTIVE: New sellers & dealers receive free trial access automatically upon registration."
+                  : "When INACTIVE: New sellers & dealers MUST select a plan and complete payment before logging into their dashboard."}
+              </p>
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-medium text-slate-600">
+                {form.freeTrialEnabled ? "Active" : "Inactive"}
+              </span>
+              <Switch
+                id="adm-trial-status"
+                checked={form.freeTrialEnabled}
+                onCheckedChange={(v) => setForm({ ...form, freeTrialEnabled: v })}
+              />
+            </div>
+          </div>
+
+          {form.freeTrialEnabled && (
+            <div className="pt-2.5 border-t border-slate-200/80">
+              <Label htmlFor="adm-trial" className="text-xs text-slate-600 font-medium">
+                Free Trial Duration (Days)
+              </Label>
+              <Input
+                id="adm-trial" type="number" min={1} max={365} className="mt-1.5 h-9 bg-white"
+                value={form.freeTrialDays}
+                onChange={(e) => setForm({ ...form, freeTrialDays: Number(e.target.value) })}
+              />
+              <p className="mt-1 text-[11px] leading-relaxed text-slate-400">{t("setFreeTrialDaysHint")}</p>
+            </div>
+          )}
         </div>
         <div className="flex items-center justify-between rounded-lg border border-slate-200 p-3">
           <Label htmlFor="adm-auto" className="text-xs font-medium text-slate-600 cursor-pointer">{t("setAutoApprove")}</Label>
@@ -808,6 +851,7 @@ const PAYMENT_FILTER_LABEL: Record<(typeof PAYMENT_FILTERS)[number], string> = {
 function AdminPayments() {
   const t = useT();
   const locale = useAppStore((s) => s.locale);
+  const [subTab, setSubTab] = useState<"queue" | "aba">("queue");
   const [status, setStatus] = useState<string>("AWAITING_VERIFICATION");
   const url = `/api/admin/payments${qs({ status: status === "ALL" ? undefined : status })}`;
   const { data, loading, error, refetch } = useFetch<SubscriptionPaymentDTO[]>(url);
@@ -831,139 +875,1091 @@ function AdminPayments() {
     }
   };
 
+  const sendToTelegram = async (paymentId: string) => {
+    setBusyId(paymentId);
+    try {
+      await apiSend(`/api/admin/payments/${paymentId}`, "PATCH", { action: "send_telegram" });
+      toast.success("Card with [Approve] and [Reject] buttons sent to Telegram group!");
+      refetch();
+    } catch (e) {
+      toast.error(errorText(e));
+    } finally {
+      setBusyId(null);
+    }
+  };
+
   return (
     <div className="space-y-4">
-      <div className="flex flex-wrap gap-1.5">
-        {PAYMENT_FILTERS.map((c) => (
+      {/* Sub-tab switcher: Verification Queue vs ABA PayWay Synced Feed */}
+      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-200 pb-3">
+        <div className="flex items-center gap-2">
           <button
-            key={c}
-            onClick={() => setStatus(c)}
-            aria-pressed={status === c}
+            type="button"
+            onClick={() => setSubTab("queue")}
             className={cn(
-              "rounded-full border px-3 py-1.5 text-xs font-medium transition-colors cursor-pointer",
-              status === c ? "border-amber-500 bg-amber-50 text-amber-800" : "border-slate-200 bg-white text-slate-600 hover:border-slate-300",
+              "flex items-center gap-2 rounded-lg px-3.5 py-2 text-xs font-bold transition-colors cursor-pointer",
+              subTab === "queue"
+                ? "bg-amber-500 text-slate-950 shadow-xs"
+                : "bg-slate-100 text-slate-600 hover:bg-slate-200",
             )}
           >
-            {t(PAYMENT_FILTER_LABEL[c] as never)}
+            <Wallet className="h-4 w-4" />
+            Verification Queue
           </button>
-        ))}
+          <button
+            type="button"
+            onClick={() => setSubTab("aba")}
+            className={cn(
+              "flex items-center gap-2 rounded-lg px-3.5 py-2 text-xs font-bold transition-colors cursor-pointer",
+              subTab === "aba"
+                ? "bg-amber-500 text-slate-950 shadow-xs"
+                : "bg-slate-100 text-slate-600 hover:bg-slate-200",
+            )}
+          >
+            <Send className="h-4 w-4 text-sky-600" />
+            ABA PayWay Synced Transactions
+          </button>
+        </div>
       </div>
 
-      {loading && !data ? (
-        <div className="space-y-3">{Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} className="h-24 w-full rounded-xl" />)}</div>
-      ) : error && !data ? (
-        <FetchErrorState message={error} onRetry={refetch} />
-      ) : !data || data.length === 0 ? (
-        <EmptyState icon={Wallet} text={t("noResults")} />
+      {subTab === "aba" ? (
+        <AdminAbaTransactionsView onVerified={() => refetch()} />
       ) : (
-        <div className="space-y-3">
-          {data.map((p) => (
-            <div key={p.id} className="rounded-xl border border-slate-200 bg-white p-4">
-              <div className="flex flex-wrap items-start justify-between gap-3">
-                <div className="min-w-0">
-                  <p className="flex flex-wrap items-center gap-1.5 text-sm font-semibold text-slate-900">
-                    {p.tenantName} · {p.plan} ({p.billingCycle === "MONTHLY" ? t("billingMonthly") : t("billingYearly")})
-                    <PaymentStatusBadge status={p.status} />
+        <>
+          <div className="flex flex-wrap gap-1.5">
+            {PAYMENT_FILTERS.map((c) => (
+              <button
+                key={c}
+                onClick={() => setStatus(c)}
+                aria-pressed={status === c}
+                className={cn(
+                  "rounded-full border px-3 py-1.5 text-xs font-medium transition-colors cursor-pointer",
+                  status === c ? "border-amber-500 bg-amber-50 text-amber-800" : "border-slate-200 bg-white text-slate-600 hover:border-slate-300",
+                )}
+              >
+                {t(PAYMENT_FILTER_LABEL[c] as never)}
+              </button>
+            ))}
+          </div>
+
+          {loading && !data ? (
+            <div className="space-y-3">{Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} className="h-24 w-full rounded-xl" />)}</div>
+          ) : error && !data ? (
+            <FetchErrorState message={error} onRetry={refetch} />
+          ) : !data || data.length === 0 ? (
+            <EmptyState icon={Wallet} text={t("noResults")} />
+          ) : (
+            <div className="space-y-3">
+              {data.map((p) => (
+                <div key={p.id} className="rounded-xl border border-slate-200 bg-white p-4">
+                  <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="flex flex-wrap items-center gap-1.5 text-sm font-semibold text-slate-900">
+                        {p.tenantName} · {p.plan} ({p.billingCycle === "MONTHLY" ? t("billingMonthly") : t("billingYearly")})
+                        <PaymentStatusBadge status={p.status} />
+                      </p>
+                      <p className="mt-1 text-xs text-slate-500">
+                        {t("payAmount")}: <span className="font-bold text-amber-700">{formatUsd(p.amountUsd)}</span>
+                        {" · "}{t("payFromTenant")}: <code className="rounded bg-slate-100 px-1.5 py-0.5 text-[10px]">{p.reference}</code>
+                        {p.manualRef ? ` · ${t("payManualRef")}: ${p.manualRef}` : ""}
+                      </p>
+                      <p className="mt-0.5 text-[11px] text-slate-400">
+                        {t("payMethodManual")}
+                        {" · "}{timeAgo(p.createdAt, locale)}
+                        {p.telegramSentAt ? ` · ${t("payTgSent")} ✓` : ""}
+                        {p.telegramError && p.telegramError !== "not_configured" ? ` · ${t("payTgFailed")}` : ""}
+                        {p.reviewedAt ? ` · ${t("payVerifier")}` : ""}
+                      </p>
+                      {p.note && <p className="mt-1 truncate text-xs italic text-slate-500">“{p.note}”</p>}
+                      {p.rejectionReason && (
+                        <p className="mt-1 text-xs text-rose-600">{t("payRejectedReason")}: {p.rejectionReason}</p>
+                      )}
+                      {p.evidenceUrl && (
+                        <a href={p.evidenceUrl} target="_blank" rel="noreferrer" className="mt-1 inline-block text-xs text-teal-700 hover:underline">
+                          {t("payEvidenceLabel")}
+                        </a>
+                      )}
+                      {p.evidenceImage && (
+                        <button
+                          type="button"
+                          onClick={() => setViewing(p)}
+                          className="mt-2 flex cursor-pointer items-center gap-2"
+                          aria-label={t("payEvidenceTitle")}
+                        >
+                          <img src={p.evidenceImage} alt={t("payEvidenceTitle")} className="h-16 w-16 rounded-md border border-slate-200 object-cover" />
+                          <span className="text-[11px] font-medium text-slate-500 underline decoration-dotted">{t("payEvidenceTitle")}</span>
+                        </button>
+                      )}
+                    </div>
+                    {p.status === "AWAITING_VERIFICATION" && (
+                      <div className="flex shrink-0 items-center gap-1.5">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          disabled={busyId === p.id}
+                          onClick={() => sendToTelegram(p.id)}
+                          className="border-sky-300 bg-sky-50/50 text-sky-800 hover:bg-sky-100 text-xs font-semibold cursor-pointer"
+                          title="Push to Telegram group with [Approve]/[Reject] buttons"
+                        >
+                          <Send className="h-3.5 w-3.5 mr-1 text-sky-600" />
+                          Send to Telegram
+                        </Button>
+                        <Button
+                          size="sm" disabled={busyId === p.id} onClick={() => decide(p, "verify")}
+                          className="bg-emerald-600 hover:bg-emerald-700 text-white font-semibold cursor-pointer"
+                        >
+                          {busyId === p.id ? <Loader2 className="h-4 w-4 mr-1.5 animate-spin" aria-hidden /> : <ShieldCheck className="h-4 w-4 mr-1.5" aria-hidden />}
+                          {t("payVerify")}
+                        </Button>
+                        <Button
+                          variant="outline" size="sm" disabled={busyId === p.id}
+                          onClick={() => { setRejecting(p); setReason(""); }}
+                          className="border-rose-200 text-rose-700 hover:bg-rose-50 cursor-pointer"
+                        >
+                          {t("payReject")}
+                        </Button>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Screenshot viewer */}
+          <Dialog open={Boolean(viewing)} onOpenChange={(o) => !o && setViewing(null)}>
+            <DialogContent className="sm:max-w-lg">
+              <DialogHeader>
+                <DialogTitle>{t("payEvidenceTitle")}</DialogTitle>
+              </DialogHeader>
+              {viewing?.evidenceImage && (
+                <div className="space-y-2">
+                  <img src={viewing.evidenceImage} alt={t("payEvidenceTitle")} className="max-h-[60vh] w-full rounded-lg border border-slate-200 object-contain" />
+                  <p className="text-center text-xs text-slate-500">
+                    {viewing.tenantName} · {formatUsd(viewing.amountUsd)} · <code>{viewing.reference}</code>
                   </p>
-                  <p className="mt-1 text-xs text-slate-500">
-                    {t("payAmount")}: <span className="font-bold text-amber-700">{formatUsd(p.amountUsd)}</span>
-                    {" · "}{t("payFromTenant")}: <code className="rounded bg-slate-100 px-1.5 py-0.5 text-[10px]">{p.reference}</code>
-                    {p.manualRef ? ` · ${t("payManualRef")}: ${p.manualRef}` : ""}
+                </div>
+              )}
+            </DialogContent>
+          </Dialog>
+
+          {/* Reject dialog */}
+          <Dialog open={Boolean(rejecting)} onOpenChange={(o) => !o && setRejecting(null)}>
+            <DialogContent className="sm:max-w-sm">
+              <DialogHeader>
+                <DialogTitle>{t("payRejectTitle")}</DialogTitle>
+              </DialogHeader>
+              <div className="space-y-3">
+                {rejecting && (
+                  <p className="text-xs text-slate-500">
+                    {rejecting.tenantName} · {formatUsd(rejecting.amountUsd)} · <code>{rejecting.reference}</code>
                   </p>
-                  <p className="mt-0.5 text-[11px] text-slate-400">
-                    {t("payMethodManual")}
-                    {" · "}{timeAgo(p.createdAt, locale)}
-                    {p.telegramSentAt ? ` · ${t("payTgSent")} ✓` : ""}
-                    {p.telegramError && p.telegramError !== "not_configured" ? ` · ${t("payTgFailed")}` : ""}
-                    {p.reviewedAt ? ` · ${t("payVerifier")}` : ""}
-                  </p>
-                  {p.note && <p className="mt-1 truncate text-xs italic text-slate-500">“{p.note}”</p>}
-                  {p.rejectionReason && (
-                    <p className="mt-1 text-xs text-rose-600">{t("payRejectedReason")}: {p.rejectionReason}</p>
+                )}
+                <div>
+                  <Label htmlFor="rej-reason" className="text-xs text-slate-500">{t("payRejectReasonLabel")} *</Label>
+                  <Textarea id="rej-reason" value={reason} onChange={(e) => setReason(e.target.value)} rows={3} className="mt-1.5" maxLength={300} />
+                </div>
+              </div>
+              <DialogFooter>
+                <Button variant="outline" size="sm" onClick={() => setRejecting(null)}>{t("cancel")}</Button>
+                <Button
+                  size="sm" disabled={busyId !== null || reason.trim().length < 3}
+                  onClick={() => rejecting && decide(rejecting, "reject", reason.trim())}
+                  className="bg-rose-600 text-white hover:bg-rose-700 font-semibold"
+                >
+                  {t("payReject")}
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
+        </>
+      )}
+    </div>
+  );
+}
+
+// ---------------- ABA PayWay Telegram Synced Transactions View ----------------
+
+interface AbaTxDTO {
+  id: string;
+  rawMessage: string;
+  source: string;
+  trxId: string;
+  apv: string | null;
+  amount: number;
+  currency: "KHR" | "USD";
+  amountUsd: number;
+  payerName: string | null;
+  payerAccount: string | null;
+  bankCode: string | null;
+  merchantName: string | null;
+  transactionDateRaw: string | null;
+  transactionDate: string;
+  status: "UNMATCHED" | "MATCHED" | "MANUAL" | "AMBIGUOUS" | "UNDERPAID";
+  isDuplicate?: boolean;
+  duplicateCount?: number;
+  sameTimeCollision?: boolean;
+  collisionTrxIds?: string | null;
+  verificationNote?: string | null;
+  subscriptionPaymentId: string | null;
+  subscriptionPayment?: {
+    reference: string;
+    plan: string;
+    tenant?: { name: string; id: string };
+  } | null;
+  matchedAt: string | null;
+  matchedBy: string | null;
+  createdAt: string;
+}
+
+interface AbaDailyStatDTO {
+  date: string;
+  count: number;
+  totalKhr: number;
+  totalUsd: number;
+  matchedCount: number;
+  unmatchedCount: number;
+  underpaidCount: number;
+  duplicateCount: number;
+  collisionCount: number;
+}
+
+interface AbaResponseDTO {
+  transactions: AbaTxDTO[];
+  dailyBreakdown: AbaDailyStatDTO[];
+  summary: {
+    totalCount: number;
+    unmatchedCount: number;
+    matchedCount: number;
+    underpaidCount: number;
+    duplicateCount: number;
+    collisionCount: number;
+    totalKhr: number;
+    totalUsd: number;
+  };
+}
+
+function AdminAbaTransactionsView({ onVerified }: { onVerified?: () => void }) {
+  const [filter, setFilter] = useState<string>("ALL");
+  const [selectedDay, setSelectedDay] = useState<string>("");
+  const [search, setSearch] = useState<string>("");
+  const [syncing, setSyncing] = useState<boolean>(false);
+  const [verifying, setVerifying] = useState<boolean>(false);
+  const [matchingTx, setMatchingTx] = useState<AbaTxDTO | null>(null);
+  const [matchingBusy, setMatchingBusy] = useState<boolean>(false);
+  const [ingestOpen, setIngestOpen] = useState<boolean>(false);
+  const [ingestText, setIngestText] = useState<string>("");
+  const [ingesting, setIngesting] = useState<boolean>(false);
+
+  const [clearing, setClearing] = useState<boolean>(false);
+
+  const handleClearOldData = async () => {
+    if (!confirm("Are you sure you want to remove all old ABA transaction test data from the database?")) return;
+    setClearing(true);
+    try {
+      const res = await apiSend<{ success: boolean; deletedCount: number; message: string }>(
+        "/api/admin/aba-transactions",
+        "POST",
+        { action: "clear" }
+      );
+      toast.success(res.message || "Old data removed successfully!");
+      refetch();
+      pendingPayments.refetch();
+      onVerified?.();
+    } catch (e) {
+      toast.error(errorText(e));
+    } finally {
+      setClearing(false);
+    }
+  };
+
+  const handleIngest = async () => {
+    if (!ingestText.trim()) return;
+    setIngesting(true);
+    try {
+      const res = await apiSend<{
+        success: boolean;
+        transaction?: any;
+        matched?: boolean;
+        isDuplicate?: boolean;
+        isSameTimeCollision?: boolean;
+      }>("/api/admin/aba-transactions", "POST", {
+        action: "ingest",
+        rawMessage: ingestText.trim(),
+      });
+      if (res.isDuplicate) {
+        toast.info("Transaction received as duplicate! Deduplication protection applied.");
+      } else if (res.isSameTimeCollision) {
+        toast.warning("Transaction saved with Same-Time Collision detected!");
+      } else {
+        toast.success("Transaction parsed and recorded successfully!");
+      }
+      setIngestText("");
+      setIngestOpen(false);
+      refetch();
+      pendingPayments.refetch();
+      onVerified?.();
+    } catch (e) {
+      toast.error(errorText(e));
+    } finally {
+      setIngesting(false);
+    }
+  };
+
+  const queryUrl = `/api/admin/aba-transactions${qs({
+    status: ["ALL", "COLLISIONS", "DUPLICATES"].includes(filter) ? undefined : filter,
+    duplicate: filter === "DUPLICATES" ? "true" : undefined,
+    collision: filter === "COLLISIONS" ? "true" : undefined,
+    day: selectedDay || undefined,
+    search: search || undefined,
+  })}`;
+
+  const { data, loading, error, refetch } = useFetch<AbaResponseDTO>(queryUrl);
+  const pendingPayments = useFetch<SubscriptionPaymentDTO[]>("/api/admin/payments?status=AWAITING_VERIFICATION");
+
+  const copyToClipboard = async (text: string, label: string) => {
+    try {
+      await navigator.clipboard.writeText(text);
+      toast.success(`Copied ${label} to clipboard!`);
+    } catch {
+      toast.info(`${label}: ${text}`);
+    }
+  };
+
+  // Auto-sync polling every 12 seconds while on this tab
+  useEffect(() => {
+    const timer = setInterval(() => {
+      fetch("/api/admin/aba-transactions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "sync" }),
+      })
+        .then((r) => r.json())
+        .then((res) => {
+          if (
+            (res?.outcome?.newTransactions ?? 0) > 0 ||
+            (res?.outcome?.approvalsProcessed ?? 0) > 0 ||
+            (res?.outcome?.rejectionsProcessed ?? 0) > 0
+          ) {
+            refetch();
+            pendingPayments.refetch();
+            onVerified?.();
+          }
+        })
+        .catch(() => {});
+    }, 12_000);
+    return () => clearInterval(timer);
+  }, []);
+
+  const syncGroup = async () => {
+    setSyncing(true);
+    try {
+      const res = await apiSend<{
+        success: boolean;
+        outcome: {
+          processed: number;
+          newTransactions: number;
+          matchedPayments: number;
+          duplicatesPrevented: number;
+          sameTimeCollisions: number;
+          approvalsProcessed?: number;
+          rejectionsProcessed?: number;
+          commandsProcessed?: number;
+          errors?: string[];
+        };
+      }>("/api/admin/aba-transactions", "POST", { action: "sync" });
+
+      const parts: string[] = [];
+      if (res.outcome.newTransactions > 0) parts.push(`${res.outcome.newTransactions} new transaction(s)`);
+      if (res.outcome.matchedPayments > 0) parts.push(`${res.outcome.matchedPayments} auto-matched`);
+      if ((res.outcome.approvalsProcessed ?? 0) > 0) parts.push(`${res.outcome.approvalsProcessed} approved via Telegram`);
+      if ((res.outcome.rejectionsProcessed ?? 0) > 0) parts.push(`${res.outcome.rejectionsProcessed} rejected via Telegram`);
+      if (res.outcome.duplicatesPrevented > 0) parts.push(`${res.outcome.duplicatesPrevented} duplicate(s) blocked`);
+      if (res.outcome.sameTimeCollisions > 0) parts.push(`${res.outcome.sameTimeCollisions} collision(s) flagged`);
+
+      toast.success(
+        parts.length > 0
+          ? `Sync Complete: ${parts.join(", ")}!`
+          : "Sync Complete: Checked Telegram group. All transactions and approval buttons are up-to-date!",
+      );
+      refetch();
+      pendingPayments.refetch();
+      onVerified?.();
+    } catch (e) {
+      toast.error(errorText(e));
+    } finally {
+      setSyncing(false);
+    }
+  };
+
+  const verifyAudit = async () => {
+    setVerifying(true);
+    try {
+      const res = await apiSend<{
+        success: boolean;
+        report: {
+          totalTransactions: number;
+          duplicateCount: number;
+          sameTimeCollisionCount: number;
+          ambiguousCount: number;
+          autoMatchedCount: number;
+        };
+      }>("/api/admin/aba-transactions", "POST", {
+        action: "verify",
+        day: selectedDay || undefined,
+      });
+
+      toast.success(
+        `Audit Complete: ${res.report.totalTransactions} transactions scanned. ${res.report.duplicateCount} duplicates verified, ${res.report.sameTimeCollisionCount} same-time collision(s) checked, ${res.report.autoMatchedCount} reconciled!`,
+      );
+      refetch();
+      pendingPayments.refetch();
+      onVerified?.();
+    } catch (e) {
+      toast.error(errorText(e));
+    } finally {
+      setVerifying(false);
+    }
+  };
+
+  const manualMatch = async (txId: string, paymentId: string) => {
+    setMatchingBusy(true);
+    try {
+      await apiSend("/api/admin/aba-transactions", "PATCH", {
+        transactionId: txId,
+        subscriptionPaymentId: paymentId,
+      });
+      toast.success("Transaction matched and subscription activated!");
+      setMatchingTx(null);
+      refetch();
+      pendingPayments.refetch();
+      onVerified?.();
+    } catch (e) {
+      toast.error(errorText(e));
+    } finally {
+      setMatchingBusy(false);
+    }
+  };
+
+  const summary = data?.summary;
+  const dailyBreakdown = data?.dailyBreakdown || [];
+
+  return (
+    <div className="space-y-4">
+      {/* Header Info & Sync Actions */}
+      <div className="rounded-xl border border-sky-200 bg-sky-50/70 p-4 shadow-xs">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="max-w-2xl">
+            <h3 className="flex items-center gap-2 text-sm font-bold text-slate-900">
+              <Send className="h-4 w-4 text-sky-600" />
+              Telegram Group Payment Syncer & Reconciler
+            </h3>
+            <p className="mt-0.5 text-xs text-slate-600 leading-relaxed">
+              Captures all automated <span className="font-semibold text-slate-800">PayWay by ABA</span> alerts from Telegram group{" "}
+              <code className="rounded bg-sky-100 px-1.5 py-0.5 font-mono text-[11px] text-sky-900">-1004489863210</code> (MyABApayway) day-by-day.
+              Automatically checks deduplication, verifies concurrent same-time transactions, and auto-activates subscriptions.
+            </p>
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={handleClearOldData}
+              disabled={clearing || syncing || verifying}
+              className="border-rose-300 bg-white text-rose-700 hover:bg-rose-50 text-xs font-semibold cursor-pointer shadow-xs"
+              title="Remove old test data and start fresh"
+            >
+              <Trash2 className="h-3.5 w-3.5 mr-1.5 text-rose-500" />
+              {clearing ? "Clearing..." : "Clear Old Data"}
+            </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => setIngestOpen(true)}
+              className="border-sky-300 bg-white text-sky-800 hover:bg-sky-100/70 text-xs font-semibold cursor-pointer shadow-xs"
+            >
+              <Upload className="h-3.5 w-3.5 mr-1.5 text-sky-600" />
+              Paste ABA Alert
+            </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={verifyAudit}
+              disabled={verifying || syncing || clearing}
+              className="border-sky-300 bg-white text-sky-800 hover:bg-sky-100/70 text-xs font-semibold cursor-pointer shadow-xs"
+            >
+              <ShieldCheck className={cn("h-3.5 w-3.5 mr-1.5 text-sky-600", verifying && "animate-spin")} />
+              {verifying ? "Auditing..." : "Verify & Check All"}
+            </Button>
+            <Button
+              size="sm"
+              onClick={syncGroup}
+              disabled={syncing || verifying || clearing}
+              className="bg-sky-600 hover:bg-sky-700 text-white font-semibold cursor-pointer shadow-xs text-xs"
+            >
+              <RefreshCw className={cn("h-3.5 w-3.5 mr-1.5", syncing && "animate-spin")} />
+              {syncing ? "Syncing Group..." : "Sync Group Now"}
+            </Button>
+          </div>
+        </div>
+        <div className="mt-2.5 rounded-lg border border-sky-200/90 bg-sky-100/70 p-2.5 text-xs text-sky-950 space-y-1">
+          <p className="font-bold flex items-center gap-1.5 text-sky-950">
+            <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600" />
+            Live Telegram Group Approvals & Commands:
+          </p>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-[11px] leading-relaxed text-sky-900 pt-1">
+            <div>
+              <p>• <strong>1-Tap Mobile Approval:</strong> Click <code>[✅ Approve & Activate]</code> or <code>[❌ Reject]</code> on any card in the Telegram group. Subscription activates instantly and the message caption updates with your admin name & Phnom Penh timestamp.</p>
+              <p className="mt-1">• <strong>Group Commands:</strong> Type <code>/pending</code> to list awaiting payments with buttons, or <code>/approve &lt;TrxID&gt;</code> to approve by text.</p>
+            </div>
+            <div>
+              <p>• <strong>Automated ABA PayWay Alerts:</strong> Any ABA PayWay alert in group <code>-1004489863210</code> is automatically recorded, deduplicated, and matched.</p>
+              <p className="mt-1">• <strong>Direct Bot Forwarding:</strong> You can also forward any ABA notification directly to <code>@KhmerSmartRestaurantBot</code> in a private chat to sync instantly.</p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* KPI Stats Grid */}
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-6">
+        <div className="rounded-xl border border-slate-200 bg-white p-3 shadow-xs">
+          <p className="text-[11px] font-medium text-slate-400">Total Synced</p>
+          <p className="mt-1 text-xl font-black text-slate-900">{summary?.totalCount ?? 0}</p>
+        </div>
+        <div className="rounded-xl border border-slate-200 bg-white p-3 shadow-xs">
+          <p className="text-[11px] font-medium text-slate-400">Total KHR (៛)</p>
+          <p className="mt-1 text-xl font-black text-violet-700">៛{(summary?.totalKhr ?? 0).toLocaleString()}</p>
+        </div>
+        <div className="rounded-xl border border-slate-200 bg-white p-3 shadow-xs">
+          <p className="text-[11px] font-medium text-slate-400">Total USD ($)</p>
+          <p className="mt-1 text-xl font-black text-emerald-700">${(summary?.totalUsd ?? 0).toFixed(2)}</p>
+        </div>
+        <div className={cn(
+          "rounded-xl border p-3 shadow-xs transition-colors",
+          (summary?.underpaidCount ?? 0) > 0 ? "border-amber-400 bg-amber-50/60" : "border-slate-200 bg-white"
+        )}>
+          <div className="flex items-center justify-between">
+            <p className="text-[11px] font-medium text-slate-500">Underpaid (Pending)</p>
+            {(summary?.underpaidCount ?? 0) > 0 && (
+              <TriangleAlert className="h-3.5 w-3.5 text-amber-600" />
+            )}
+          </div>
+          <p className={cn("mt-1 text-xl font-black", (summary?.underpaidCount ?? 0) > 0 ? "text-amber-800" : "text-slate-900")}>
+            {summary?.underpaidCount ?? 0}
+          </p>
+        </div>
+        <div className={cn(
+          "rounded-xl border p-3 shadow-xs transition-colors",
+          (summary?.collisionCount ?? 0) > 0 ? "border-amber-300 bg-amber-50/50" : "border-slate-200 bg-white"
+        )}>
+          <div className="flex items-center justify-between">
+            <p className="text-[11px] font-medium text-slate-500">Same-Time Conflicts</p>
+            {(summary?.collisionCount ?? 0) > 0 && (
+              <TriangleAlert className="h-3.5 w-3.5 text-amber-600" />
+            )}
+          </div>
+          <p className={cn("mt-1 text-xl font-black", (summary?.collisionCount ?? 0) > 0 ? "text-amber-700" : "text-slate-900")}>
+            {summary?.collisionCount ?? 0}
+          </p>
+        </div>
+        <div className={cn(
+          "rounded-xl border p-3 shadow-xs transition-colors",
+          (summary?.duplicateCount ?? 0) > 0 ? "border-purple-200 bg-purple-50/40" : "border-slate-200 bg-white"
+        )}>
+          <div className="flex items-center justify-between">
+            <p className="text-[11px] font-medium text-slate-500">Duplicates Blocked</p>
+            {(summary?.duplicateCount ?? 0) > 0 && (
+              <Repeat className="h-3.5 w-3.5 text-purple-600" />
+            )}
+          </div>
+          <p className={cn("mt-1 text-xl font-black", (summary?.duplicateCount ?? 0) > 0 ? "text-purple-700" : "text-slate-900")}>
+            {summary?.duplicateCount ?? 0}
+          </p>
+        </div>
+      </div>
+
+      {/* Day-by-Day Selector */}
+      <div className="rounded-xl border border-slate-200 bg-white p-3.5 shadow-xs space-y-2.5">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div className="flex items-center gap-1.5 text-xs font-bold text-slate-800">
+            <Calendar className="h-3.5 w-3.5 text-amber-600" />
+            <span>Day-by-Day Sync & History (Phnom Penh UTC+7)</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <span className="text-[11px] text-slate-400">Custom Day:</span>
+            <Input
+              type="date"
+              value={selectedDay}
+              onChange={(e) => setSelectedDay(e.target.value)}
+              className="h-7 w-36 text-[11px]"
+            />
+            {selectedDay && (
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={() => setSelectedDay("")}
+                className="h-7 px-2 text-[11px] text-slate-500 hover:text-slate-800"
+              >
+                Clear Day
+              </Button>
+            )}
+          </div>
+        </div>
+
+        {/* Day Pills Bar */}
+        <div className="flex items-center gap-2 overflow-x-auto pb-1 text-xs no-scrollbar">
+          <button
+            type="button"
+            onClick={() => setSelectedDay("")}
+            className={cn(
+              "shrink-0 rounded-lg border px-3 py-1.5 font-medium transition-all cursor-pointer text-xs",
+              selectedDay === ""
+                ? "border-amber-500 bg-amber-500 text-white font-bold shadow-xs"
+                : "border-slate-200 bg-slate-50 text-slate-700 hover:bg-slate-100",
+            )}
+          >
+            All Days ({summary?.totalCount ?? 0})
+          </button>
+
+          {dailyBreakdown.map((day) => {
+            const isSelected = selectedDay === day.date;
+            return (
+              <button
+                key={day.date}
+                type="button"
+                onClick={() => setSelectedDay(day.date)}
+                className={cn(
+                  "shrink-0 rounded-lg border px-3 py-1.5 transition-all cursor-pointer text-xs text-left",
+                  isSelected
+                    ? "border-amber-600 bg-amber-50 border-2 font-bold text-amber-950 shadow-xs"
+                    : "border-slate-200 bg-white text-slate-700 hover:border-slate-300 hover:bg-slate-50",
+                )}
+              >
+                <div className="flex items-center gap-1.5">
+                  <span className="font-semibold">{day.date}</span>
+                  <span className="rounded-full bg-slate-100 px-1.5 py-0.2 text-[10px] font-bold text-slate-600">
+                    {day.count}
+                  </span>
+                  {day.collisionCount > 0 && (
+                    <span className="text-[10px] text-amber-600 font-bold" title={`${day.collisionCount} same-time collision(s)`}>
+                      ⚠️{day.collisionCount}
+                    </span>
                   )}
-                  {p.evidenceUrl && (
-                    <a href={p.evidenceUrl} target="_blank" rel="noreferrer" className="mt-1 inline-block text-xs text-teal-700 hover:underline">
-                      {t("payEvidenceLabel")}
-                    </a>
-                  )}
-                  {p.evidenceImage && (
-                    <button
-                      type="button"
-                      onClick={() => setViewing(p)}
-                      className="mt-2 flex cursor-pointer items-center gap-2"
-                      aria-label={t("payEvidenceTitle")}
-                    >
-                      <img src={p.evidenceImage} alt={t("payEvidenceTitle")} className="h-16 w-16 rounded-md border border-slate-200 object-cover" />
-                      <span className="text-[11px] font-medium text-slate-500 underline decoration-dotted">{t("payEvidenceTitle")}</span>
-                    </button>
+                  {day.duplicateCount > 0 && (
+                    <span className="text-[10px] text-purple-600 font-bold" title={`${day.duplicateCount} duplicate(s)`}>
+                      🔁
+                    </span>
                   )}
                 </div>
-                {p.status === "AWAITING_VERIFICATION" && (
-                  <div className="flex shrink-0 items-center gap-2">
-                    <Button
-                      size="sm" disabled={busyId === p.id} onClick={() => decide(p, "verify")}
-                      className="bg-emerald-600 hover:bg-emerald-700 text-white font-semibold"
-                    >
-                      {busyId === p.id ? <Loader2 className="h-4 w-4 mr-1.5 animate-spin" aria-hidden /> : <ShieldCheck className="h-4 w-4 mr-1.5" aria-hidden />}
-                      {t("payVerify")}
-                    </Button>
-                    <Button
-                      variant="outline" size="sm" disabled={busyId === p.id}
-                      onClick={() => { setRejecting(p); setReason(""); }}
-                      className="border-rose-200 text-rose-700 hover:bg-rose-50"
-                    >
-                      {t("payReject")}
-                    </Button>
+                <div className="mt-0.5 text-[10px] text-slate-400">
+                  {day.totalKhr > 0 && `៛${day.totalKhr.toLocaleString()}`}
+                  {day.totalKhr > 0 && day.totalUsd > 0 && " · "}
+                  {day.totalUsd > 0 && `$${day.totalUsd.toFixed(2)}`}
+                </div>
+              </button>
+            );
+          })}
+        </div>
+
+        {selectedDay && (
+          <div className="flex items-center justify-between rounded-lg bg-amber-50/70 border border-amber-200 px-3 py-1.5 text-xs text-amber-900">
+            <span>
+              Showing transactions for <strong>{selectedDay}</strong>
+            </span>
+            <button
+              onClick={() => setSelectedDay("")}
+              className="text-[11px] font-semibold underline text-amber-800 hover:text-amber-950 cursor-pointer"
+            >
+              Reset to all days
+            </button>
+          </div>
+        )}
+      </div>
+
+      {/* Search and Filters */}
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex flex-wrap items-center gap-1.5">
+          {[
+            { id: "ALL", label: "All Transactions" },
+            { id: "UNMATCHED", label: `Unmatched (${summary?.unmatchedCount ?? 0})` },
+            { id: "UNDERPAID", label: `⚠️ Underpaid (${summary?.underpaidCount ?? 0})` },
+            { id: "MATCHED", label: `Matched (${summary?.matchedCount ?? 0})` },
+            { id: "COLLISIONS", label: `⚠️ Conflicts (${summary?.collisionCount ?? 0})` },
+            { id: "DUPLICATES", label: `🔁 Duplicates (${summary?.duplicateCount ?? 0})` },
+          ].map((st) => (
+            <button
+              key={st.id}
+              onClick={() => setFilter(st.id)}
+              className={cn(
+                "rounded-full border px-3 py-1 text-xs font-semibold transition-colors cursor-pointer",
+                filter === st.id
+                  ? "border-amber-500 bg-amber-50 text-amber-900 font-bold"
+                  : "border-slate-200 bg-white text-slate-600 hover:border-slate-300",
+              )}
+            >
+              {st.label}
+            </button>
+          ))}
+        </div>
+        <div className="relative w-full sm:w-64">
+          <Search className="absolute left-2.5 top-2.5 h-3.5 w-3.5 text-slate-400" />
+          <Input
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Search Trx ID, APV, Payer..."
+            className="h-8.5 pl-8 text-xs"
+          />
+        </div>
+      </div>
+
+      {/* Transactions List */}
+      {loading && !data ? (
+        <div className="space-y-3">
+          {Array.from({ length: 3 }).map((_, i) => (
+            <Skeleton key={i} className="h-24 w-full rounded-xl" />
+          ))}
+        </div>
+      ) : error && !data ? (
+        <FetchErrorState message={error} onRetry={refetch} />
+      ) : !data || data.transactions.length === 0 ? (
+        <div className="rounded-xl border border-dashed border-slate-200 bg-white p-8 text-center">
+          <Send className="mx-auto h-8 w-8 text-slate-300" />
+          <p className="mt-2 text-sm font-semibold text-slate-700">No ABA transactions found</p>
+          <p className="mt-1 text-xs text-slate-400">
+            {selectedDay
+              ? `No transactions recorded on ${selectedDay}. Try clearing the day filter or syncing the group.`
+              : "When customers scan your KHQR and pay, automated messages from Telegram will appear here."}
+          </p>
+          <div className="mt-4 flex items-center justify-center gap-2">
+            {selectedDay && (
+              <Button size="sm" variant="outline" onClick={() => setSelectedDay("")} className="text-xs">
+                View All Days
+              </Button>
+            )}
+            <Button size="sm" onClick={syncGroup} className="bg-sky-600 text-white hover:bg-sky-700 text-xs">
+              Sync Group Now
+            </Button>
+          </div>
+        </div>
+      ) : (
+        <div className="space-y-2.5">
+          {data.transactions.map((tx) => {
+            const hasCollision = Boolean(tx.sameTimeCollision);
+            const isDup = Boolean(tx.isDuplicate);
+            const isMatched = tx.status === "MATCHED";
+            const isAmbiguous = tx.status === "AMBIGUOUS";
+            const isUnderpaid = tx.status === "UNDERPAID";
+
+            return (
+              <div
+                key={tx.id}
+                className={cn(
+                  "rounded-xl border bg-white p-3.5 shadow-xs transition-all hover:border-slate-300 relative",
+                  isMatched
+                    ? "border-emerald-200 border-l-4 border-l-emerald-500"
+                    : isUnderpaid
+                    ? "border-amber-400 border-l-4 border-l-amber-600 bg-amber-50/20"
+                    : isAmbiguous
+                    ? "border-rose-300 border-l-4 border-l-rose-500 bg-rose-50/20"
+                    : hasCollision
+                    ? "border-amber-300 border-l-4 border-l-amber-500"
+                    : isDup
+                    ? "border-purple-200 border-l-4 border-l-purple-500"
+                    : "border-slate-200",
+                )}
+              >
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div className="min-w-0 flex-1 space-y-1.5">
+                    {/* Top Row: Amount & Badges */}
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span
+                        className={cn(
+                          "rounded-md px-2 py-0.5 text-xs font-black tracking-wide",
+                          tx.currency === "KHR"
+                            ? "bg-violet-100 text-violet-800"
+                            : "bg-emerald-100 text-emerald-800",
+                        )}
+                      >
+                        {tx.currency === "KHR" ? `៛${tx.amount.toLocaleString()}` : `$${tx.amount.toFixed(2)}`}
+                      </span>
+
+                      {/* Trx ID with Copy */}
+                      <button
+                        type="button"
+                        onClick={() => copyToClipboard(tx.trxId, "Trx ID")}
+                        className="inline-flex items-center gap-1 font-mono text-xs font-bold text-slate-800 bg-slate-100 hover:bg-slate-200 rounded px-1.5 py-0.5 transition-colors cursor-pointer"
+                        title="Click to copy Trx ID"
+                      >
+                        Trx: {tx.trxId}
+                        <Copy className="h-3 w-3 text-slate-400" />
+                      </button>
+
+                      {/* APV with Copy */}
+                      {tx.apv && (
+                        <button
+                          type="button"
+                          onClick={() => copyToClipboard(tx.apv!, "APV Code")}
+                          className="inline-flex items-center gap-1 font-mono text-[10px] font-semibold text-slate-600 bg-slate-100 hover:bg-slate-200 rounded px-1.5 py-0.5 transition-colors cursor-pointer"
+                          title="Click to copy APV"
+                        >
+                          APV: {tx.apv}
+                          <Copy className="h-2.5 w-2.5 text-slate-400" />
+                        </button>
+                      )}
+
+                      {/* Status Badges */}
+                      {isMatched ? (
+                        <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 border border-emerald-200 px-2.5 py-0.5 text-[10px] font-bold text-emerald-700">
+                          <Check className="h-3 w-3" />
+                          Matched: {tx.subscriptionPayment?.tenant?.name || "Dealer"} ({tx.subscriptionPayment?.reference})
+                        </span>
+                      ) : isUnderpaid ? (
+                        <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 border border-amber-300 px-2.5 py-0.5 text-[10px] font-bold text-amber-900">
+                          <TriangleAlert className="h-3 w-3 text-amber-600" />
+                          Underpaid / Pending Admin Check
+                        </span>
+                      ) : isAmbiguous ? (
+                        <span className="inline-flex items-center gap-1 rounded-full bg-rose-50 border border-rose-200 px-2.5 py-0.5 text-[10px] font-bold text-rose-700">
+                          <TriangleAlert className="h-3 w-3" />
+                          Ambiguous (Manual Check Required)
+                        </span>
+                      ) : (
+                        <span className="rounded-full bg-slate-100 border border-slate-200 px-2 py-0.5 text-[10px] font-bold text-slate-700">
+                          Unmatched
+                        </span>
+                      )}
+
+                      {/* Duplicate Indicator */}
+                      {isDup && (
+                        <span className="inline-flex items-center gap-1 rounded-full bg-purple-50 border border-purple-200 px-2 py-0.5 text-[10px] font-bold text-purple-700">
+                          <Repeat className="h-3 w-3" />
+                          Duplicate Received ({ (tx.duplicateCount || 0) + 1 }x)
+                        </span>
+                      )}
+
+                      {/* Same-Time Collision Indicator */}
+                      {hasCollision && (
+                        <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 border border-amber-300 px-2 py-0.5 text-[10px] font-bold text-amber-900">
+                          <TriangleAlert className="h-3 w-3" />
+                          Same-Time Conflict
+                        </span>
+                      )}
+                    </div>
+
+                    {/* Payer and Bank Info */}
+                    <p className="text-xs text-slate-600">
+                      Paid by <strong className="text-slate-900">{tx.payerName || "Customer"}</strong>
+                      {tx.payerAccount ? ` (${tx.payerAccount})` : ""}
+                      {" · "}
+                      <span className="inline-flex items-center gap-1 text-slate-500 font-medium">
+                        <Clock className="h-3 w-3 text-slate-400" />
+                        {tx.transactionDateRaw || new Date(tx.transactionDate).toLocaleString("en-US", { timeZone: "Asia/Phnom_Penh" })}
+                      </span>
+                      {tx.bankCode ? ` · via ${tx.bankCode}` : ""}
+                      {tx.merchantName ? ` · at ${tx.merchantName}` : ""}
+                    </p>
+
+                    {/* Underpaid Detailed Alert */}
+                    {isUnderpaid && (
+                      <div className="rounded-md border border-amber-300 bg-amber-50/90 p-2 text-xs text-amber-950 flex items-start gap-2">
+                        <TriangleAlert className="h-4 w-4 shrink-0 text-amber-600 mt-0.5" />
+                        <div>
+                          <p className="font-semibold text-amber-950">
+                            Partial / Underpayment Received
+                          </p>
+                          <p className="text-[11px] text-amber-800 mt-0.5">
+                            Customer paid less than the subscription plan price. Kept in <strong>PENDING</strong> awaiting your review or confirmation.
+                          </p>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Same-Time Collision Detailed Alert */}
+                    {hasCollision && (
+                      <div className="rounded-md border border-amber-200 bg-amber-50/80 p-2 text-xs text-amber-900 flex items-start gap-2">
+                        <TriangleAlert className="h-4 w-4 shrink-0 text-amber-600 mt-0.5" />
+                        <div>
+                          <p className="font-semibold text-amber-950">
+                            Concurrent Transaction Detected Around Same Time
+                          </p>
+                          <p className="text-[11px] text-amber-800 mt-0.5">
+                            Occurred at the same time as Trx ID(s):{" "}
+                            <strong className="font-mono">{tx.collisionTrxIds || "N/A"}</strong>.
+                            {isAmbiguous
+                              ? " Auto-activation paused to prevent cross-crediting wrong dealer. Please link manually below."
+                              : " Deduplication and reference safeguards applied."}
+                          </p>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Duplicate Detailed Alert */}
+                    {isDup && (
+                      <div className="rounded-md border border-purple-200 bg-purple-50/70 p-2 text-xs text-purple-900 flex items-start gap-2">
+                        <Repeat className="h-4 w-4 shrink-0 text-purple-600 mt-0.5" />
+                        <div>
+                          <p className="font-semibold text-purple-950">
+                            Deduplicated: Telegram Notification Received { (tx.duplicateCount || 0) + 1 } Times
+                          </p>
+                          <p className="text-[11px] text-purple-800 mt-0.5">
+                            The same payment notification was posted repeatedly in the group. Deduplication engine prevented duplicate balance or repeated subscription activation.
+                          </p>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Verification Note */}
+                    {tx.verificationNote && (
+                      <p className="text-[11px] text-slate-500 italic bg-slate-50 rounded px-2 py-1 border border-slate-100">
+                        {tx.verificationNote}
+                      </p>
+                    )}
+
+                    {/* Raw Message Snippet */}
+                    <p className="truncate font-mono text-[10px] text-slate-400 bg-slate-50 rounded px-2 py-1 select-all">
+                      {tx.rawMessage}
+                    </p>
+                  </div>
+
+                  {/* Actions */}
+                  <div className="flex flex-col items-end gap-1.5 shrink-0">
+                    {!isMatched && (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => setMatchingTx(tx)}
+                        className={cn(
+                          "text-xs font-semibold cursor-pointer shadow-xs",
+                          isUnderpaid
+                            ? "border-amber-400 bg-amber-50 text-amber-900 hover:bg-amber-100"
+                            : isAmbiguous
+                            ? "border-rose-400 bg-rose-50 text-rose-900 hover:bg-rose-100"
+                            : "border-slate-300 bg-white text-slate-800 hover:bg-slate-50",
+                        )}
+                      >
+                        <Link2 className="h-3.5 w-3.5 mr-1" />
+                        {isUnderpaid ? "Review & Match" : isAmbiguous ? "Resolve Conflict" : "Match Payment"}
+                      </Button>
+                    )}
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {/* Manual Match Dialog */}
+      <Dialog open={Boolean(matchingTx)} onOpenChange={(o) => !o && setMatchingTx(null)}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Link2 className="h-4 w-4 text-amber-600" />
+              Match ABA Transaction with Dealer Payment
+            </DialogTitle>
+          </DialogHeader>
+
+          {matchingTx && (
+            <div className="space-y-3">
+              <div className="rounded-lg bg-slate-50 p-2.5 border border-slate-200 text-xs space-y-1">
+                <div className="flex items-center justify-between">
+                  <span className="font-bold text-slate-900">
+                    {matchingTx.currency === "KHR" ? `៛${matchingTx.amount.toLocaleString()}` : `$${matchingTx.amount.toFixed(2)}`}
+                  </span>
+                  <span className="font-mono text-slate-600 font-bold">Trx: {matchingTx.trxId}</span>
+                </div>
+                <p className="text-slate-500">
+                  Payer: <strong>{matchingTx.payerName || "Customer"}</strong> ({matchingTx.payerAccount || "No Mask"})
+                </p>
+                <p className="text-slate-400 text-[11px]">
+                  Time: {matchingTx.transactionDateRaw || new Date(matchingTx.transactionDate).toLocaleString("en-US", { timeZone: "Asia/Phnom_Penh" })}
+                </p>
+                {matchingTx.sameTimeCollision && (
+                  <p className="text-[11px] text-amber-700 font-semibold">
+                    ⚠️ Concurrent transaction detected with Trx ID(s): {matchingTx.collisionTrxIds}
+                  </p>
+                )}
+              </div>
+
+              <div>
+                <Label className="text-xs font-semibold text-slate-700">Select Pending Payment Request</Label>
+                {pendingPayments.loading ? (
+                  <Skeleton className="h-16 w-full mt-2" />
+                ) : !pendingPayments.data || pendingPayments.data.length === 0 ? (
+                  <div className="rounded-lg border border-dashed border-slate-200 p-4 text-center mt-2">
+                    <p className="text-xs text-slate-500 font-medium">No pending payments awaiting verification</p>
+                    <p className="text-[11px] text-slate-400 mt-0.5">
+                      When dealers submit subscription requests, they will appear here for matching.
+                    </p>
+                  </div>
+                ) : (
+                  <div className="mt-2 max-h-56 overflow-y-auto divide-y divide-slate-100 rounded-lg border border-slate-200">
+                    {pendingPayments.data.map((p) => (
+                      <button
+                        key={p.id}
+                        type="button"
+                        disabled={matchingBusy}
+                        onClick={() => manualMatch(matchingTx.id, p.id)}
+                        className="w-full text-left p-2.5 hover:bg-amber-50/70 transition-colors cursor-pointer"
+                      >
+                        <div className="flex items-center justify-between">
+                          <span className="font-semibold text-xs text-slate-900">{p.tenantName}</span>
+                          <span className="font-bold text-xs text-amber-700">${p.amountUsd.toFixed(2)}</span>
+                        </div>
+                        <p className="text-[11px] text-slate-500 mt-0.5">
+                          {p.plan} ({p.billingCycle}) · Ref: <code>{p.reference}</code>
+                          {p.manualRef ? ` · Bank Ref: ${p.manualRef}` : ""}
+                        </p>
+                      </button>
+                    ))}
                   </div>
                 )}
               </div>
             </div>
-          ))}
-        </div>
-      )}
-
-      {/* Screenshot viewer */}
-      <Dialog open={Boolean(viewing)} onOpenChange={(o) => !o && setViewing(null)}>
-        <DialogContent className="sm:max-w-lg">
-          <DialogHeader>
-            <DialogTitle>{t("payEvidenceTitle")}</DialogTitle>
-          </DialogHeader>
-          {viewing?.evidenceImage && (
-            <div className="space-y-2">
-              <img src={viewing.evidenceImage} alt={t("payEvidenceTitle")} className="max-h-[60vh] w-full rounded-lg border border-slate-200 object-contain" />
-              <p className="text-center text-xs text-slate-500">
-                {viewing.tenantName} · {formatUsd(viewing.amountUsd)} · <code>{viewing.reference}</code>
-              </p>
-            </div>
           )}
+
+          <DialogFooter>
+            <Button variant="outline" size="sm" onClick={() => setMatchingTx(null)}>
+              Cancel
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
 
-      {/* Reject dialog */}
-      <Dialog open={Boolean(rejecting)} onOpenChange={(o) => !o && setRejecting(null)}>
-        <DialogContent className="sm:max-w-sm">
+      {/* Manual Paste/Ingest Dialog */}
+      <Dialog open={ingestOpen} onOpenChange={setIngestOpen}>
+        <DialogContent className="sm:max-w-md">
           <DialogHeader>
-            <DialogTitle>{t("payRejectTitle")}</DialogTitle>
+            <DialogTitle className="flex items-center gap-2">
+              <Upload className="h-4 w-4 text-sky-600" />
+              Paste ABA PayWay / KHQR Alert
+            </DialogTitle>
           </DialogHeader>
+
           <div className="space-y-3">
-            {rejecting && (
-              <p className="text-xs text-slate-500">
-                {rejecting.tenantName} · {formatUsd(rejecting.amountUsd)} · <code>{rejecting.reference}</code>
-              </p>
-            )}
-            <div>
-              <Label htmlFor="rej-reason" className="text-xs text-slate-500">{t("payRejectReasonLabel")} *</Label>
-              <Textarea id="rej-reason" value={reason} onChange={(e) => setReason(e.target.value)} rows={3} className="mt-1.5" maxLength={300} />
-            </div>
+            <p className="text-xs text-slate-500">
+              Paste the Telegram notification text from ABA Bank / Bakong to parse, check for duplicates, and auto-match:
+            </p>
+            <Textarea
+              rows={4}
+              value={ingestText}
+              onChange={(e) => setIngestText(e.target.value)}
+              placeholder="PayWay by ABA: ៛200 paid by Sam Chanpanha (*674) on Oct 22, 01:05 PM via ABA KHQR (AMRTKHPPXXX) at SAM CHAN PANHA. Trx. ID: 179264913984347, APV: 135160."
+              className="text-xs font-mono"
+            />
           </div>
+
           <DialogFooter>
-            <Button variant="outline" size="sm" onClick={() => setRejecting(null)}>{t("cancel")}</Button>
+            <Button variant="outline" size="sm" onClick={() => setIngestOpen(false)}>
+              Cancel
+            </Button>
             <Button
-              size="sm" disabled={busyId !== null || reason.trim().length < 3}
-              onClick={() => rejecting && decide(rejecting, "reject", reason.trim())}
-              className="bg-rose-600 text-white hover:bg-rose-700 font-semibold"
+              size="sm"
+              onClick={handleIngest}
+              disabled={ingesting || !ingestText.trim()}
+              className="bg-sky-600 hover:bg-sky-700 text-white font-semibold text-xs"
             >
-              {t("payReject")}
+              {ingesting ? "Processing..." : "Verify & Save"}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -980,6 +1976,8 @@ interface ManualConfig {
   khqrPayload: string | null;
   khqrImageUrl: string | null;
   khqrImage: string | null;
+  khqrImageMonthly?: string | null;
+  khqrImageYearly?: string | null;
   instructionsEn: string | null;
   instructionsKm: string | null;
   telegram: string | null;
@@ -996,8 +1994,12 @@ function AdminPaymentConfig() {
   const [form, setForm] = useState<ManualConfig | null>(null);
   const [saving, setSaving] = useState(false);
   const [readingQr, setReadingQr] = useState(false);
+  const [readingMonthly, setReadingMonthly] = useState(false);
+  const [readingYearly, setReadingYearly] = useState(false);
   const [testingTg, setTestingTg] = useState(false);
   const qrInput = useRef<HTMLInputElement>(null);
+  const qrInputMonthly = useRef<HTMLInputElement>(null);
+  const qrInputYearly = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (data) setForm(data);
@@ -1013,6 +2015,8 @@ function AdminPaymentConfig() {
         khqrPayload: form.khqrPayload || null,
         khqrImageUrl: form.khqrImageUrl || null,
         khqrImage: form.khqrImage || null,
+        khqrImageMonthly: form.khqrImageMonthly || null,
+        khqrImageYearly: form.khqrImageYearly || null,
         instructionsEn: form.instructionsEn || null,
         instructionsKm: form.instructionsKm || null,
         telegram: form.telegram || null,
@@ -1046,6 +2050,34 @@ function AdminPaymentConfig() {
     } finally {
       setReadingQr(false);
       if (qrInput.current) qrInput.current.value = "";
+    }
+  };
+
+  const pickQrMonthly = async (file: File | undefined) => {
+    if (!file) return;
+    setReadingMonthly(true);
+    try {
+      const dataUrl = await fileToDataUrl(file, 720, 0.9);
+      setForm((f) => (f ? { ...f, khqrImageMonthly: dataUrl } : f));
+    } catch {
+      toast.error(t("errorGeneric"));
+    } finally {
+      setReadingMonthly(false);
+      if (qrInputMonthly.current) qrInputMonthly.current.value = "";
+    }
+  };
+
+  const pickQrYearly = async (file: File | undefined) => {
+    if (!file) return;
+    setReadingYearly(true);
+    try {
+      const dataUrl = await fileToDataUrl(file, 720, 0.9);
+      setForm((f) => (f ? { ...f, khqrImageYearly: dataUrl } : f));
+    } catch {
+      toast.error(t("errorGeneric"));
+    } finally {
+      setReadingYearly(false);
+      if (qrInputYearly.current) qrInputYearly.current.value = "";
     }
   };
 
@@ -1096,56 +2128,111 @@ function AdminPaymentConfig() {
           <Input id="pc-tg" value={form.telegram ?? ""} onChange={(e) => setForm({ ...form, telegram: e.target.value })} placeholder="@khlan_admin" className="mt-1.5 h-9" />
         </div>
 
-        {/* uploaded QR image — what sellers actually scan */}
-        <div className="sm:col-span-2">
-          <Label className="text-xs text-slate-500">{t("payConfigQrUpload")}</Label>
-          <p className="mt-0.5 text-[11px] text-slate-400">{t("payConfigQrUploadHint")}</p>
-          <div className="mt-2 flex flex-wrap items-center gap-3">
-            {form.khqrImage ? (
-              <div className="flex items-center gap-3">
-                <img src={form.khqrImage} alt={t("payConfigQrUpload")} className="h-28 w-28 rounded-lg border border-slate-200 bg-white object-contain p-1" />
-                <div className="flex flex-col gap-1.5">
-                  <p className="flex items-center gap-1 text-[11px] font-medium text-emerald-700">
-                    <ImageIcon className="h-3.5 w-3.5" aria-hidden />
-                    {t("payConfigQrUploaded")}
-                  </p>
-                  <Button type="button" variant="outline" size="sm" className="h-7 text-[11px]" onClick={() => qrInput.current?.click()}>
-                    {t("payUploadChange")}
-                  </Button>
-                  <Button type="button" variant="ghost" size="sm" className="h-7 text-[11px] text-rose-600 hover:bg-rose-50"
-                    onClick={() => setForm({ ...form, khqrImage: null })}>
-                    {t("payConfigQrRemove")}
-                  </Button>
-                </div>
-              </div>
-            ) : (
-              <button
-                type="button"
-                onClick={() => qrInput.current?.click()}
-                disabled={readingQr}
-                className={cn(
-                  "flex min-h-[44px] cursor-pointer items-center justify-center gap-2 rounded-lg border border-dashed border-slate-300 bg-slate-50 px-4 py-3 text-xs font-medium text-slate-600 transition-colors hover:border-amber-400 hover:bg-amber-50/50",
-                  readingQr && "opacity-60",
-                )}
-              >
-                {readingQr ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : <Upload className="h-4 w-4 text-slate-400" aria-hidden />}
-                {t("payConfigQrUpload")}
-              </button>
-            )}
-            {preview.data?.dataUrl && (
-              <div className="flex items-center gap-2">
-                <img src={preview.data.dataUrl} alt={t("payConfigPreview")} className="h-20 w-20 rounded-lg border border-slate-200 bg-white p-1" />
-                <p className="max-w-[10rem] text-[10px] leading-tight text-slate-400">{t("payConfigPreview")}</p>
-              </div>
-            )}
+        {/* Per-plan KHQR image uploads (Monthly & Yearly) */}
+        <div className="sm:col-span-2 space-y-3 rounded-xl border border-slate-200 bg-slate-50/70 p-3.5">
+          <div>
+            <Label className="text-xs font-semibold text-slate-800">KHQR Payment Images by Billing Cycle</Label>
+            <p className="mt-0.5 text-[11px] text-slate-500">
+              Upload custom QR codes for 1-Month and 1-Year plans. Sellers will see the matching QR code when selecting each plan.
+            </p>
           </div>
+
+          <div className="grid gap-3 sm:grid-cols-2">
+            {/* Monthly QR */}
+            <div className="rounded-lg border border-slate-200 bg-white p-3 shadow-xs">
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-xs font-semibold text-slate-700">1-Month Plan KHQR</span>
+                <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-bold text-amber-900">Monthly</span>
+              </div>
+              {form.khqrImageMonthly ? (
+                <div className="flex items-center gap-3">
+                  <img src={form.khqrImageMonthly} alt="Monthly KHQR" className="h-24 w-24 rounded-lg border border-slate-200 object-contain p-1" />
+                  <div className="flex flex-col gap-1.5">
+                    <p className="flex items-center gap-1 text-[11px] font-medium text-emerald-700">
+                      <ImageIcon className="h-3.5 w-3.5" aria-hidden />
+                      Uploaded
+                    </p>
+                    <Button type="button" variant="outline" size="sm" className="h-7 text-[11px]" onClick={() => qrInputMonthly.current?.click()}>
+                      {t("payUploadChange")}
+                    </Button>
+                    <Button type="button" variant="ghost" size="sm" className="h-7 text-[11px] text-rose-600 hover:bg-rose-50"
+                      onClick={() => setForm({ ...form, khqrImageMonthly: null })}>
+                      {t("payConfigQrRemove")}
+                    </Button>
+                  </div>
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => qrInputMonthly.current?.click()}
+                  disabled={readingMonthly}
+                  className={cn(
+                    "flex min-h-[44px] w-full cursor-pointer items-center justify-center gap-2 rounded-lg border border-dashed border-slate-300 bg-slate-50 px-3 py-2.5 text-xs font-medium text-slate-600 transition-colors hover:border-amber-400 hover:bg-amber-50/50",
+                    readingMonthly && "opacity-60",
+                  )}
+                >
+                  {readingMonthly ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : <Upload className="h-4 w-4 text-slate-400" aria-hidden />}
+                  Upload 1-Month KHQR
+                </button>
+              )}
+            </div>
+
+            {/* Yearly QR */}
+            <div className="rounded-lg border border-slate-200 bg-white p-3 shadow-xs">
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-xs font-semibold text-slate-700">1-Year Plan KHQR</span>
+                <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-bold text-emerald-900">Yearly (12 Mo)</span>
+              </div>
+              {form.khqrImageYearly ? (
+                <div className="flex items-center gap-3">
+                  <img src={form.khqrImageYearly} alt="Yearly KHQR" className="h-24 w-24 rounded-lg border border-slate-200 object-contain p-1" />
+                  <div className="flex flex-col gap-1.5">
+                    <p className="flex items-center gap-1 text-[11px] font-medium text-emerald-700">
+                      <ImageIcon className="h-3.5 w-3.5" aria-hidden />
+                      Uploaded
+                    </p>
+                    <Button type="button" variant="outline" size="sm" className="h-7 text-[11px]" onClick={() => qrInputYearly.current?.click()}>
+                      {t("payUploadChange")}
+                    </Button>
+                    <Button type="button" variant="ghost" size="sm" className="h-7 text-[11px] text-rose-600 hover:bg-rose-50"
+                      onClick={() => setForm({ ...form, khqrImageYearly: null })}>
+                      {t("payConfigQrRemove")}
+                    </Button>
+                  </div>
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => qrInputYearly.current?.click()}
+                  disabled={readingYearly}
+                  className={cn(
+                    "flex min-h-[44px] w-full cursor-pointer items-center justify-center gap-2 rounded-lg border border-dashed border-slate-300 bg-slate-50 px-3 py-2.5 text-xs font-medium text-slate-600 transition-colors hover:border-amber-400 hover:bg-amber-50/50",
+                    readingYearly && "opacity-60",
+                  )}
+                >
+                  {readingYearly ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : <Upload className="h-4 w-4 text-slate-400" aria-hidden />}
+                  Upload 1-Year KHQR
+                </button>
+              )}
+            </div>
+          </div>
+
+          {/* Hidden inputs */}
           <input
-            ref={qrInput}
+            ref={qrInputMonthly}
             type="file"
             accept="image/*"
             className="hidden"
-            aria-label={t("payConfigQrUpload")}
-            onChange={(e) => pickQrImage(e.target.files?.[0])}
+            aria-label="Upload Monthly KHQR"
+            onChange={(e) => pickQrMonthly(e.target.files?.[0])}
+          />
+          <input
+            ref={qrInputYearly}
+            type="file"
+            accept="image/*"
+            className="hidden"
+            aria-label="Upload Yearly KHQR"
+            onChange={(e) => pickQrYearly(e.target.files?.[0])}
           />
         </div>
 

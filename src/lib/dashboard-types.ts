@@ -34,6 +34,13 @@ export interface SessionDTO {
    *  fresh visitors (guests) are false, real logins are authed=true */
   demoPersona?: boolean;
   personas: PersonaDTO[];
+  /** tenant / seller active subscription status */
+  subscription?: {
+    plan: string;
+    status: "ACTIVE" | "EXPIRED" | "PAST_DUE" | "PENDING";
+    isTrial: boolean;
+    currentPeriodEnd?: string;
+  } | null;
 }
 
 // ---------- Shared bits ----------
@@ -149,6 +156,8 @@ export interface PlatformSettingsDTO {
   featuredListingPriceUsd: number;
   autoApproveListings: boolean;
   maintenanceMode: boolean;
+  /** whether free trial for new sellers/dealers is active or inactive */
+  freeTrialEnabled: boolean;
   /** free-trial length (days) for non-paying seller/dealer accounts, admin-configurable */
   freeTrialDays: number;
 }
@@ -157,8 +166,8 @@ export interface PlatformSettingsDTO {
  *  computed from the account's registration date + the admin-configured
  *  freeTrialDays platform setting (no Subscription row is stored). */
 export interface SellerSubscriptionDTO {
-  plan: "FREE_TRIAL";
-  status: "ACTIVE" | "EXPIRED";
+  plan: string;
+  status: "ACTIVE" | "EXPIRED" | "INACTIVE";
   /** account registration date = trial start */
   startedAt: string;
   /** startedAt + freeTrialDays */
@@ -167,6 +176,8 @@ export interface SellerSubscriptionDTO {
   daysLeft: number;
   /** the admin-configured trial length used for the computation */
   freeTrialDays: number;
+  /** whether free trial is active or inactive */
+  freeTrialEnabled: boolean;
 }
 
 /** GET/PUT /api/seller/telegram — the Telegram Hub for SELLER/DEALER

@@ -1,18 +1,22 @@
 // KhLan — demo seed script (Cambodia AI car marketplace)
 import crypto from "node:crypto";
-// Run with: bun prisma/seed.ts
+import { fileURLToPath } from "node:url";
 // Deterministic ids so API routes / frontend can reference them (see worklog Task 2-b).
 
 import fs from "node:fs";
 import path from "node:path";
 import { PrismaClient } from "@prisma/client";
 import type { ReportCheck } from "../src/lib/types";
-import seedImages from "./seed-images.json";
+
+const scriptDirectory = path.dirname(fileURLToPath(import.meta.url));
+const seedImages = JSON.parse(
+  fs.readFileSync(path.join(scriptDirectory, "seed-images.json"), "utf8"),
+) as Record<string, string[]>;
 
 // Belt & suspenders: Prisma Client usually loads .env itself, but make sure
-// DATABASE_URL is available when running via `bun prisma/seed.ts`.
+// DATABASE_URL is available when running the seed directly with Node.
 if (!process.env.DATABASE_URL) {
-  const envFile = path.resolve(import.meta.dir, "..", ".env");
+  const envFile = path.resolve(scriptDirectory, "..", ".env");
   if (fs.existsSync(envFile)) {
     for (const line of fs.readFileSync(envFile, "utf8").split("\n")) {
       const m = line.match(/^\s*([A-Z0-9_]+)\s*=\s*(.*)\s*$/);
@@ -1385,6 +1389,12 @@ async function seedEngagement(pradoReportId: string) {
 // ---------------------------------------------------------------------------
 
 async function main() {
+  if (process.env.SEED_ALLOW_RESET !== "1") {
+    throw new Error(
+      "Seeding deletes existing rows. Set SEED_ALLOW_RESET=1 and point DATABASE_URL at a disposable test database.",
+    );
+  }
+
   console.log("KhLan seed: wiping existing data...");
   // Delete children before parents to respect FK constraints.
   await prisma.appointment.deleteMany();

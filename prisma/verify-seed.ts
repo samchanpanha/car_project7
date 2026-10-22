@@ -1,6 +1,22 @@
 // KhLan — verify seed: prints row counts per table + 2 sample vehicles.
-// Run with: bun prisma/verify-seed.ts
+import fs from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { PrismaClient } from "@prisma/client";
+
+if (!process.env.DATABASE_URL) {
+  const projectRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+  const envFile = path.join(projectRoot, ".env");
+  if (fs.existsSync(envFile)) {
+    for (const line of fs.readFileSync(envFile, "utf8").split("\n")) {
+      const match = line.match(/^\s*DATABASE_URL\s*=\s*(.*)\s*$/);
+      if (match) {
+        process.env.DATABASE_URL = match[1].trim().replace(/^["']|["']$/g, "");
+        break;
+      }
+    }
+  }
+}
 
 const prisma = new PrismaClient();
 

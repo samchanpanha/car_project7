@@ -6,7 +6,9 @@ import {
   generatePaymentReference,
   getManualPaymentConfig,
   monthsForCycle,
+  resolveTelegramConfig,
   toPaymentErrorResponse,
+  verifyPaymentAndActivate,
 } from "@/lib/api/payments";
 import { getPlanPricing, priceForCfg, type PaidPlanKey } from "@/lib/api/plan-config";
 import { sendPaymentProofToTelegram, telegramConfigured } from "@/lib/api/telegram-notify";
@@ -79,6 +81,7 @@ const createSchema = z
   .object({
     plan: z.enum(["BASIC", "PRO", "ENTERPRISE"]),
     billingCycle: z.enum(["MONTHLY", "YEARLY"]),
+    currency: z.enum(["USD", "KHR"]).default("USD"),
     manualRef: z.string().trim().min(4).max(80).optional(),
     evidenceImage,
     evidenceUrl: z.string().trim().url().max(500).optional(),
@@ -125,7 +128,7 @@ export async function POST(req: Request) {
         { status: 400 },
       );
     }
-    const { plan, billingCycle, manualRef } = parsed.data;
+    const { plan, billingCycle, manualRef, currency } = parsed.data;
 
     // pricing/availability come from the admin's plan configuration
     const pricing = await getPlanPricing();
@@ -148,7 +151,38 @@ export async function POST(req: Request) {
       );
     }
 
+    // Duplicate transaction check: Ensure this bank reference hasn't already been used & verified
+    if (manualRef) {
+      const trimmedRef = manualRef.trim();
+      const duplicateVerified = await db.subscriptionPayment.findFirst({
+        where: {
+          manualRef: trimmedRef,
+          status: "VERIFIED",
+        },
+      });
+      if (duplicateVerified) {
+        return NextResponse.json(
+          { error: `Duplicate transaction: Bank reference "${trimmedRef}" was already verified on payment ${duplicateVerified.reference}.` },
+          { status: 409 },
+        );
+      }
+
+      const duplicateMatchedAba = await db.abaTransaction.findFirst({
+        where: {
+          trxId: trimmedRef,
+          status: "MATCHED",
+        },
+      });
+      if (duplicateMatchedAba) {
+        return NextResponse.json(
+          { error: `Duplicate transaction: Bank Trx ID "${trimmedRef}" has already been processed and matched.` },
+          { status: 409 },
+        );
+      }
+    }
+
     const amountUsd = priceForCfg(cfg, billingCycle);
+    const expectedKhr = amountUsd * 4100;
     const months = monthsForCycle(billingCycle);
     const reference = generatePaymentReference();
 
@@ -165,31 +199,106 @@ export async function POST(req: Request) {
         manualRef: manualRef ?? null,
         evidenceImage: parsed.data.evidenceImage ?? null,
         evidenceUrl: parsed.data.evidenceUrl ?? null,
-        note: parsed.data.note ?? null,
+        note: parsed.data.note ? `[${currency}] ${parsed.data.note}` : `[${currency}]`,
       },
     });
+
+    // Check if matching transaction already arrived in the Telegram group:
+    let isAutoApproved = false;
+    if (manualRef) {
+      const rawRef = manualRef.trim();
+      const lowerRef = rawRef.toLowerCase();
+      const upperRef = rawRef.toUpperCase();
+      const matchingAbaTx = await db.abaTransaction.findFirst({
+        where: {
+          OR: [
+            { trxId: rawRef },
+            { trxId: lowerRef },
+            { trxId: upperRef },
+            { apv: rawRef },
+            { apv: lowerRef },
+            { apv: upperRef },
+          ],
+          status: { in: ["UNMATCHED", "AMBIGUOUS", "UNDERPAID"] },
+        },
+      });
+
+      if (matchingAbaTx) {
+        const isPaidInFull =
+          matchingAbaTx.amountUsd >= (amountUsd - 0.05) ||
+          (matchingAbaTx.currency === "KHR" && matchingAbaTx.amount >= (expectedKhr - 200)) ||
+          (matchingAbaTx.currency === "USD" && matchingAbaTx.amount >= (amountUsd - 0.05));
+
+        if (isPaidInFull) {
+          // Paid in full & verified in Telegram group: Auto-approve!
+          await verifyPaymentAndActivate(payment, `aba-payway:${matchingAbaTx.trxId}`);
+          await db.abaTransaction.update({
+            where: { id: matchingAbaTx.id },
+            data: {
+              status: "MATCHED",
+              subscriptionPaymentId: payment.id,
+              matchedAt: new Date(),
+              matchedBy: "AUTO_ON_SUBMISSION",
+              verificationNote: `Verified in Telegram group (Full payment $${matchingAbaTx.amountUsd.toFixed(2)} received) & auto-approved subscription for ${tenant.name}`,
+            },
+          });
+          await db.subscriptionPayment.update({
+            where: { id: payment.id },
+            data: {
+              verifiedByName: `ABA PayWay Verified (${matchingAbaTx.trxId})`,
+              note: `Verified in Telegram group: Full payment received ($${matchingAbaTx.amountUsd.toFixed(2)}) via ABA Trx ${matchingAbaTx.trxId}`,
+            },
+          });
+          isAutoApproved = true;
+        } else {
+          // Underpaid: Hold in pending for admin review
+          const underpaidNote = `⚠️ Underpaid: Telegram bank alert shows received ${matchingAbaTx.currency === "KHR" ? "៛" : "$"}${matchingAbaTx.amount.toLocaleString()} ($${matchingAbaTx.amountUsd.toFixed(2)}) but subscription plan requires $${amountUsd.toFixed(2)}. Held in PENDING for admin review.`;
+          await db.abaTransaction.update({
+            where: { id: matchingAbaTx.id },
+            data: {
+              status: "UNDERPAID",
+              subscriptionPaymentId: payment.id,
+              verificationNote: underpaidNote,
+            },
+          });
+          await db.subscriptionPayment.update({
+            where: { id: payment.id },
+            data: {
+              note: underpaidNote,
+              verifiedByName: `ABA Partial Payment (${matchingAbaTx.trxId})`,
+            },
+          });
+        }
+      }
+    }
 
     await db.auditLog.create({
       data: {
         actorId: user.id,
-        action: "PAYMENT_REQUESTED",
+        action: isAutoApproved ? "PAYMENT_AUTO_APPROVED" : "PAYMENT_REQUESTED",
         entity: "SubscriptionPayment",
         entityId: payment.id,
         metaJson: JSON.stringify({
           reference, method: "MANUAL", plan, billingCycle, amountUsd,
           manualRef: manualRef ?? null,
+          isAutoApproved,
           hasEvidenceImage: Boolean(parsed.data.evidenceImage),
         }),
       },
     });
 
-    // push the submission (with the screenshot) straight to the admin's Telegram
+    // push the submission (with screenshot and inline buttons) straight to the admin's Telegram
+    const tgConfig = resolveTelegramConfig(config);
     let telegramSentAt: Date | null = null;
     let telegramError: string | null = null;
-    if (telegramConfigured(config)) {
+    let telegramMessageId: number | null = null;
+    let telegramChatId: string | null = null;
+
+    if (telegramConfigured({ telegramBotToken: tgConfig.botToken, telegramChatId: tgConfig.chatId })) {
       const delivery = await sendPaymentProofToTelegram(
-        { telegramBotToken: config.telegramBotToken, telegramChatId: config.telegramChatId },
+        { telegramBotToken: tgConfig.botToken, telegramChatId: tgConfig.chatId },
         {
+          paymentId: payment.id,
           tenantName: tenant.name,
           plan,
           billingCycle,
@@ -200,11 +309,21 @@ export async function POST(req: Request) {
           evidenceImage: parsed.data.evidenceImage ?? null,
         },
       );
-      if (delivery.sent) telegramSentAt = new Date();
-      else telegramError = delivery.error;
+      if (delivery.sent) {
+        telegramSentAt = new Date();
+        telegramMessageId = delivery.messageId ?? null;
+        telegramChatId = delivery.chatId ?? tgConfig.chatId ?? null;
+      } else {
+        telegramError = delivery.error;
+      }
       await db.subscriptionPayment.update({
         where: { id: payment.id },
-        data: { telegramSentAt, telegramError },
+        data: {
+          telegramSentAt,
+          telegramError,
+          telegramMessageId,
+          telegramGroupId: telegramChatId,
+        },
       });
     }
 

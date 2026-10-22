@@ -77,6 +77,53 @@ export async function POST(req: Request) {
       data: { userId: user.id, type: role === "DEALER" ? "DEALER" : "PRIVATE" },
     });
 
+    const isSellerOrDealer = role === "SELLER" || role === "DEALER";
+    let isTrialActive = false;
+
+    if (isSellerOrDealer) {
+      const { readPlatformSettings } = await import("@/lib/platform-settings");
+      const settings = await readPlatformSettings();
+      isTrialActive = Boolean(settings.freeTrialEnabled && settings.freeTrialDays > 0);
+      const trialEnd = new Date(Date.now() + (isTrialActive ? settings.freeTrialDays : 0) * 86400000);
+
+      const randomSuffix = Math.random().toString(36).slice(2, 7);
+      const cleanSlug = `${name.toLowerCase().replace(/[^a-z0-9]/g, "-").replace(/-+/g, "-").replace(/^-|-$/g, "") || "store"}-${randomSuffix}`;
+
+      const tenant = await db.tenant.create({
+        data: {
+          name: role === "DEALER" ? `${name}'s Dealership` : `${name} (Seller)`,
+          slug: cleanSlug,
+          phone,
+          status: "ACTIVE",
+          members: {
+            create: {
+              userId: user.id,
+              role: "OWNER",
+              status: "ACTIVE",
+            },
+          },
+          subscription: {
+            create: {
+              plan: "FREE",
+              status: isTrialActive ? "ACTIVE" : "PAST_DUE",
+              billingCycle: "MONTHLY",
+              priceUsd: 0,
+              listingsLimit: isTrialActive ? 15 : 0,
+              featuredLimit: isTrialActive ? 3 : 0,
+              seats: role === "DEALER" ? 3 : 1,
+              startedAt: new Date(),
+              currentPeriodEnd: trialEnd,
+            },
+          },
+        },
+      });
+
+      await db.sellerProfile.update({
+        where: { userId: user.id },
+        data: { tenantId: tenant.id },
+      });
+    }
+
     const token = createSessionToken(user.id);
     const res = NextResponse.json(
       {
@@ -85,6 +132,8 @@ export async function POST(req: Request) {
         // Cookie-blocked browsers keep this token in localStorage and send it
         // via the x-khlan-session header instead.
         sessionToken: token,
+        freeTrialActive: isTrialActive,
+        requiresSubscription: isSellerOrDealer && !isTrialActive,
       },
       { status: 201 },
     );

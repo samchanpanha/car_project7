@@ -11,6 +11,7 @@ export const SETTING_KEYS = [
   "autoApproveListings",
   "maintenanceMode",
   "freeTrialDays",
+  "freeTrialEnabled",
 ] as const;
 
 export type SettingKey = (typeof SETTING_KEYS)[number];
@@ -20,6 +21,8 @@ export const DEFAULT_SETTINGS: PlatformSettingsDTO = {
   featuredListingPriceUsd: 25,
   autoApproveListings: false,
   maintenanceMode: false,
+  /** whether free trial for new sellers/dealers is active or inactive */
+  freeTrialEnabled: true,
   /** free trial for newly registered sellers/dealers — 1 month by default */
   freeTrialDays: 30,
 };
@@ -47,14 +50,25 @@ export async function readPlatformSettings(): Promise<PlatformSettingsDTO> {
 }
 
 /** Trial window for a non-paying seller/dealer account:
- *  registration date → registration date + freeTrialDays. */
+ *  registration date → registration date + freeTrialDays.
+ *  If freeTrialEnabled is false or freeTrialDays <= 0, trial is immediately expired / inactive. */
 export function sellerTrialWindow(
   createdAt: Date,
   freeTrialDays: number,
-): { startedAt: Date; currentPeriodEnd: Date; daysLeft: number; expired: boolean } {
+  freeTrialEnabled: boolean = true,
+): { startedAt: Date; currentPeriodEnd: Date; daysLeft: number; expired: boolean; enabled: boolean } {
+  if (!freeTrialEnabled || freeTrialDays <= 0) {
+    return {
+      startedAt: createdAt,
+      currentPeriodEnd: createdAt,
+      daysLeft: 0,
+      expired: true,
+      enabled: false,
+    };
+  }
   const startedAt = createdAt;
   const currentPeriodEnd = new Date(createdAt.getTime() + freeTrialDays * 24 * 60 * 60 * 1000);
   const msLeft = currentPeriodEnd.getTime() - Date.now();
   const daysLeft = msLeft <= 0 ? 0 : Math.ceil(msLeft / (24 * 60 * 60 * 1000));
-  return { startedAt, currentPeriodEnd, daysLeft, expired: msLeft <= 0 };
+  return { startedAt, currentPeriodEnd, daysLeft, expired: msLeft <= 0, enabled: true };
 }

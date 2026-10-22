@@ -201,6 +201,13 @@ model SubscriptionPayment {
   evidenceImage   String?   // uploaded payment screenshot as a data URL (manual flow)
   telegramSentAt  DateTime? // when the proof was delivered to the admin's Telegram bot
   telegramError   String?   // last Telegram delivery error, when delivery failed
+  // Telegram inline-button workflow — tracks the message so the webhook can
+  // edit it (remove buttons, add status text) after admin approval/rejection.
+  telegramMessageId Int?      // message_id of the proof message in the group
+  telegramGroupId   String?   // chat_id where the proof was sent (for edits)
+  verifiedByName    String?   // Telegram display name of the admin who approved
+  notifiedSeller    Boolean   @default(false) // whether seller was notified of result
+  notifiedAt        DateTime? // when the seller notification was sent
   note            String?
   rejectionReason String?
   reviewedById    String?
@@ -208,8 +215,55 @@ model SubscriptionPayment {
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
 
+  abaTransactions AbaTransaction[]
+
   @@index([tenantId])
   @@index([status])
+}
+
+// ---------- ABA PayWay / Bank Group Transactions ----------
+
+model AbaTransaction {
+  id                    String                @id @default(cuid())
+  rawMessage            String                // full text of the Telegram message
+  messageId             Int?                  // Telegram message_id in the group
+  chatId                String?               // Telegram chat_id (e.g. -1004489863210)
+  source                String                @default("ABA_PAYWAY") // ABA_PAYWAY, BAKONG, etc.
+
+  // Parsed fields from ABA PayWay notification:
+  trxId                 String                @unique // e.g. "179264913984347"
+  apv                   String?               // approval code e.g. "135160"
+  amount                Float                 // numeric amount, e.g. 200 or 49.0
+  currency              String                // "KHR" or "USD"
+  amountUsd             Float                 // normalized to USD for revenue / plan matching
+  payerName             String?               // e.g. "Sam Chanpanha"
+  payerAccount          String?               // e.g. "*674"
+  bankCode              String?               // e.g. "AMRTKHPPXXX"
+  merchantName          String?               // e.g. "SAM CHAN PANHA"
+  transactionDateRaw    String?               // e.g. "Oct 22, 01:05 PM"
+  transactionDate       DateTime              // parsed datetime or message timestamp
+
+  // Matching status with subscription payments:
+  status                String                @default("UNMATCHED") // UNMATCHED, MATCHED, MANUAL, AMBIGUOUS
+  subscriptionPaymentId String?
+  subscriptionPayment   SubscriptionPayment?  @relation(fields: [subscriptionPaymentId], references: [id], onDelete: SetNull)
+  matchedAt             DateTime?
+  matchedBy             String?               // "AUTO_TRX_ID", "AUTO_APV", "AUTO_AMOUNT_TIME", "MANUAL_ADMIN"
+
+  // Deduplication & Same-Time Verification:
+  isDuplicate           Boolean               @default(false) // true if same Trx ID or message was seen again
+  duplicateCount        Int                   @default(0)     // count of duplicate delivery attempts
+  sameTimeCollision     Boolean               @default(false) // true if another transaction occurred at identical time
+  collisionTrxIds       String?               // comma-separated list of colliding Trx IDs
+  verificationNote      String?               // verification / collision audit note
+
+  createdAt             DateTime              @default(now())
+  updatedAt             DateTime              @updatedAt
+
+  @@index([trxId])
+  @@index([status])
+  @@index([transactionDate])
+  @@index([createdAt])
 }
 
 // ---------- Buyer Purchase Requests (vehicle sale workflow) ----------

@@ -12,7 +12,7 @@ import type {
 } from "@/lib/dashboard-types";
 import type { VehicleStatus } from "@/lib/types";
 import { DashboardShell, type DashboardTabDef } from "./shell";
-import { RequestSubscriptionDialog, TenantPaymentHistory, PendingPaymentBanner } from "./payment-flow";
+import { RequestSubscriptionDialog, TenantPaymentHistory, PendingPaymentBanner, SubscriptionPaywallCard } from "./payment-flow";
 import { PurchaseRequestList } from "./purchase-list";
 import { ListingEditorDialog } from "@/components/marketplace/listing-editor";
 import { Pagination } from "@/components/marketplace/pagination";
@@ -36,7 +36,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import {
   CalendarDays, Car, ChevronDown, CreditCard, Eye, Heart, Hourglass, LayoutDashboard, Loader2,
-  MessageSquare, MoreHorizontal, Plus, Settings, Star, Store, UserPlus, Users,
+  MessageSquare, MoreHorizontal, Plus, Settings, Star, Store, TriangleAlert, UserPlus, Users,
 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
@@ -76,9 +76,35 @@ export function DealerDashboard({ me }: { me: SessionDTO }) {
       active={active}
       onTab={setTab}
     >
+      {(!me.subscription || me.subscription.status !== "ACTIVE") && (
+        <SubscriptionPaywallCard
+          role="DEALER"
+          onActivated={() => {
+            window.location.reload();
+          }}
+        />
+      )}
       {active === "overview" && <DealerOverview />}
-      {active === "inventory" && <DealerInventory />}
-      {active === "leads" && <DealerLeads />}
+      {active === "inventory" && (
+        !me.subscription || me.subscription.status !== "ACTIVE" ? (
+          <div className="rounded-xl border border-amber-300 bg-amber-50 p-4 text-xs text-amber-900">
+            <p className="font-bold">Dealership Inventory Locked</p>
+            <p className="mt-1">Please complete your subscription payment above to add and manage dealership cars.</p>
+          </div>
+        ) : (
+          <DealerInventory />
+        )
+      )}
+      {active === "leads" && (
+        !me.subscription || me.subscription.status !== "ACTIVE" ? (
+          <div className="rounded-xl border border-amber-300 bg-amber-50 p-4 text-xs text-amber-900">
+            <p className="font-bold">Customer Leads Locked</p>
+            <p className="mt-1">Please complete your subscription payment above to access buyer inquiries and leads.</p>
+          </div>
+        ) : (
+          <DealerLeads />
+        )
+      )}
       {active === "appointments" && <DealerAppointments />}
       {active === "staff" && <DealerStaff />}
       {active === "subscription" && <DealerSubscription />}

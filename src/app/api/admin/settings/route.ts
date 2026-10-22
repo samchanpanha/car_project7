@@ -21,6 +21,7 @@ const putSchema = z.object({
   featuredListingPriceUsd: z.number().min(0),
   autoApproveListings: z.boolean(),
   maintenanceMode: z.boolean(),
+  freeTrialEnabled: z.boolean().default(true),
   freeTrialDays: z.number().int().min(0).max(365),
 });
 

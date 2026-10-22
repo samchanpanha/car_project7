@@ -5,7 +5,7 @@
 // dealer dashboard inventory tab and the "Your listings" section of the sell
 // view. Talks to PATCH /api/vehicles/[id] (manage authorization server-side).
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useT } from "@/hooks/use-t";
 import { useAppStore } from "@/lib/store";
 import { apiSend, useFetch } from "@/lib/client-hooks";
@@ -304,7 +304,9 @@ export function PhotoUploader({
   const [urlInput, setUrlInput] = useState("");
   // Latest list ref so in-flight uploads never resurrect a just-removed photo.
   const latest = useRef(images);
-  latest.current = images;
+  useLayoutEffect(() => {
+    latest.current = images;
+  }, [images]);
   // Drag-to-reorder state: source index while a tile is dragged + the tile
   // currently hovered over (drop target highlight).
   const dragFrom = useRef<number | null>(null);
