@@ -58,8 +58,18 @@ function ensureClient(): PrismaClient {
   const existing = globalForPrisma.prisma;
   if (existing && hasRequiredDelegates(existing)) return existing;
 
-  // Existing client is missing (or predates the multi-tenant / ABA models) — try a
-  // freshly required client first, then fall back to the statically imported one.
+  // In production, instantiate directly without require-cache busting.
+  if (process.env.NODE_ENV === "production") {
+    const client =
+      existing ??
+      new PrismaClient({
+        log: ["warn", "error"],
+      });
+    globalForPrisma.prisma = client;
+    return client;
+  }
+
+  // In development, if delegates are missing after schema edits, try a freshly required client.
   const freshCtor = loadFreshCtor();
   if (freshCtor) {
     const fresh = new freshCtor({ log: ["query"] });
