@@ -1,0 +1,22 @@
+services:
+  # Next.js Web Service on Render
+  - type: web
+    name: khlan-marketplace
+    runtime: docker
+    plan: free
+    region: singapore
+    envVars:
+      - key: DATABASE_URL
+        value: file:/app/db/custom.db
+      - key: TELEGRAM_BOT_TOKEN
+        sync: false
+      - key: TELEGRAM_GROUP_CHAT_ID
+        sync: false
+      - key: TELEGRAM_WEBHOOK_SECRET
+        sync: false
+      - key: NEXTAUTH_SECRET
+        generateValue: true
+      - key: NEXTAUTH_URL
+        value: https://khlan-marketplace.onrender.com
+      - key: ENABLE_TELEGRAM_DAEMON
+        value: "true"
