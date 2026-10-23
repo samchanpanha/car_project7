@@ -1,0 +1,41 @@
+# Dependencies
+node_modules
+.pnp
+.pnp.*
+
+# Next.js build outputs
+.next
+out
+build
+
+# Git and IDE
+.git
+.gitignore
+.vscode
+.idea
+.claude
+.z-ai-config
+.zscripts
+
+# Logs and debug
+*.log
+dev.log
+server.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+
+# Database & local uploads (mounted via volumes)
+db/*.db-wal
+db/*.db-shm
+uploads/*
+!uploads/.gitkeep
+
+# OCR trained data caches
+*.traineddata
+*.bak*
+
+# Misc
+.DS_Store
+*.pem

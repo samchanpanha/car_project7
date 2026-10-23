@@ -1,0 +1,43 @@
+services:
+  # Next.js Web Application
+  web:
+    build:
+      context: .
+      target: web
+    container_name: khlan-web
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    env_file:
+      - .env
+    environment:
+      - NODE_ENV=production
+      - PORT=3000
+      - HOSTNAME=0.0.0.0
+      # Absolute path to SQLite inside container volume
+      - DATABASE_URL=file:/app/db/custom.db
+    volumes:
+      # Persistent SQLite database storage
+      - ./db:/app/db
+      # Persistent uploads storage (car photos, verification receipts)
+      - ./uploads:/app/uploads
+
+  # Continuous Telegram Background Sync Worker
+  telegram-daemon:
+    build:
+      context: .
+      target: daemon
+    container_name: khlan-telegram-daemon
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      - NODE_ENV=production
+      # Shares the same SQLite database with WAL concurrency
+      - DATABASE_URL=file:/app/db/custom.db
+    volumes:
+      - ./db:/app/db
+      - ./uploads:/app/uploads
+    depends_on:
+      web:
+        condition: service_started
