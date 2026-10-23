@@ -31,6 +31,15 @@ export interface ManualPaymentConfig {
   /** Per-cycle KHQR images — allows showing different QR codes for monthly vs yearly */
   khqrImageMonthly: string | null; // data URL or public path for monthly plan QR
   khqrImageYearly: string | null;  // data URL or public path for yearly plan QR
+  /** Per-currency KHQR images — dedicated QR codes for USD vs KHR payments */
+  khqrImageUsd: string | null;     // data URL or public path for USD KHQR
+  khqrImageKhr: string | null;     // data URL or public path for KHR KHQR
+  /** KHR exchange rate per USD (default 4100) */
+  khrExchangeRate: number;
+  /** Maximum transaction age in hours allowed for reuse prevention (default 72h = 3 days) */
+  maxTrxAgeHours: number;
+  /** When true, skip merchant payee stop check so payments are not blocked by payee parsing */
+  skipMerchantCheck: boolean;
   instructionsEn: string | null;
   instructionsKm: string | null;
   telegram: string | null; // admin Telegram contact, e.g. "@khlan_admin" (shown to sellers)
@@ -50,6 +59,11 @@ const DEFAULT_CONFIG: ManualPaymentConfig = {
   khqrImage: null,
   khqrImageMonthly: null,
   khqrImageYearly: null,
+  khqrImageUsd: null,
+  khqrImageKhr: null,
+  khrExchangeRate: 4100,
+  maxTrxAgeHours: 72,
+  skipMerchantCheck: true,
   instructionsEn: null,
   instructionsKm: null,
   telegram: null,
@@ -85,6 +99,7 @@ export async function getManualPaymentConfig(): Promise<ManualPaymentConfig> {
     return {
       ...DEFAULT_CONFIG,
       ...parsed,
+      skipMerchantCheck: typeof parsed.skipMerchantCheck === "boolean" ? parsed.skipMerchantCheck : true,
       freePlan: {
         ...DEFAULT_CONFIG.freePlan,
         ...(parsed.freePlan ?? {}),

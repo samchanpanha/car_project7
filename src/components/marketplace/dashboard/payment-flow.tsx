@@ -33,11 +33,14 @@ import {
 import {
   Loader2, Send, ExternalLink, QrCode, ClipboardList, ShieldOff,
   Camera, Check, CheckCircle2, Clock, Image as ImageIcon, FileText,
-  RefreshCw, TriangleAlert, Zap, Copy, Download,
+  RefreshCw, TriangleAlert, Zap, Copy, Download, Sparkles, Scan,
+  ShieldCheck, ShieldAlert, CreditCard, Lock,
 } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { KhqrZoomDialog, TrxIdGuideDialog } from "@/components/marketplace/trx-guide-dialog";
+import { PaymentOcrModal } from "./payment-ocr-modal";
+import { arePaymentRefsMatching } from "@/lib/payments/reference";
 
 export function RequestSubscriptionDialog({
   open,
@@ -65,6 +68,49 @@ export function RequestSubscriptionDialog({
   const [evidenceUrl, setEvidenceUrl] = useState("");
   const [note, setNote] = useState("");
   const [readingImage, setReadingImage] = useState(false);
+  const [ocrModalOpen, setOcrModalOpen] = useState(false);
+  const [ocrData, setOcrData] = useState<{
+    status: "PASS" | "WARN" | "MISMATCH";
+    confidence: number;
+    trxId?: string;
+    externalRef?: string;
+    apv?: string;
+    amount?: number;
+    currency?: string;
+    paidAt?: string;
+    rawText: string;
+    originatingBank?: string;
+    isInterbank?: boolean;
+    payerName?: string;
+    payerAccount?: string;
+    payee?: string;
+    abaTrxId?: string;
+    riskFlags: string[];
+    isRefMismatch?: boolean;
+    refMismatchDetails?: string | null;
+    isWrongMerchant?: boolean;
+    isUnderpaid?: boolean;
+    detectedPayee?: string | null;
+  } | null>(null);
+  const [refCheck, setRefCheck] = useState<{
+    checking: boolean;
+    valid?: boolean;
+    canSubmit?: boolean;
+    duplicate?: boolean;
+    isOld?: boolean;
+    isNotCurrentDate?: boolean;
+    isMismatch?: boolean;
+    isInterbank?: boolean;
+    originatingBank?: string;
+    abaTrxId?: string;
+    trxId?: string;
+    transactionDateFormatted?: string;
+    transactionDateRaw?: string | null;
+    telegramAdmin?: string;
+    telegramAdminLink?: string;
+    matchedAba?: boolean;
+    message?: string;
+  } | null>(null);
   const [submittedRef, setSubmittedRef] = useState<string | null>(null);
   const [submittedPaymentId, setSubmittedPaymentId] = useState<string | null>(null);
   const [verifiedPayment, setVerifiedPayment] = useState<SubscriptionPaymentDTO | null>(null);
@@ -86,6 +132,9 @@ export function RequestSubscriptionDialog({
       setNote("");
       setCreating(false);
       setReadingImage(false);
+      setOcrModalOpen(false);
+      setOcrData(null);
+      setRefCheck(null);
       setSubmittedRef(null);
       setSubmittedPaymentId(null);
       setVerifiedPayment(null);
@@ -93,6 +142,46 @@ export function RequestSubscriptionDialog({
       setCountdown(4);
     }
   }, [open]);
+
+  // Real-time debounced check on manualRef to prevent duplicate / old Trx IDs / mismatch
+  useEffect(() => {
+    const trimmed = manualRef.trim();
+    if (trimmed.length < 4) {
+      setRefCheck(null);
+      return;
+    }
+    setRefCheck({ checking: true });
+    const timer = setTimeout(async () => {
+      try {
+        const ocrParam = ocrData?.trxId ? `&ocrRef=${encodeURIComponent(ocrData.trxId)}` : "";
+        const bankParam = ocrData?.originatingBank ? `&bank=${encodeURIComponent(ocrData.originatingBank)}` : "";
+        const payerAccParam = ocrData?.payerAccount ? `&payerAccount=${encodeURIComponent(ocrData.payerAccount)}` : "";
+        const payerNameParam = ocrData?.payerName ? `&payerName=${encodeURIComponent(ocrData.payerName)}` : "";
+        const res = await apiSend<{
+          valid: boolean;
+          canSubmit?: boolean;
+          duplicate?: boolean;
+          isOld?: boolean;
+          isNotCurrentDate?: boolean;
+          isMismatch?: boolean;
+          isInterbank?: boolean;
+          originatingBank?: string;
+          abaTrxId?: string;
+          trxId?: string;
+          transactionDateFormatted?: string;
+          transactionDateRaw?: string | null;
+          telegramAdmin?: string;
+          telegramAdminLink?: string;
+          matchedAba?: boolean;
+          message?: string;
+        }>(`/api/tenant/payments/check-ref?ref=${encodeURIComponent(trimmed)}&plan=${plan?.plan || "PRO"}&cycle=${cycle}&currency=${currency}${ocrParam}${bankParam}${payerAccParam}${payerNameParam}`, "GET");
+        setRefCheck({ checking: false, ...res });
+      } catch {
+        setRefCheck(null);
+      }
+    }, 400);
+    return () => clearTimeout(timer);
+  }, [manualRef, ocrData?.trxId, ocrData?.originatingBank, ocrData?.payerAccount, ocrData?.payerName, plan?.plan, cycle, currency]);
 
   // Live polling for verification when submitted
   useEffect(() => {
@@ -139,7 +228,7 @@ export function RequestSubscriptionDialog({
   const manualCheck = async () => {
     setCheckingStatus(true);
     try {
-      const payments = await apiSend<SubscriptionPaymentDTO[]>("/api/tenant/payments", "GET");
+      const payments = await apiSend<SubscriptionPaymentDTO[]>("/api/tenant/payments?sync=true", "GET");
       const match = payments.find(
         (p) =>
           (submittedPaymentId && p.id === submittedPaymentId) ||
@@ -164,10 +253,98 @@ export function RequestSubscriptionDialog({
 
   const pickImage = async (file: File | undefined) => {
     if (!file) return;
+    // Clear previous inputs & state when re-uploading or changing image
+    setManualRef("");
+    setOcrData(null);
+    setRefCheck(null);
     setReadingImage(true);
     try {
-      const dataUrl = await fileToDataUrl(file, 1280, 0.85);
+      const dataUrl = await fileToDataUrl(file, 1600, 0.9);
       setEvidenceImage(dataUrl);
+
+      // Auto-scan receipt in background to extract Trx ID & Amount
+      try {
+        const ocrRes = await apiSend<{
+          success: boolean;
+          blocked?: boolean;
+          isWrongMerchant?: boolean;
+          fraudAlertId?: string | null;
+          data: {
+            trxId: string | null;
+            externalRef: string | null;
+            apv: string | null;
+            amount: number | null;
+            currency: "USD" | "KHR";
+            paidAt: string | null;
+            payerName?: string | null;
+            payerAccount?: string | null;
+            payee?: string | null;
+            bankName?: string | null;
+            rawText: string;
+            confidence: number;
+          };
+          verification: {
+            status: "PASS" | "WARN" | "MISMATCH";
+            isDuplicate: boolean;
+            isOld: boolean;
+            isNotCurrentDate?: boolean;
+            isRefMismatch?: boolean;
+            refMismatchDetails?: string | null;
+            isWrongMerchant?: boolean;
+            detectedPayee?: string | null;
+            expectedMerchant?: string;
+            isUnderpaid?: boolean;
+            riskFlags: string[];
+            message: string;
+          };
+        }>("/api/tenant/payments/ocr", "POST", {
+          image: dataUrl,
+          plan: plan?.plan || "PRO",
+          cycle,
+          currency,
+        });
+
+        const skipMerchant = config.data?.manual?.skipMerchantCheck ?? true;
+        const shouldBlockWrongMerchant = !skipMerchant && Boolean(ocrRes.isWrongMerchant || ocrRes.verification?.isWrongMerchant);
+
+        if (shouldBlockWrongMerchant) {
+          setManualRef("");
+          toast.error(`⛔ Payment Blocked! This slip was paid to "${ocrRes.verification?.detectedPayee || ocrRes.data?.payee || "a foreign merchant"}" instead of our KHQR. Security alert dispatched.`);
+        } else if (ocrRes.success) {
+          const detectedRef = ocrRes.data.trxId || ocrRes.data.externalRef || ocrRes.data.apv;
+          if (detectedRef) {
+            setManualRef(detectedRef);
+            toast.success(`✨ Trx ID auto-extracted from receipt: ${detectedRef}`);
+          } else {
+            setManualRef("");
+            toast.error("Could not detect a valid Transaction ID from this receipt. Please upload a clear photo or screenshot of your bank transfer slip.");
+          }
+        }
+
+        setOcrData({
+          status: ocrRes.verification.status,
+          confidence: ocrRes.data.confidence,
+          trxId: shouldBlockWrongMerchant ? undefined : (ocrRes.data.trxId || ocrRes.data.externalRef || ocrRes.data.apv || undefined),
+          externalRef: ocrRes.data.externalRef || undefined,
+          apv: ocrRes.data.apv || undefined,
+          amount: ocrRes.data.amount ?? undefined,
+          currency: ocrRes.data.currency,
+          paidAt: ocrRes.data.paidAt ?? undefined,
+          rawText: ocrRes.data.rawText,
+          originatingBank: ocrRes.data.bankName || undefined,
+          payerName: ocrRes.data.payerName || undefined,
+          payerAccount: ocrRes.data.payerAccount || undefined,
+          payee: ocrRes.data.payee || undefined,
+          riskFlags: ocrRes.verification.riskFlags,
+          isRefMismatch: ocrRes.verification.isRefMismatch,
+          refMismatchDetails: ocrRes.verification.refMismatchDetails,
+          isWrongMerchant: shouldBlockWrongMerchant,
+          isUnderpaid: ocrRes.verification.isUnderpaid,
+          detectedPayee: ocrRes.verification?.detectedPayee || ocrRes.data.payee || undefined,
+        });
+      } catch {
+        toast.error("Could not scan receipt slip automatically");
+      }
     } catch {
       toast.error(t("payScreenshotRequired"));
     } finally {
@@ -176,7 +353,65 @@ export function RequestSubscriptionDialog({
     }
   };
 
+  const refMatchOutcome = arePaymentRefsMatching(manualRef.trim(), {
+    trxId: ocrData?.trxId,
+    externalRef: ocrData?.externalRef,
+    apv: ocrData?.apv,
+    rawText: ocrData?.rawText,
+  });
+
+  const isTrxMismatch = Boolean(
+    ocrData?.trxId &&
+    manualRef.trim().length >= 4 &&
+    !refMatchOutcome.match
+  );
+
+  const isBlockedByRef =
+    refCheck?.duplicate === true ||
+    refCheck?.isOld === true ||
+    refCheck?.isNotCurrentDate === true ||
+    refCheck?.isMismatch === true ||
+    isTrxMismatch;
+
+  const isBlockedByOcr = Boolean(
+    (!config.data?.manual?.skipMerchantCheck && ocrData?.isWrongMerchant) ||
+    (ocrData?.status === "MISMATCH" &&
+    (
+      ocrData.riskFlags?.includes("TRX_ID_MISMATCH") ||
+      (!config.data?.manual?.skipMerchantCheck && ocrData.riskFlags?.includes("WRONG_PAYEE_MERCHANT")) ||
+      ocrData.riskFlags?.includes("UNDERPAID") ||
+      ocrData.riskFlags?.includes("NOT_CURRENT_DATE") ||
+      ocrData.riskFlags?.includes("DUPLICATE_TRANSACTION_ID") ||
+      ocrData.riskFlags?.includes("DUPLICATE_RECEIPT_IMAGE") ||
+      isTrxMismatch
+    ))
+  );
+
+  const canSubmit =
+    Boolean(evidenceImage) &&
+    Boolean(manualRef.trim()) &&
+    !isBlockedByRef &&
+    !isBlockedByOcr &&
+    !readingImage;
+
   const submitManual = async () => {
+    if (!evidenceImage) {
+      toast.error("Payment receipt image is required to verify the transaction.");
+      return;
+    }
+    if (!manualRef.trim()) {
+      toast.error("Could not detect a valid Transaction ID on your receipt. Please upload a clear receipt slip.");
+      return;
+    }
+    if (isTrxMismatch && ocrData?.trxId) {
+      toast.error(`Transaction ID Mismatch! Detected "${manualRef}" differs from receipt "${ocrData.trxId}".`);
+      return;
+    }
+    if (isBlockedByOcr) {
+      toast.error(ocrData?.refMismatchDetails || "Cannot submit payment: The receipt failed security verification.");
+      return;
+    }
+
     setCreating(true);
     try {
       const res = await apiSend<{ payment: SubscriptionPaymentDTO; waitMinutes: number }>(
@@ -187,6 +422,7 @@ export function RequestSubscriptionDialog({
           evidenceImage: evidenceImage ?? undefined,
           evidenceUrl: evidenceUrl.trim() || undefined,
           note: note.trim() || undefined,
+          ocrData: ocrData ?? undefined,
         },
       );
       if (res.payment?.status === "VERIFIED") {
@@ -219,12 +455,26 @@ export function RequestSubscriptionDialog({
     ? `https://t.me/${manual.telegram.replace(/^@/, "")}`
     : null;
   const disabled = config.data ? !config.data.enabled : false;
-  const qrSrc =
+
+  const khrRate = manual?.khrExchangeRate || 4100;
+  const configuredKhr = cycle === "YEARLY" ? plan?.priceKhrYearly : plan?.priceKhrMonthly;
+  const priceKhr = (configuredKhr && configuredKhr > 0) ? configuredKhr : Math.round((priceUsd * khrRate) / 100) * 100;
+
+  const qrSrcUsd =
+    manual?.khqrImageUsd ??
     (cycle === "YEARLY" ? manual?.khqrImageYearly : manual?.khqrImageMonthly) ??
     manual?.khqrImage ??
     manual?.khqrDataUrl ??
     (cycle === "YEARLY" ? "/khqr/khqr-yearly.jpg" : "/khqr/khqr-monthly.jpg");
-  const canSubmit = manualRef.trim().length >= 4 || evidenceImage !== null;
+
+  const qrSrcKhr =
+    manual?.khqrImageKhr ??
+    (cycle === "YEARLY" ? manual?.khqrImageYearly : manual?.khqrImageMonthly) ??
+    manual?.khqrImage ??
+    manual?.khqrDataUrl ??
+    (cycle === "YEARLY" ? "/khqr/khqr-yearly.jpg" : "/khqr/khqr-monthly.jpg");
+
+  const qrSrc = currency === "KHR" ? qrSrcKhr : qrSrcUsd;
 
   const copyPayee = () => {
     const name = manual?.accountName || "SAM CHAN PANHA";
@@ -235,7 +485,7 @@ export function RequestSubscriptionDialog({
   };
 
   const copyAmount = () => {
-    const amt = currency === "USD" ? `${priceUsd}` : `${priceUsd * 4100}`;
+    const amt = currency === "USD" ? `${priceUsd}` : `${priceKhr}`;
     navigator.clipboard?.writeText(amt);
     setCopiedAmount(true);
     toast.success(`Copied Amount: ${amt} ${currency}`);
@@ -412,6 +662,30 @@ export function RequestSubscriptionDialog({
                 Close to Dashboard
               </Button>
             </div>
+
+            {submittedPaymentId && (
+              <div className="pt-1 text-center">
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  onClick={async () => {
+                    if (!confirm("Are you sure you want to cancel this payment request? You can submit a fresh payment immediately.")) return;
+                    try {
+                      await apiSend(`/api/tenant/payments/${submittedPaymentId}`, "DELETE");
+                      toast.success("Payment request cancelled.");
+                      setSubmittedRef(null);
+                      setSubmittedPaymentId(null);
+                    } catch (e) {
+                      toast.error("Could not cancel payment");
+                    }
+                  }}
+                  className="text-xs text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/40 cursor-pointer h-7"
+                >
+                  Cancel Request &amp; Enter New Details
+                </Button>
+              </div>
+            )}
           </div>
         </DialogContent>
       </Dialog>
@@ -465,11 +739,15 @@ export function RequestSubscriptionDialog({
             </div>
           </div>
 
-          <DialogDescription className="text-xs sm:text-sm font-semibold text-slate-700 dark:text-slate-300 mt-1">
+          <DialogDescription className="text-xs sm:text-sm font-semibold text-slate-700 dark:text-slate-300 mt-1 flex flex-wrap items-center gap-1.5">
             <span className="text-amber-700 dark:text-amber-400 font-extrabold text-sm sm:text-base">
-              {currency === "USD" ? `${formatUsd(priceUsd)} USD` : `៛${(priceUsd * 4100).toLocaleString()} KHR`}
-            </span>{" "}
-            · {cycle === "MONTHLY" ? t("billingMonthly") : t("billingYearly")}
+              {currency === "USD" ? `${formatUsd(priceUsd)} USD` : `៛${priceKhr.toLocaleString()} KHR`}
+            </span>
+            <span className="text-xs text-slate-500 font-bold">
+              ({currency === "USD" ? `៛${priceKhr.toLocaleString()} KHR` : `${formatUsd(priceUsd)} USD`})
+            </span>
+            <span className="text-slate-400">·</span>
+            <span>{cycle === "MONTHLY" ? t("billingMonthly") : t("billingYearly")}</span>
           </DialogDescription>
         </DialogHeader>
 
@@ -509,11 +787,16 @@ export function RequestSubscriptionDialog({
                 <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-2 mb-3 px-1">
                   <span className="font-extrabold text-[11px] tracking-wider text-red-600 flex items-center gap-1.5">
                     <span className="inline-block h-2 w-2 rounded-full bg-red-600 animate-pulse" />
-                    BAKONG KHQR · SCAN TO PAY
+                    BAKONG KHQR · {currency} ({currency === "USD" ? "$" : "៛"})
                   </span>
-                  <span className="text-[11px] font-bold text-slate-500">
-                    {cycle === "YEARLY" ? "12-Month Plan" : "Monthly"}
-                  </span>
+                  <div className="flex items-center gap-1.5">
+                    <Badge variant="outline" className="text-[10px] font-extrabold border-red-300 text-red-700 bg-red-50 dark:bg-red-950/40">
+                      {currency === "USD" ? "USD QR Code" : "KHR QR Code"}
+                    </Badge>
+                    <span className="text-[11px] font-bold text-slate-500">
+                      {cycle === "YEARLY" ? "12-Month Plan" : "Monthly"}
+                    </span>
+                  </div>
                 </div>
 
                 {/* Big QR Code with Click-to-Zoom */}
@@ -557,7 +840,7 @@ export function RequestSubscriptionDialog({
 
                   <div className="flex items-center justify-center gap-2">
                     <Badge className="bg-emerald-100 text-emerald-900 border-emerald-300 text-xs sm:text-sm font-black px-3 py-1">
-                      {currency === "USD" ? `${formatUsd(priceUsd)} USD` : `៛${(priceUsd * 4100).toLocaleString()} KHR`}
+                      {currency === "USD" ? `${formatUsd(priceUsd)} USD` : `៛${priceKhr.toLocaleString()} KHR`}
                     </Badge>
                     <Button
                       type="button"
@@ -591,7 +874,7 @@ export function RequestSubscriptionDialog({
                     className="h-7 text-xs font-semibold text-slate-700 dark:text-slate-300 border-slate-300 hover:bg-slate-50 cursor-pointer"
                   >
                     <Download className="h-3 w-3 mr-1" />
-                    Download QR Image
+                    Download QR ({currency})
                   </Button>
                 </div>
               </div>
@@ -625,11 +908,91 @@ export function RequestSubscriptionDialog({
               </a>
             )}
 
+            {/* AI OCR RECEIPT SCANNER BANNER */}
+            <div className="rounded-xl border border-amber-300 dark:border-amber-700/60 bg-gradient-to-r from-amber-50/90 via-orange-50/50 to-amber-50/90 dark:from-amber-950/20 dark:via-orange-950/10 dark:to-amber-950/20 p-3.5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-xs">
+              <div className="flex items-start sm:items-center gap-2.5">
+                <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-amber-500 text-slate-950 font-bold shadow-xs">
+                  <Sparkles className="h-5 w-5" />
+                </div>
+                <div>
+                  <div className="flex items-center gap-1.5">
+                    <h4 className="text-xs font-bold text-slate-900 dark:text-white">
+                      Scan Payment Slip (AI OCR Verification)
+                    </h4>
+                    <Badge className="bg-amber-200 text-amber-900 border-amber-300 text-[9px] font-extrabold px-1.5 py-0">
+                      Auto-Detect
+                    </Badge>
+                  </div>
+                  <p className="text-[11px] text-slate-600 dark:text-slate-400 mt-0.5">
+                    Upload your receipt image &mdash; OCR automatically reads Trx ID, Amount, and verifies against duplicate or expired payments.
+                  </p>
+                </div>
+              </div>
+              <Button
+                type="button"
+                size="sm"
+                onClick={() => setOcrModalOpen(true)}
+                className="w-full sm:w-auto h-8 bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs shadow-xs cursor-pointer flex items-center justify-center gap-1.5 shrink-0"
+              >
+                <Scan className="h-3.5 w-3.5" />
+                Scan Receipt Slip
+              </Button>
+            </div>
+
+            {/* OCR Active Feedback Status */}
+            {ocrData && (
+              <div className={cn(
+                "rounded-xl border p-2.5 text-xs flex flex-wrap items-center justify-between gap-2 shadow-xs",
+                ocrData.status === "PASS"
+                  ? "bg-emerald-50/80 border-emerald-300 text-emerald-950 dark:bg-emerald-950/25 dark:border-emerald-800"
+                  : ocrData.status === "WARN"
+                  ? "bg-amber-50/80 border-amber-300 text-amber-950 dark:bg-amber-950/25 dark:border-amber-800"
+                  : "bg-rose-50/80 border-rose-300 text-rose-950 dark:bg-rose-950/25 dark:border-rose-800"
+              )}>
+                <div className="flex items-center gap-2">
+                  {ocrData.status === "PASS" ? (
+                    <ShieldCheck className="h-4 w-4 text-emerald-600 shrink-0" />
+                  ) : ocrData.status === "WARN" ? (
+                    <TriangleAlert className="h-4 w-4 text-amber-600 shrink-0" />
+                  ) : (
+                    <ShieldAlert className="h-4 w-4 text-rose-600 shrink-0" />
+                  )}
+                  <div>
+                    <span className="font-bold">
+                      Slip OCR {ocrData.status === "PASS" ? "Verified" : ocrData.status === "WARN" ? "Notice" : "Mismatch"}
+                    </span>{" "}
+                    <span className="text-[11px] text-slate-600 dark:text-slate-400">
+                      ({ocrData.confidence}% confidence)
+                    </span>
+                    {ocrData.trxId && (
+                      <span className="ml-2 font-mono font-bold text-[11px] bg-white dark:bg-slate-900 px-1.5 py-0.5 rounded border border-slate-200 dark:border-slate-700">
+                        Trx: {ocrData.trxId}
+                      </span>
+                    )}
+                    {ocrData.amount != null && (
+                      <span className="ml-1 text-[11px] font-bold text-slate-700 dark:text-slate-300">
+                        · {ocrData.currency || currency} {ocrData.amount.toLocaleString()}
+                      </span>
+                    )}
+                  </div>
+                </div>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setOcrModalOpen(true)}
+                  className="h-6 px-2 text-[11px] font-bold underline cursor-pointer"
+                >
+                  Review Details
+                </Button>
+              </div>
+            )}
+
             {/* SCREENSHOT UPLOAD */}
             <div className="rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800/40 p-3.5 space-y-2">
               <Label className="text-xs font-bold text-slate-700 dark:text-slate-300 flex items-center justify-between">
                 <span>{t("payUploadLabel")}</span>
-                <span className="text-[11px] font-normal text-slate-400">Step 2: Attach confirmation</span>
+                <span className="text-[11px] font-normal text-slate-400">Step 2: Attach confirmation slip</span>
               </Label>
               {evidenceImage ? (
                 <div className="flex items-center gap-3 rounded-lg border border-slate-200 dark:border-slate-700 p-2 bg-slate-50 dark:bg-slate-900">
@@ -658,7 +1021,12 @@ export function RequestSubscriptionDialog({
                         variant="ghost"
                         size="sm"
                         className="h-7 text-[11px] text-rose-600 hover:bg-rose-50 cursor-pointer"
-                        onClick={() => setEvidenceImage(null)}
+                        onClick={() => {
+                          setEvidenceImage(null);
+                          setOcrData(null);
+                          setManualRef("");
+                          setRefCheck(null);
+                        }}
                       >
                         {t("payUploadRemove")}
                       </Button>
@@ -691,12 +1059,124 @@ export function RequestSubscriptionDialog({
               />
             </div>
 
-            {/* BANK TRANSACTION REFERENCE */}
+            {/* LIVE ANTI-FRAUD RECEIPT SECURITY BREAKDOWN */}
+            {ocrData && (
+              <div className="rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50/70 dark:bg-slate-800/50 p-3 space-y-2 text-xs shadow-xs animate-in fade-in">
+                <div className="flex items-center justify-between border-b border-slate-200/80 dark:border-slate-700/80 pb-1.5">
+                  <span className="font-extrabold text-[11px] text-slate-800 dark:text-slate-200 flex items-center gap-1.5">
+                    <ShieldCheck className="h-3.5 w-3.5 text-amber-600" />
+                    Live Anti-Fraud Receipt Security Breakdown
+                  </span>
+                  <Badge variant="outline" className={cn(
+                    "text-[10px] font-extrabold",
+                    ocrData.status === "PASS" && !isTrxMismatch
+                      ? "border-emerald-300 text-emerald-800 bg-emerald-50 dark:bg-emerald-950/40 dark:text-emerald-300"
+                      : "border-rose-300 text-rose-800 bg-rose-50 dark:bg-rose-950/40 dark:text-rose-300"
+                  )}>
+                    {ocrData.status === "PASS" && !isTrxMismatch ? "All Verified Safe" : "Action Required"}
+                  </Badge>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-[11px]">
+                  {/* 1. Trx ID match */}
+                  <div className="flex items-start gap-1.5 p-2 rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800">
+                    {!isTrxMismatch ? (
+                      <Check className="h-4 w-4 text-emerald-600 shrink-0 mt-0.5" />
+                    ) : (
+                      <ShieldAlert className="h-4 w-4 text-rose-600 shrink-0 mt-0.5" />
+                    )}
+                    <div className="min-w-0 flex-1">
+                      <span className="font-bold block text-slate-800 dark:text-slate-200">Trx ID Verification:</span>
+                      {!isTrxMismatch ? (
+                        <span className="text-emerald-700 dark:text-emerald-400 font-medium truncate block">
+                          {ocrData.trxId ? `Matches Slip (${ocrData.trxId})` : "Matches entered reference"}
+                        </span>
+                      ) : (
+                        <span className="text-rose-600 dark:text-rose-400 font-bold block truncate">
+                          Mismatch ({manualRef} ≠ {ocrData.trxId})
+                        </span>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* 2. Amount match */}
+                  <div className="flex items-start gap-1.5 p-2 rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800">
+                    {!ocrData.isUnderpaid ? (
+                      <Check className="h-4 w-4 text-emerald-600 shrink-0 mt-0.5" />
+                    ) : (
+                      <ShieldAlert className="h-4 w-4 text-rose-600 shrink-0 mt-0.5" />
+                    )}
+                    <div className="min-w-0 flex-1">
+                      <span className="font-bold block text-slate-800 dark:text-slate-200">Amount &amp; Currency:</span>
+                      {!ocrData.isUnderpaid ? (
+                        <span className="text-emerald-700 dark:text-emerald-400 font-medium truncate block">
+                          {ocrData.amount != null ? `${ocrData.currency || currency} ${ocrData.amount.toLocaleString()} (Paid in Full)` : "Matches plan requirement"}
+                        </span>
+                      ) : (
+                        <span className="text-rose-600 dark:text-rose-400 font-bold block truncate">
+                          Underpaid ({ocrData.currency || currency} {ocrData.amount})
+                        </span>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* 3. Date check */}
+                  <div className="flex items-start gap-1.5 p-2 rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800">
+                    {!ocrData.riskFlags.includes("NOT_CURRENT_DATE") && !ocrData.riskFlags.includes("OLD_TRANSACTION_DATE") ? (
+                      <Check className="h-4 w-4 text-emerald-600 shrink-0 mt-0.5" />
+                    ) : (
+                      <ShieldAlert className="h-4 w-4 text-rose-600 shrink-0 mt-0.5" />
+                    )}
+                    <div className="min-w-0 flex-1">
+                      <span className="font-bold block text-slate-800 dark:text-slate-200">Payment Date:</span>
+                      {!ocrData.riskFlags.includes("NOT_CURRENT_DATE") && !ocrData.riskFlags.includes("OLD_TRANSACTION_DATE") ? (
+                        <span className="text-emerald-700 dark:text-emerald-400 font-medium truncate block">
+                          Today (Cambodia UTC+7)
+                        </span>
+                      ) : (
+                        <span className="text-rose-600 dark:text-rose-400 font-bold block truncate">
+                          Past Date ({ocrData.paidAt || "Not today"})
+                        </span>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* 4. Payee Merchant */}
+                  <div className="flex items-start gap-1.5 p-2 rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800">
+                    {!ocrData.isWrongMerchant ? (
+                      <Check className="h-4 w-4 text-emerald-600 shrink-0 mt-0.5" />
+                    ) : (
+                      <ShieldAlert className="h-4 w-4 text-rose-600 shrink-0 mt-0.5" />
+                    )}
+                    <div className="min-w-0 flex-1">
+                      <span className="font-bold block text-slate-800 dark:text-slate-200">Merchant Payee:</span>
+                      {!ocrData.isWrongMerchant ? (
+                        <span className="text-emerald-700 dark:text-emerald-400 font-medium truncate block">
+                          {manual?.accountName || "SAM CHAN PANHA"}
+                        </span>
+                      ) : (
+                        <span className="text-rose-600 dark:text-rose-400 font-bold block truncate">
+                          Wrong Payee: {ocrData.payee || "Unverified"}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* BANK TRANSACTION REFERENCE (AUTO-EXTRACTED ONLY - MANUAL INPUT DISABLED FOR SECURITY) */}
             <div className="rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800/40 p-3.5 space-y-2">
               <div className="flex items-center justify-between">
-                <Label htmlFor="pay-ref" className="text-xs font-bold text-slate-700 dark:text-slate-300">
-                  {t("payBankRefLabel")}
-                </Label>
+                <div className="flex items-center gap-1.5">
+                  <Label htmlFor="pay-ref" className="text-xs font-bold text-slate-700 dark:text-slate-300">
+                    {t("payBankRefLabel")}
+                  </Label>
+                  <Badge variant="outline" className="text-[10px] font-semibold text-slate-600 dark:text-slate-300 bg-slate-100 dark:bg-slate-800 border-slate-300 flex items-center gap-1">
+                    <Lock className="h-2.5 w-2.5 text-slate-500" />
+                    Auto-Extracted Only
+                  </Badge>
+                </div>
                 <Button
                   type="button"
                   variant="ghost"
@@ -708,14 +1188,185 @@ export function RequestSubscriptionDialog({
                   Where to find Trx ID? (Sample)
                 </Button>
               </div>
-              <Input
-                id="pay-ref"
-                value={manualRef}
-                onChange={(e) => setManualRef(e.target.value)}
-                placeholder={t("payBankRefPlaceholder")}
-                className="h-9"
-                maxLength={80}
-              />
+
+              <div className="relative">
+                <Input
+                  id="pay-ref"
+                  value={manualRef}
+                  readOnly
+                  disabled={!evidenceImage || readingImage}
+                  placeholder={
+                    readingImage
+                      ? "⏳ Scanning receipt for Trx ID..."
+                      : evidenceImage
+                      ? (manualRef ? manualRef : "❌ No Trx ID detected on slip")
+                      : "🔒 Upload receipt above to auto-detect Trx ID..."
+                  }
+                  className={cn(
+                    "h-9 font-mono select-all bg-slate-50 dark:bg-slate-900/60 font-bold cursor-not-allowed",
+                    !evidenceImage && "text-slate-400 border-dashed",
+                    evidenceImage && !manualRef && !readingImage && "border-rose-400 bg-rose-50/30 text-rose-700 dark:text-rose-300",
+                    manualRef && "border-emerald-400 bg-emerald-50/20 text-emerald-900 dark:text-emerald-200",
+                    refCheck?.duplicate && "border-rose-400 bg-rose-50/30",
+                    refCheck?.isNotCurrentDate && "border-rose-400 bg-rose-50/30",
+                    refCheck?.isOld && "border-amber-400 bg-amber-50/30",
+                  )}
+                  maxLength={80}
+                />
+                <div className="absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none">
+                  {readingImage ? (
+                    <Loader2 className="h-4 w-4 animate-spin text-amber-600" />
+                  ) : manualRef ? (
+                    <ShieldCheck className="h-4 w-4 text-emerald-600" />
+                  ) : (
+                    <Lock className="h-4 w-4 text-slate-400" />
+                  )}
+                </div>
+              </div>
+
+              {/* Status Helper Guidance */}
+              {ocrData?.isWrongMerchant ? (
+                <div className="p-3 rounded-xl border-2 border-red-500 bg-red-50 dark:bg-red-950/50 text-red-900 dark:text-red-200 text-xs space-y-1.5 animate-in fade-in shadow-sm">
+                  <div className="font-extrabold text-sm text-red-700 dark:text-red-400 flex items-center gap-2">
+                    <ShieldAlert className="h-5 w-5 text-red-600 shrink-0" />
+                    <span>⛔ Payment Slip Blocked — Not Paid to Official KHQR</span>
+                  </div>
+                  <p className="text-[11px] text-red-800 dark:text-red-300 leading-relaxed font-medium">
+                    This slip was paid to <strong className="underline font-bold text-red-700 dark:text-red-200">{ocrData.detectedPayee || "a foreign merchant"}</strong> instead of our official merchant account (<strong>{config.data?.manual?.accountName || "SAM CHAN PANHA"}</strong>).
+                  </p>
+                  <p className="text-[10px] text-red-700 dark:text-red-400 pt-1 border-t border-red-200 dark:border-red-800 font-semibold">
+                    🚨 Security Action: Submission blocked. A security alert has been dispatched to administrators.
+                  </p>
+                </div>
+              ) : !evidenceImage ? (
+                <p className="text-[11px] text-amber-700 dark:text-amber-400 flex items-center gap-1.5 font-medium">
+                  <Camera className="h-3.5 w-3.5 shrink-0 text-amber-600" />
+                  <span>Upload your payment receipt above. Direct manual typing is disabled to prevent typos and financial risk.</span>
+                </p>
+              ) : readingImage ? (
+                <p className="text-[11px] text-sky-700 dark:text-sky-400 flex items-center gap-1.5 font-medium">
+                  <Loader2 className="h-3.5 w-3.5 animate-spin shrink-0 text-sky-600" />
+                  <span>Analyzing receipt with AI OCR to extract Transaction ID...</span>
+                </p>
+              ) : evidenceImage && !manualRef ? (
+                <div className="p-2.5 rounded-lg border border-rose-300 bg-rose-50 dark:bg-rose-950/40 text-rose-900 dark:text-rose-200 text-xs space-y-1 animate-in fade-in">
+                  <div className="font-bold flex items-center gap-1.5">
+                    <ShieldAlert className="h-4 w-4 text-rose-600 shrink-0" />
+                    <span>Transaction ID could not be detected</span>
+                  </div>
+                  <p className="text-[11px] text-rose-800 dark:text-rose-300 leading-relaxed">
+                    The receipt image was uploaded, but the bank Trx ID / reference is missing or blurry. Please click <strong>Change</strong> above to upload a clearer photo or full screenshot of your slip.
+                  </p>
+                </div>
+              ) : (
+                <div className="flex items-center justify-between text-[11px] text-emerald-700 dark:text-emerald-400">
+                  <span className="flex items-center gap-1 font-semibold">
+                    <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600" />
+                    Auto-extracted &amp; locked to uploaded receipt slip
+                  </span>
+                  <span className="text-slate-400 text-[10px]">Tamper-proof</span>
+                </div>
+              )}
+
+              {/* Real-Time Trx ID Validation & Anti-Duplicate Security Feedback */}
+              {refCheck?.checking && (
+                <div className="flex items-center gap-1.5 text-xs text-amber-700 bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800/50 p-2 rounded-lg">
+                  <Loader2 className="h-3.5 w-3.5 animate-spin shrink-0" />
+                  <span>Verifying transaction reference against bank records...</span>
+                </div>
+              )}
+              {refCheck && !refCheck.checking && refCheck.isNotCurrentDate && (
+                <div className="flex flex-col gap-2.5 text-xs bg-rose-50 dark:bg-rose-950/40 border-2 border-rose-400 dark:border-rose-700 p-3 rounded-xl shadow-xs animate-in fade-in">
+                  <div className="flex items-start gap-2.5">
+                    <ShieldAlert className="h-5 w-5 shrink-0 text-rose-600 mt-0.5" />
+                    <div className="flex-1 min-w-0">
+                      <div className="font-extrabold text-sm text-rose-900 dark:text-rose-100 flex items-center gap-2">
+                        <span>Transaction Found, But Date is Not Today</span>
+                        <Badge variant="destructive" className="text-[10px] uppercase font-black px-1.5 py-0">
+                          Blocked
+                        </Badge>
+                      </div>
+                      <p className="text-xs text-rose-800 dark:text-rose-200 mt-1 leading-relaxed">
+                        Bank record for Trx ID <strong className="font-mono text-slate-900 dark:text-white bg-white/80 dark:bg-slate-900 px-1 py-0.5 rounded border border-rose-300">{refCheck.trxId || manualRef}</strong> was verified in the Telegram bank group, but its date is <strong className="text-rose-950 dark:text-white">{refCheck.transactionDateRaw || refCheck.transactionDateFormatted || "not today"}</strong>.
+                      </p>
+                      <p className="text-[11px] text-rose-700 dark:text-rose-300 mt-1">
+                        ⚠️ Automatic activation only accepts payments completed today. Submitting requests for old bank transactions is not allowed.
+                      </p>
+                    </div>
+                  </div>
+                  <div className="pt-2 border-t border-rose-200 dark:border-rose-800 flex flex-wrap items-center justify-between gap-2">
+                    <span className="text-[11px] font-semibold text-rose-900 dark:text-rose-200">
+                      Please contact Admin for manual review:
+                    </span>
+                    <a
+                      href={refCheck.telegramAdminLink || "https://t.me/samchanpanha"}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-sky-600 hover:bg-sky-500 text-white font-bold text-xs shadow-sm transition cursor-pointer"
+                    >
+                      <Send className="h-3.5 w-3.5" />
+                      <span>Contact Telegram Admin ({refCheck.telegramAdmin || "@samchanpanha"})</span>
+                      <ExternalLink className="h-3 w-3" />
+                    </a>
+                  </div>
+                </div>
+              )}
+              {refCheck && !refCheck.checking && refCheck.duplicate && (
+                <div className="flex items-start gap-2 text-xs text-rose-800 bg-rose-50 dark:bg-rose-950/30 border border-rose-300 dark:border-rose-800 p-2.5 rounded-lg font-semibold animate-in fade-in">
+                  <ShieldAlert className="h-4 w-4 shrink-0 text-rose-600 mt-0.5" />
+                  <div>
+                    <div className="font-bold text-rose-900 dark:text-rose-200">Duplicate Transaction Detected</div>
+                    <div className="text-[11px] text-rose-700 dark:text-rose-300 mt-0.5">
+                      {refCheck.message || "This Trx ID has already been submitted or verified. Please provide a new payment receipt."}
+                    </div>
+                  </div>
+                </div>
+              )}
+              {refCheck && !refCheck.checking && !refCheck.duplicate && refCheck.isOld && (
+                <div className="flex items-start gap-2 text-xs text-amber-800 bg-amber-50 dark:bg-amber-950/30 border border-amber-300 dark:border-amber-800 p-2.5 rounded-lg font-semibold animate-in fade-in">
+                  <TriangleAlert className="h-4 w-4 shrink-0 text-amber-600 mt-0.5" />
+                  <div>
+                    <div className="font-bold text-amber-900 dark:text-amber-200">Old Transaction Reference</div>
+                    <div className="text-[11px] text-amber-800 dark:text-amber-300 mt-0.5">
+                      {refCheck.message || "This transaction is older than the allowed limit. Please pay now and submit a fresh receipt."}
+                    </div>
+                  </div>
+                </div>
+              )}
+              {refCheck && !refCheck.checking && refCheck.valid && refCheck.isInterbank && !refCheck.isNotCurrentDate && (
+                <div className="flex items-start gap-2 text-xs text-sky-800 dark:text-sky-200 bg-sky-50 dark:bg-sky-950/30 border border-sky-300 dark:border-sky-800 p-2.5 rounded-lg font-semibold animate-in fade-in">
+                  <CreditCard className="h-4 w-4 shrink-0 text-sky-600 dark:text-sky-400 mt-0.5" />
+                  <div className="flex-1">
+                    <div className="font-bold flex items-center justify-between gap-1.5">
+                      <span>{(refCheck.originatingBank || ocrData?.originatingBank) || "Interbank"} Reference Detected</span>
+                      <Badge className="bg-sky-100 dark:bg-sky-900 text-sky-900 dark:text-sky-100 border-sky-300 text-[9px] font-bold">Interbank KHQR</Badge>
+                    </div>
+                    <div className="text-[11px] text-sky-700 dark:text-sky-300 mt-0.5">
+                      {refCheck.matchedAba
+                        ? `Correlated to ABA PayWay Trx ID: ${refCheck.abaTrxId || refCheck.trxId}`
+                        : "Valid reference from external bank. Attach payment slip for fastest verification."}
+                    </div>
+                  </div>
+                </div>
+              )}
+              {refCheck && !refCheck.checking && refCheck.valid && refCheck.matchedAba && (
+                <div className="flex items-start gap-2 text-xs text-emerald-800 bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-300 dark:border-emerald-800 p-2.5 rounded-lg font-semibold animate-in fade-in">
+                  <Zap className="h-4 w-4 shrink-0 text-emerald-600 mt-0.5 animate-pulse" />
+                  <div>
+                    <div className="font-bold text-emerald-900 dark:text-emerald-200">Matched Bank Transaction!</div>
+                    <div className="text-[11px] text-emerald-700 dark:text-emerald-300 mt-0.5">
+                      {refCheck.message || "Payment verified against incoming ABA transaction. Ready for instant auto-approval!"}
+                    </div>
+                  </div>
+                </div>
+              )}
+              {refCheck && !refCheck.checking && refCheck.valid && !refCheck.matchedAba && !refCheck.duplicate && !refCheck.isOld && (
+                <div className="flex items-center gap-1.5 text-xs text-emerald-700 bg-emerald-50/60 dark:bg-emerald-950/20 border border-emerald-200 dark:border-emerald-800/50 p-2 rounded-lg">
+                  <ShieldCheck className="h-3.5 w-3.5 shrink-0 text-emerald-600" />
+                  <span>Valid transaction reference format. Ready for submission.</span>
+                </div>
+              )}
+
               <p className="text-[11px] text-slate-400">{t("payScreenshotRequired")}</p>
             </div>
 
@@ -746,26 +1397,66 @@ export function RequestSubscriptionDialog({
           </div>
         )}
 
-        {/* Sticky DialogFooter */}
-        <DialogFooter className="px-5 sm:px-6 py-3 border-t border-slate-100 dark:border-slate-800 bg-slate-50/80 dark:bg-slate-900/80 shrink-0 flex items-center justify-between gap-2">
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => onOpenChange(false)}
-            disabled={creating}
-            className="cursor-pointer"
-          >
-            {t("cancel")}
-          </Button>
-          <Button
-            size="sm"
-            onClick={submitManual}
-            disabled={creating || !canSubmit}
-            className="bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold px-5 cursor-pointer shadow-sm"
-          >
-            {creating && <Loader2 className="h-4 w-4 mr-1.5 animate-spin" aria-hidden />}
-            {t("paySubmitManual")}
-          </Button>
+        {/* Sticky DialogFooter with Live Security Status Indicator */}
+        <DialogFooter className="px-5 sm:px-6 py-3 border-t border-slate-100 dark:border-slate-800 bg-slate-50/80 dark:bg-slate-900/80 shrink-0 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2.5">
+          <div className="flex-1 text-[11px] min-w-0">
+            {!evidenceImage && (
+              <span className="text-amber-700 dark:text-amber-400 font-bold flex items-center gap-1.5">
+                <Camera className="h-4 w-4 shrink-0 text-amber-600" />
+                <span className="truncate">Payment receipt upload required to verify Trx ID.</span>
+              </span>
+            )}
+            {evidenceImage && readingImage && (
+              <span className="text-sky-700 dark:text-sky-400 font-bold flex items-center gap-1.5">
+                <Loader2 className="h-4 w-4 shrink-0 animate-spin text-sky-600" />
+                <span className="truncate">Scanning receipt with OCR...</span>
+              </span>
+            )}
+            {evidenceImage && !manualRef && !readingImage && (
+              <span className="text-rose-600 dark:text-rose-400 font-bold flex items-center gap-1.5">
+                <ShieldAlert className="h-4 w-4 shrink-0 text-rose-600" />
+                <span className="truncate">Could not detect Trx ID on receipt. Please upload clearer slip.</span>
+              </span>
+            )}
+            {isBlockedByRef && (
+              <span className="text-rose-600 dark:text-rose-400 font-bold flex items-center gap-1.5">
+                <ShieldAlert className="h-4 w-4 shrink-0 text-rose-600" />
+                <span className="truncate">{refCheck?.message || "Invalid or blocked transaction reference."}</span>
+              </span>
+            )}
+            {!isBlockedByRef && isBlockedByOcr && (
+              <span className="text-rose-600 dark:text-rose-400 font-bold flex items-center gap-1.5">
+                <ShieldAlert className="h-4 w-4 shrink-0 text-rose-600" />
+                <span className="truncate">{ocrData?.refMismatchDetails || "Receipt failed anti-fraud verification."}</span>
+              </span>
+            )}
+            {!isBlockedByRef && !isBlockedByOcr && canSubmit && (
+              <span className="text-emerald-700 dark:text-emerald-400 font-semibold flex items-center gap-1.5">
+                <ShieldCheck className="h-4 w-4 shrink-0 text-emerald-600" />
+                <span className="truncate">Receipt verified. Ready for submission!</span>
+              </span>
+            )}
+          </div>
+          <div className="flex items-center justify-end gap-2 shrink-0">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => onOpenChange(false)}
+              disabled={creating}
+              className="cursor-pointer"
+            >
+              {t("cancel")}
+            </Button>
+            <Button
+              size="sm"
+              onClick={submitManual}
+              disabled={creating || !canSubmit}
+              className="bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold px-5 cursor-pointer shadow-sm disabled:opacity-50"
+            >
+              {creating && <Loader2 className="h-4 w-4 mr-1.5 animate-spin" aria-hidden />}
+              {!evidenceImage ? "Upload Receipt to Submit" : t("paySubmitManual")}
+            </Button>
+          </div>
         </DialogFooter>
       </DialogContent>
 
@@ -773,15 +1464,32 @@ export function RequestSubscriptionDialog({
         open={zoomQrOpen}
         onOpenChange={setZoomQrOpen}
         qrSrc={qrSrc}
+        qrSrcUsd={qrSrcUsd}
+        qrSrcKhr={qrSrcKhr}
         planTitle={`${plan?.plan ?? "PRO"} (${cycle === "YEARLY" ? "Yearly" : "Monthly"})`}
-        amountText={currency === "USD" ? `${formatUsd(priceUsd)} USD` : `៛${(priceUsd * 4100).toLocaleString()} KHR`}
+        amountText={currency === "USD" ? `${formatUsd(priceUsd)} USD` : `៛${priceKhr.toLocaleString()} KHR`}
+        amountTextUsd={`${formatUsd(priceUsd)} USD`}
+        amountTextKhr={`៛${priceKhr.toLocaleString()} KHR`}
         currency={currency}
+        onCurrencyChange={setCurrency}
         accountName={manual?.accountName || "SAM CHAN PANHA"}
       />
       <TrxIdGuideDialog
         open={guideOpen}
         onOpenChange={setGuideOpen}
-        onUseSample={(id) => setManualRef(id)}
+      />
+      <PaymentOcrModal
+        open={ocrModalOpen}
+        onOpenChange={setOcrModalOpen}
+        plan={plan}
+        cycle={cycle}
+        priceUsd={priceUsd}
+        currency={currency}
+        onConfirmed={(data) => {
+          if (data.manualRef) setManualRef(data.manualRef);
+          if (data.evidenceImage) setEvidenceImage(data.evidenceImage);
+          if (data.ocrData) setOcrData(data.ocrData);
+        }}
       />
     </Dialog>
   );
@@ -797,6 +1505,10 @@ export function PendingPaymentBanner() {
   const { data, refetch } = useFetch<SubscriptionPaymentDTO[]>("/api/tenant/payments");
   const hadPending = useRef(false);
   const [checking, setChecking] = useState(false);
+  const [cancelling, setCancelling] = useState(false);
+  const [copiedRef, setCopiedRef] = useState(false);
+  const [copiedTrx, setCopiedTrx] = useState(false);
+  const [viewSlipOpen, setViewSlipOpen] = useState(false);
 
   // Poll every 3 seconds while mounted so approval is picked up instantly
   useEffect(() => {
@@ -825,50 +1537,290 @@ export function PendingPaymentBanner() {
 
   const checkNow = async () => {
     setChecking(true);
+    try {
+      await apiSend("/api/tenant/payments?sync=true", "GET");
+    } catch {}
     await refetch();
-    setTimeout(() => setChecking(false), 500);
+    setTimeout(() => {
+      setChecking(false);
+      toast.info("Status refreshed with live Telegram sync.");
+    }, 600);
+  };
+
+  const cancelPayment = async (id: string, ref: string) => {
+    if (!confirm(`Are you sure you want to cancel payment request #${ref}? You will be able to submit a fresh payment immediately.`)) {
+      return;
+    }
+    setCancelling(true);
+    try {
+      await apiSend(`/api/tenant/payments/${id}`, "DELETE");
+      toast.success("Payment request cancelled. You can now select a plan or re-submit.");
+      await refetch();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Failed to cancel payment request");
+    } finally {
+      setCancelling(false);
+    }
   };
 
   if (pending.length === 0) return null;
   const p = pending[0];
 
+  const createdDate = new Date(p.createdAt);
+  const elapsedMinutes = Math.max(0, Math.round((Date.now() - createdDate.getTime()) / 60_000));
+  const isOvertime = elapsedMinutes >= 10;
+
+  const copyRefText = () => {
+    navigator.clipboard?.writeText(p.reference);
+    setCopiedRef(true);
+    toast.success(`Copied: ${p.reference}`);
+    setTimeout(() => setCopiedRef(false), 2000);
+  };
+
+  const copyTrxText = (trx: string) => {
+    navigator.clipboard?.writeText(trx);
+    setCopiedTrx(true);
+    toast.success(`Copied Trx ID: ${trx}`);
+    setTimeout(() => setCopiedTrx(false), 2000);
+  };
+
   return (
-    <Alert className="border-amber-300 bg-amber-50/90 shadow-sm animate-in fade-in">
-      <div className="flex items-start justify-between gap-3 w-full">
-        <div className="flex items-start gap-2.5">
-          <Clock className="h-5 w-5 text-amber-600 mt-0.5 shrink-0" aria-hidden />
-          <div>
-            <AlertTitle className="text-sm font-bold text-amber-950 flex items-center gap-2">
-              {t("payPendingBanner")}
-              <span className="flex h-2 w-2 rounded-full bg-emerald-500 animate-pulse" title="Live checking" />
-            </AlertTitle>
-            <AlertDescription className="text-xs text-amber-900/90 mt-0.5">
-              {t("payPendingBannerDesc", { ago: timeAgo(p.createdAt, locale) })}
-              <span className="ml-1.5">
-                <code className="rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-bold font-mono text-amber-950">
-                  {p.reference}
-                </code>
-              </span>
-              <span className="block text-[11px] text-amber-800 mt-1">
-                ⚡ Linked to Telegram syncer &amp; Admin verification. Page auto-reloads upon approval.
-              </span>
-            </AlertDescription>
+    <>
+      <div className="mb-6 overflow-hidden rounded-2xl border-2 border-amber-400/90 dark:border-amber-700 bg-white dark:bg-slate-900 shadow-md animate-in fade-in transition-all">
+        {/* Glowing top accent line */}
+        <div className="h-1.5 w-full bg-gradient-to-r from-amber-500 via-orange-500 to-amber-400" />
+
+        <div className="p-4 sm:p-5 space-y-3.5">
+          {/* Header Row */}
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div className="flex items-start gap-3">
+              <div className="relative flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-amber-100 text-amber-700 dark:bg-amber-950/80 dark:text-amber-400 shadow-xs">
+                <span className="absolute inline-flex h-full w-full animate-ping rounded-xl bg-amber-400 opacity-25" />
+                <Clock className="h-5 w-5 relative" aria-hidden />
+              </div>
+              <div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <h3 className="text-sm sm:text-base font-bold text-slate-900 dark:text-white">
+                    {t("payPendingBanner")}
+                  </h3>
+                  <Badge className="bg-amber-100 text-amber-900 border-amber-300 dark:bg-amber-950 dark:text-amber-200 text-[10px] font-extrabold uppercase px-2 py-0.5">
+                    {isOvertime ? `Under Review (${elapsedMinutes}m)` : "Awaiting Verification"}
+                  </Badge>
+                  <span className="flex items-center gap-1.5 rounded-full bg-emerald-50 dark:bg-emerald-950/60 border border-emerald-200 dark:border-emerald-800 px-2 py-0.5 text-[10px] font-bold text-emerald-700 dark:text-emerald-400">
+                    <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                    Live Polling
+                  </span>
+                </div>
+                <p className="text-xs text-slate-600 dark:text-slate-300 mt-0.5">
+                  {isOvertime ? (
+                    <span>
+                      Submitted <strong className="text-slate-900 dark:text-white">{timeAgo(p.createdAt, locale)}</strong> · Review is taking slightly longer than normal (~10m). Admin has received your receipt.
+                    </span>
+                  ) : (
+                    <span>
+                      Submitted <strong className="text-slate-900 dark:text-white">{timeAgo(p.createdAt, locale)}</strong> · Usually verified within 10 minutes — page auto-reloads upon approval.
+                    </span>
+                  )}
+                </p>
+              </div>
+            </div>
+
+            {/* Quick Actions (Right Header) */}
+            <div className="flex items-center gap-2 shrink-0 self-end sm:self-auto">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={checkNow}
+                disabled={checking}
+                className="h-8 text-xs font-semibold bg-white dark:bg-slate-900 border-amber-300 dark:border-amber-700 hover:bg-amber-50 dark:hover:bg-amber-950 text-amber-950 dark:text-amber-200 cursor-pointer shadow-xs"
+              >
+                {checking ? <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5 mr-1.5" />}
+                Check Status
+              </Button>
+            </div>
+          </div>
+
+          {/* Details Card */}
+          <div className="rounded-xl border border-amber-200/90 dark:border-amber-800/60 bg-amber-50/60 dark:bg-amber-950/20 p-3 space-y-2 text-xs text-slate-800 dark:text-slate-200">
+            <div className="flex flex-wrap items-center justify-between gap-2 border-b border-amber-200/60 dark:border-amber-800/40 pb-2">
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="font-extrabold text-slate-900 dark:text-white text-xs sm:text-sm">
+                  {p.plan} Plan ({p.billingCycle === "YEARLY" ? "Yearly" : "Monthly"})
+                </span>
+                <span className="font-black text-emerald-700 dark:text-emerald-400">
+                  ${(p.amountUsd ?? 49).toFixed(2)} USD
+                </span>
+                {p.currency === "KHR" && p.amountExpected && (
+                  <span className="text-[11px] font-bold text-slate-500">
+                    (៛{p.amountExpected.toLocaleString()} KHR)
+                  </span>
+                )}
+              </div>
+
+              {/* Reference with 1-click copy */}
+              <div className="flex items-center gap-1.5">
+                <span className="text-[11px] text-slate-500">Ref:</span>
+                <button
+                  type="button"
+                  onClick={copyRefText}
+                  className="inline-flex items-center gap-1 rounded-md bg-white dark:bg-slate-900 px-2 py-0.5 font-mono text-[11px] font-bold text-amber-950 dark:text-amber-200 border border-amber-300 dark:border-amber-700 hover:bg-amber-100/60 transition cursor-pointer"
+                  title="Click to copy payment reference"
+                >
+                  <span>{p.reference}</span>
+                  {copiedRef ? <Check className="h-3 w-3 text-emerald-600" /> : <Copy className="h-3 w-3 text-slate-400" />}
+                </button>
+              </div>
+            </div>
+
+            {/* Trx ID & Evidence status */}
+            <div className="flex flex-wrap items-center justify-between gap-2 pt-0.5">
+              <div className="flex flex-wrap items-center gap-2">
+                {p.manualRef && (
+                  <div className="flex items-center gap-1">
+                    <span className="text-slate-500">Bank Trx ID:</span>
+                    <button
+                      type="button"
+                      onClick={() => copyTrxText(p.manualRef!)}
+                      className="inline-flex items-center gap-1 rounded bg-white dark:bg-slate-900 px-2 py-0.5 font-mono text-[11px] font-bold text-slate-900 dark:text-slate-100 border border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer"
+                      title="Click to copy Trx ID"
+                    >
+                      <span>{p.manualRef}</span>
+                      {copiedTrx ? <Check className="h-3 w-3 text-emerald-600" /> : <Copy className="h-3 w-3 text-slate-400" />}
+                    </button>
+                  </div>
+                )}
+                {p.ocrStatus && p.ocrStatus !== "NOT_RUN" && (
+                  <Badge variant="outline" className={cn(
+                    "text-[10px] font-bold",
+                    p.ocrStatus === "PASS" ? "border-emerald-300 text-emerald-700 bg-emerald-50" : "border-amber-300 text-amber-800 bg-amber-50"
+                  )}>
+                    OCR {p.ocrStatus === "PASS" ? "Verified" : p.ocrStatus}
+                  </Badge>
+                )}
+              </div>
+
+              {(p.evidenceImage || p.hasEvidenceImage) && (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setViewSlipOpen(true)}
+                  className="h-6 px-2 text-[11px] font-bold text-amber-800 dark:text-amber-300 hover:bg-amber-100/60 cursor-pointer"
+                >
+                  <ImageIcon className="h-3 w-3 mr-1" />
+                  View Uploaded Slip
+                </Button>
+              )}
+            </div>
+
+            {/* Verification Note (e.g. Underpaid, mismatch, or admin instructions) */}
+            {p.note && (
+              <div className="mt-1.5 rounded-lg border border-amber-300 dark:border-amber-700/80 bg-amber-100/80 dark:bg-amber-900/40 p-2.5 text-xs text-amber-950 dark:text-amber-200 flex items-start gap-2">
+                <TriangleAlert className="h-4 w-4 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
+                <div className="space-y-0.5 leading-relaxed">
+                  <span className="font-bold">Payment Note: </span>
+                  <span className="text-amber-900/90 dark:text-amber-300/90">{p.note}</span>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Footer Actions Row */}
+          <div className="flex flex-wrap items-center justify-between gap-2 pt-1 border-t border-slate-100 dark:border-slate-800">
+            <div className="flex items-center gap-1.5 text-[11px] text-slate-500 dark:text-slate-400">
+              <Send className="h-3.5 w-3.5 text-sky-600 shrink-0" />
+              <span>Synced to Telegram Bot &amp; Super Admin review queue</span>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                onClick={() => cancelPayment(p.id, p.reference)}
+                disabled={cancelling}
+                className="h-7 px-2.5 text-xs font-semibold text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/40 cursor-pointer"
+                title="Cancel this payment request to submit a new one"
+              >
+                {cancelling ? <Loader2 className="h-3 w-3 mr-1 animate-spin" /> : <ShieldOff className="h-3 w-3 mr-1" />}
+                Cancel Request &amp; Try Again
+              </Button>
+
+              <a
+                href="https://t.me/samchanpanha"
+                target="_blank"
+                rel="noreferrer"
+                className="inline-flex items-center gap-1 text-xs font-semibold text-sky-700 dark:text-sky-400 hover:underline px-2 py-1"
+              >
+                <span>Telegram Support</span>
+                <ExternalLink className="h-3 w-3" />
+              </a>
+            </div>
           </div>
         </div>
-
-        <Button
-          type="button"
-          variant="outline"
-          size="sm"
-          onClick={checkNow}
-          disabled={checking}
-          className="h-7 text-xs font-semibold shrink-0 bg-white border-amber-300 hover:bg-amber-100/60 text-amber-950 cursor-pointer"
-        >
-          {checking ? <Loader2 className="h-3 w-3 mr-1 animate-spin" /> : <RefreshCw className="h-3 w-3 mr-1" />}
-          Check Status
-        </Button>
       </div>
-    </Alert>
+
+      {/* Slip Preview Modal */}
+      {viewSlipOpen && (
+        <Dialog open={viewSlipOpen} onOpenChange={setViewSlipOpen}>
+          <DialogContent className="sm:max-w-md p-5 space-y-3 bg-white dark:bg-slate-900 rounded-2xl">
+            <DialogHeader>
+              <DialogTitle className="text-base font-bold text-slate-900 dark:text-white">
+                Payment Confirmation Slip
+              </DialogTitle>
+              <DialogDescription className="text-xs text-slate-500">
+                Submitted for {p.plan} plan · Ref #{p.reference}
+              </DialogDescription>
+            </DialogHeader>
+
+            {p.evidenceImage ? (
+              <div className="rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-950 p-2">
+                <img
+                  src={p.evidenceImage}
+                  alt="Payment Receipt Slip"
+                  className="mx-auto max-h-[60vh] w-auto rounded-lg object-contain shadow-xs"
+                />
+              </div>
+            ) : (
+              <div className="rounded-xl border border-slate-200 p-8 text-center text-xs text-slate-500 bg-slate-50">
+                Screenshot was uploaded and forwarded to the Admin Telegram review group.
+              </div>
+            )}
+
+            {p.manualRef && (
+              <div className="rounded-lg bg-slate-100 dark:bg-slate-800 p-2 text-xs flex justify-between items-center">
+                <span className="text-slate-500">Bank Trx ID:</span>
+                <code className="font-mono font-bold">{p.manualRef}</code>
+              </div>
+            )}
+
+            <DialogFooter className="flex justify-between sm:justify-between items-center gap-2">
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                onClick={() => {
+                  setViewSlipOpen(false);
+                  cancelPayment(p.id, p.reference);
+                }}
+                className="text-xs text-rose-600 hover:bg-rose-50"
+              >
+                Cancel This Payment
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                onClick={() => setViewSlipOpen(false)}
+              >
+                Close
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      )}
+    </>
   );
 }
 
@@ -988,6 +1940,43 @@ export function SubscriptionPaywallCard({
   const [error, setError] = useState<string | null>(null);
   const [zoomQrOpen, setZoomQrOpen] = useState(false);
   const [guideOpen, setGuideOpen] = useState(false);
+  const [ocrModalOpen, setOcrModalOpen] = useState(false);
+  const [ocrData, setOcrData] = useState<{
+    status: "PASS" | "WARN" | "MISMATCH";
+    confidence: number;
+    trxId?: string;
+    amount?: number;
+    currency?: string;
+    paidAt?: string;
+    rawText: string;
+    originatingBank?: string;
+    isInterbank?: boolean;
+    payerName?: string;
+    payerAccount?: string;
+    payee?: string;
+    abaTrxId?: string;
+    isWrongMerchant?: boolean;
+    detectedPayee?: string;
+    riskFlags: string[];
+  } | null>(null);
+  const [refCheck, setRefCheck] = useState<{
+    checking: boolean;
+    valid?: boolean;
+    canSubmit?: boolean;
+    duplicate?: boolean;
+    isOld?: boolean;
+    isNotCurrentDate?: boolean;
+    isInterbank?: boolean;
+    originatingBank?: string;
+    abaTrxId?: string;
+    trxId?: string;
+    transactionDateFormatted?: string;
+    transactionDateRaw?: string | null;
+    telegramAdmin?: string;
+    telegramAdminLink?: string;
+    matchedAba?: boolean;
+    message?: string;
+  } | null>(null);
   const fileInput = useRef<HTMLInputElement>(null);
 
   // Filter only active, enabled plans (excluding FREE and disabled plans like BASIC if disabled)
@@ -997,14 +1986,16 @@ export function SubscriptionPaywallCard({
           (p) => p.plan !== "FREE" && (p as any).enabled !== false,
         )
       : [
-          { plan: "PRO", name: "Professional Plan", priceUsdMonthly: 49, priceUsdYearly: 490, listingsLimit: 50, featuredLimit: 10, seats: 5 },
-          { plan: "ENTERPRISE", name: "Enterprise Dealership", priceUsdMonthly: 149, priceUsdYearly: 1490, listingsLimit: 999, featuredLimit: 30, seats: 20 },
+          { plan: "PRO", name: "Professional Plan", priceUsdMonthly: 49, priceUsdYearly: 490, priceKhrMonthly: 200900, priceKhrYearly: 2009000, listingsLimit: 50, featuredLimit: 10, seats: 5 },
+          { plan: "ENTERPRISE", name: "Enterprise Dealership", priceUsdMonthly: 149, priceUsdYearly: 1490, priceKhrMonthly: 610900, priceKhrYearly: 6109000, listingsLimit: 999, featuredLimit: 30, seats: 20 },
         ]
   ).map((p) => ({
     key: p.plan as "BASIC" | "PRO" | "ENTERPRISE",
     title: p.name || `${p.plan} Plan`,
     priceMonthly: p.priceUsdMonthly ?? (p.plan === "BASIC" ? 19 : p.plan === "PRO" ? 49 : 149),
     priceYearly: p.priceUsdYearly ?? (p.plan === "BASIC" ? 190 : p.plan === "PRO" ? 490 : 1490),
+    priceKhrMonthly: p.priceKhrMonthly,
+    priceKhrYearly: p.priceKhrYearly,
     listingsLimit: p.listingsLimit ?? 50,
     featuredLimit: p.featuredLimit ?? 10,
     seats: p.seats ?? 5,
@@ -1017,31 +2008,164 @@ export function SubscriptionPaywallCard({
     }
   }, [activePlans, selectedPlan]);
 
+  // Real-time debounced check on manualRef
+  useEffect(() => {
+    const trimmed = manualRef.trim();
+    if (trimmed.length < 4) {
+      setRefCheck(null);
+      return;
+    }
+    setRefCheck({ checking: true });
+    const timer = setTimeout(async () => {
+      try {
+        const ocrParam = ocrData?.trxId ? `&ocrRef=${encodeURIComponent(ocrData.trxId)}` : "";
+        const bankParam = ocrData?.originatingBank ? `&bank=${encodeURIComponent(ocrData.originatingBank)}` : "";
+        const payerAccParam = ocrData?.payerAccount ? `&payerAccount=${encodeURIComponent(ocrData.payerAccount)}` : "";
+        const payerNameParam = ocrData?.payerName ? `&payerName=${encodeURIComponent(ocrData.payerName)}` : "";
+        const res = await apiSend<{
+          valid: boolean;
+          canSubmit?: boolean;
+          duplicate?: boolean;
+          isOld?: boolean;
+          isNotCurrentDate?: boolean;
+          isMismatch?: boolean;
+          isInterbank?: boolean;
+          originatingBank?: string;
+          abaTrxId?: string;
+          trxId?: string;
+          transactionDateFormatted?: string;
+          transactionDateRaw?: string | null;
+          telegramAdmin?: string;
+          telegramAdminLink?: string;
+          matchedAba?: boolean;
+          message?: string;
+        }>(`/api/tenant/payments/check-ref?ref=${encodeURIComponent(trimmed)}&plan=${selectedPlan}&cycle=${cycle}&currency=${currency}${ocrParam}${bankParam}${payerAccParam}${payerNameParam}`, "GET");
+        setRefCheck({ checking: false, ...res });
+      } catch {
+        setRefCheck(null);
+      }
+    }, 400);
+    return () => clearTimeout(timer);
+  }, [manualRef, ocrData?.trxId, ocrData?.originatingBank, ocrData?.payerAccount, ocrData?.payerName, selectedPlan, cycle, currency]);
+
   const currentPlan = activePlans.find((p) => p.key === selectedPlan) || activePlans[0] || {
     key: "PRO",
     title: "Professional Plan",
     priceMonthly: 49,
     priceYearly: 490,
+    priceKhrMonthly: 200900,
+    priceKhrYearly: 2009000,
     listingsLimit: 50,
     featuredLimit: 10,
     seats: 5,
   };
 
-  const priceUsd = cycle === "YEARLY" ? currentPlan.priceYearly : currentPlan.priceMonthly;
-  const priceKhr = priceUsd * 4100;
-
   const manual = config.data?.manual;
-  const qrSrc =
-    cycle === "YEARLY"
-      ? manual?.khqrImageYearly || "/khqr/khqr-yearly.jpg"
-      : manual?.khqrImageMonthly || "/khqr/khqr-monthly.jpg";
+  const priceUsd = cycle === "YEARLY" ? currentPlan.priceYearly : currentPlan.priceMonthly;
+  const khrRate = manual?.khrExchangeRate || 4100;
+  const configuredKhr = cycle === "YEARLY" ? currentPlan.priceKhrYearly : currentPlan.priceKhrMonthly;
+  const priceKhr = (configuredKhr && configuredKhr > 0) ? configuredKhr : Math.round((priceUsd * khrRate) / 100) * 100;
+
+  const qrSrcUsd =
+    manual?.khqrImageUsd ??
+    (cycle === "YEARLY" ? manual?.khqrImageYearly : manual?.khqrImageMonthly) ??
+    manual?.khqrImage ??
+    manual?.khqrDataUrl ??
+    (cycle === "YEARLY" ? "/khqr/khqr-yearly.jpg" : "/khqr/khqr-monthly.jpg");
+
+  const qrSrcKhr =
+    manual?.khqrImageKhr ??
+    (cycle === "YEARLY" ? manual?.khqrImageYearly : manual?.khqrImageMonthly) ??
+    manual?.khqrImage ??
+    manual?.khqrDataUrl ??
+    (cycle === "YEARLY" ? "/khqr/khqr-yearly.jpg" : "/khqr/khqr-monthly.jpg");
+
+  const qrSrc = currency === "KHR" ? qrSrcKhr : qrSrcUsd;
+  const isBlockedByRef =
+    refCheck?.duplicate === true ||
+    refCheck?.isOld === true ||
+    refCheck?.isNotCurrentDate === true;
 
   const pickImage = async (file: File | undefined) => {
     if (!file) return;
+    // Clear previous inputs & state when re-uploading or changing image
+    setManualRef("");
+    setOcrData(null);
+    setRefCheck(null);
     setReadingImage(true);
     try {
       const dataUrl = await fileToDataUrl(file, 1280, 0.85);
       setEvidenceImage(dataUrl);
+
+      // Auto-scan receipt in background
+      try {
+        const ocrRes = await apiSend<{
+          success: boolean;
+          blocked?: boolean;
+          isWrongMerchant?: boolean;
+          data: {
+            trxId: string | null;
+            apv: string | null;
+            amount: number | null;
+            currency: "USD" | "KHR";
+            paidAt: string | null;
+            payee?: string | null;
+            rawText: string;
+            confidence: number;
+          };
+          verification: {
+            status: "PASS" | "WARN" | "MISMATCH";
+            isDuplicate: boolean;
+            isOld: boolean;
+            isWrongMerchant?: boolean;
+            detectedPayee?: string | null;
+            expectedMerchant?: string;
+            riskFlags: string[];
+            message: string;
+          };
+        }>("/api/tenant/payments/ocr", "POST", {
+          image: dataUrl,
+          plan: selectedPlan,
+          cycle,
+          currency,
+        });
+
+        const skipMerchant = config.data?.manual?.skipMerchantCheck ?? true;
+        const shouldBlockWrongMerchant = !skipMerchant && Boolean(ocrRes.isWrongMerchant || ocrRes.verification?.isWrongMerchant);
+
+        if (shouldBlockWrongMerchant) {
+          setManualRef("");
+          toast.error(`⛔ Payment Blocked! This slip was paid to "${ocrRes.verification?.detectedPayee || ocrRes.data?.payee || "a foreign merchant"}" instead of our KHQR. Security alert dispatched.`);
+        } else if (ocrRes.success) {
+          const detectedRef = ocrRes.data.trxId || ocrRes.data.apv;
+          if (detectedRef) {
+            setManualRef(detectedRef);
+            toast.success(`✨ Trx ID auto-extracted from receipt: ${detectedRef}`);
+          } else {
+            setManualRef("");
+            toast.error("Could not detect a valid Transaction ID from this receipt. Please upload a clear photo or screenshot of your bank transfer slip.");
+          }
+        }
+
+        setOcrData({
+          status: ocrRes.verification.status,
+          confidence: ocrRes.data.confidence,
+          trxId: shouldBlockWrongMerchant ? undefined : (ocrRes.data.trxId || ocrRes.data.apv || undefined),
+          amount: ocrRes.data.amount ?? undefined,
+          currency: ocrRes.data.currency,
+          paidAt: ocrRes.data.paidAt ?? undefined,
+          rawText: ocrRes.data.rawText,
+          originatingBank: (ocrRes.verification as any).originatingBank || (ocrRes.data as any).bankName || undefined,
+          isInterbank: Boolean((ocrRes.verification as any).isInterbank || (ocrRes.data as any).isInterbank),
+          payerName: (ocrRes.data as any).payerName || undefined,
+          payerAccount: (ocrRes.data as any).payerAccount || undefined,
+          payee: ocrRes.data.payee || undefined,
+          abaTrxId: (ocrRes.verification as any).abaTrxId || undefined,
+          isWrongMerchant: shouldBlockWrongMerchant,
+          detectedPayee: ocrRes.verification?.detectedPayee || ocrRes.data.payee || undefined,
+          riskFlags: ocrRes.verification.riskFlags,
+        });
+      } catch {}
     } catch {
       toast.error("Could not read screenshot file");
     } finally {
@@ -1051,8 +2175,16 @@ export function SubscriptionPaywallCard({
   };
 
   const submitPayment = async () => {
-    if (!manualRef.trim() && !evidenceImage) {
-      setError("Please enter your bank Trx ID reference or attach a screenshot");
+    if (!evidenceImage) {
+      setError("Please attach your payment receipt screenshot to verify the transaction.");
+      return;
+    }
+    if (!manualRef.trim()) {
+      setError("Could not detect a valid Transaction ID on your receipt. Please upload a clear receipt slip.");
+      return;
+    }
+    if (isBlockedByRef) {
+      setError(refCheck?.message || "Invalid or duplicate transaction reference");
       return;
     }
     setError(null);
@@ -1067,6 +2199,7 @@ export function SubscriptionPaywallCard({
           currency,
           manualRef: manualRef.trim() || undefined,
           evidenceImage: evidenceImage ?? undefined,
+          ocrData: ocrData ?? undefined,
         },
       );
 
@@ -1225,7 +2358,8 @@ export function SubscriptionPaywallCard({
         {activePlans.map((p) => {
           const isSelected = selectedPlan === p.key;
           const pPriceUsd = cycle === "YEARLY" ? p.priceYearly : p.priceMonthly;
-          const pPriceKhr = pPriceUsd * 4100;
+          const pConfiguredKhr = cycle === "YEARLY" ? p.priceKhrYearly : p.priceKhrMonthly;
+          const pPriceKhr = (pConfiguredKhr && pConfiguredKhr > 0) ? pConfiguredKhr : Math.round((pPriceUsd * khrRate) / 100) * 100;
           return (
             <div
               key={p.key}
@@ -1290,9 +2424,14 @@ export function SubscriptionPaywallCard({
                 </span>
               </div>
             </div>
-            <span className="mt-1.5 text-[11px] font-semibold text-slate-700">
-              Payee: {manual?.accountName || "SAM CHAN PANHA"}
-            </span>
+            <div className="mt-1.5 flex items-center gap-1.5">
+              <span className="text-[11px] font-semibold text-slate-700">
+                Payee: {manual?.accountName || "SAM CHAN PANHA"}
+              </span>
+              <Badge variant="outline" className="text-[9px] font-bold border-red-300 text-red-700 bg-red-50">
+                {currency === "USD" ? "USD" : "KHR"}
+              </Badge>
+            </div>
             <span className="text-[10px] text-amber-700 font-medium">Click to enlarge</span>
           </div>
 
@@ -1313,7 +2452,7 @@ export function SubscriptionPaywallCard({
             <p className="text-xs text-slate-600 leading-relaxed">
               1. Scan the KHQR code with <strong>ABA Mobile</strong> or any banking app.<br />
               2. Transfer exact amount: <strong>{currency === "USD" ? `$${priceUsd}.00 USD` : `៛${priceKhr.toLocaleString()} KHR`}</strong>.<br />
-              3. Enter the Trx ID / APV reference from your bank receipt below.
+              3. Enter the Trx ID / APV reference or use the AI scanner to upload your slip.
             </p>
 
             <div className="flex items-center gap-1.5 text-[11px] text-sky-800 bg-sky-50 border border-sky-200 rounded-lg p-2">
@@ -1325,13 +2464,159 @@ export function SubscriptionPaywallCard({
           </div>
         </div>
 
+        {/* ATTACHED RECEIPT SLIP PREVIEW */}
+        {evidenceImage ? (
+          <div className="rounded-xl border border-emerald-200 bg-emerald-50/60 p-3 flex items-center justify-between gap-3 shadow-xs">
+            <div className="flex items-center gap-3 min-w-0">
+              <img
+                src={evidenceImage}
+                alt="Payment Slip"
+                className="h-14 w-14 rounded-lg border border-emerald-300 object-cover shrink-0 shadow-xs"
+              />
+              <div className="min-w-0">
+                <span className="text-xs font-bold text-emerald-950 flex items-center gap-1.5 truncate">
+                  <CheckCircle2 className="h-4 w-4 text-emerald-600 shrink-0" />
+                  Receipt Slip Attached
+                </span>
+                <span className="text-[11px] text-emerald-700 block mt-0.5 truncate font-mono">
+                  {manualRef ? `Trx ID: ${manualRef}` : "Analyzing slip..."}
+                </span>
+              </div>
+            </div>
+            <div className="flex items-center gap-1.5 shrink-0">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => fileInput.current?.click()}
+                className="h-7 text-xs bg-white"
+              >
+                Change
+              </Button>
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                onClick={() => {
+                  setEvidenceImage(null);
+                  setOcrData(null);
+                  setManualRef("");
+                  setRefCheck(null);
+                }}
+                className="h-7 text-xs text-rose-600 hover:bg-rose-50"
+              >
+                Remove
+              </Button>
+            </div>
+          </div>
+        ) : (
+          /* AI OCR SCANNER BUTTON BANNER */
+          <div className="rounded-xl border-2 border-dashed border-amber-300 bg-gradient-to-r from-amber-50/90 via-orange-50/50 to-amber-50/90 p-3 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-xs">
+            <div className="flex items-start sm:items-center gap-2.5">
+              <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-amber-500 text-slate-950 font-bold shadow-xs">
+                <Sparkles className="h-4 w-4" />
+              </div>
+              <div>
+                <div className="flex items-center gap-1.5">
+                  <span className="text-xs font-bold text-slate-900">
+                    Upload &amp; Scan Payment Receipt Slip
+                  </span>
+                  <Badge className="bg-amber-200 text-amber-900 border-amber-300 text-[9px] font-extrabold px-1.5 py-0">
+                    Required
+                  </Badge>
+                </div>
+                <p className="text-[11px] text-slate-600 mt-0.5">
+                  AI OCR extracts the Trx ID automatically. Manual typing is disabled to prevent fraud.
+                </p>
+              </div>
+            </div>
+            <div className="flex items-center gap-2 w-full sm:w-auto">
+              <Button
+                type="button"
+                size="sm"
+                onClick={() => fileInput.current?.click()}
+                disabled={readingImage}
+                className="w-full sm:w-auto h-8 bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs shadow-xs cursor-pointer flex items-center justify-center gap-1.5 shrink-0"
+              >
+                {readingImage ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Camera className="h-3.5 w-3.5" />}
+                Choose File
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => setOcrModalOpen(true)}
+                className="w-full sm:w-auto h-8 text-xs font-bold shadow-xs cursor-pointer flex items-center justify-center gap-1.5 shrink-0"
+              >
+                <Scan className="h-3.5 w-3.5" />
+                Scan Slip
+              </Button>
+            </div>
+          </div>
+        )}
+        <input
+          ref={fileInput}
+          type="file"
+          accept="image/*"
+          className="hidden"
+          onChange={(e) => pickImage(e.target.files?.[0])}
+        />
+
+        {/* OCR Result Pill */}
+        {ocrData && (
+          <div className={cn(
+            "rounded-xl border p-2.5 text-xs flex flex-wrap items-center justify-between gap-2 shadow-xs",
+            ocrData.status === "PASS"
+              ? "bg-emerald-50/80 border-emerald-300 text-emerald-950"
+              : ocrData.status === "WARN"
+              ? "bg-amber-50/80 border-amber-300 text-amber-950"
+              : "bg-rose-50/80 border-rose-300 text-rose-950"
+          )}>
+            <div className="flex items-center gap-2">
+              {ocrData.status === "PASS" ? (
+                <ShieldCheck className="h-4 w-4 text-emerald-600 shrink-0" />
+              ) : ocrData.status === "WARN" ? (
+                <TriangleAlert className="h-4 w-4 text-amber-600 shrink-0" />
+              ) : (
+                <ShieldAlert className="h-4 w-4 text-rose-600 shrink-0" />
+              )}
+              <div>
+                <span className="font-bold">
+                  Slip OCR {ocrData.status === "PASS" ? "Verified" : ocrData.status === "WARN" ? "Notice" : "Mismatch"}
+                </span>{" "}
+                <span className="text-[11px] text-slate-600">({ocrData.confidence}% confidence)</span>
+                {ocrData.trxId && (
+                  <span className="ml-2 font-mono font-bold text-[11px] bg-white px-1.5 py-0.5 rounded border border-slate-200">
+                    Trx: {ocrData.trxId}
+                  </span>
+                )}
+              </div>
+            </div>
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              onClick={() => setOcrModalOpen(true)}
+              className="h-6 px-2 text-[11px] font-bold underline cursor-pointer"
+            >
+              Review Details
+            </Button>
+          </div>
+        )}
+
         {/* Trx ID input & submit */}
         <div className="pt-3 border-t border-slate-100 space-y-3">
           <div className="space-y-1.5">
             <div className="flex items-center justify-between">
-              <Label htmlFor="paywall-trx-ref" className="text-xs font-bold text-slate-700">
-                Bank Transaction Reference / Trx ID <span className="text-rose-600">*</span>
-              </Label>
+              <div className="flex items-center gap-1.5">
+                <Label htmlFor="paywall-trx-ref" className="text-xs font-bold text-slate-700">
+                  Bank Transaction Reference / Trx ID <span className="text-rose-600">*</span>
+                </Label>
+                <Badge variant="outline" className="text-[10px] font-semibold text-slate-600 bg-slate-100 border-slate-300 flex items-center gap-1">
+                  <Lock className="h-2.5 w-2.5 text-slate-500" />
+                  Auto-Extracted Only
+                </Badge>
+              </div>
               <Button
                 type="button"
                 variant="ghost"
@@ -1343,13 +2628,182 @@ export function SubscriptionPaywallCard({
                 Where to find Trx ID? (Sample Receipt)
               </Button>
             </div>
-            <Input
-              id="paywall-trx-ref"
-              value={manualRef}
-              onChange={(e) => setManualRef(e.target.value)}
-              placeholder="e.g. 179264913984347 or 179264741214086"
-              className="h-10 font-mono text-sm"
-            />
+            <div className="relative">
+              <Input
+                id="paywall-trx-ref"
+                value={manualRef}
+                readOnly
+                disabled={!evidenceImage || readingImage}
+                placeholder={
+                  readingImage
+                    ? "⏳ Scanning receipt for Trx ID..."
+                    : evidenceImage
+                    ? (manualRef ? manualRef : "❌ No Trx ID detected on slip")
+                    : "🔒 Upload receipt above to auto-detect Trx ID..."
+                }
+                className={cn(
+                  "h-10 font-mono text-sm font-bold cursor-not-allowed select-all bg-slate-50",
+                  !evidenceImage && "text-slate-400 border-dashed",
+                  evidenceImage && !manualRef && !readingImage && "border-rose-400 bg-rose-50/30 text-rose-700",
+                  manualRef && "border-emerald-400 bg-emerald-50/20 text-emerald-900",
+                  refCheck?.duplicate && "border-rose-400 bg-rose-50/30",
+                  refCheck?.isNotCurrentDate && "border-rose-400 bg-rose-50/30",
+                  refCheck?.isOld && "border-amber-400 bg-amber-50/30",
+                )}
+              />
+              <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none">
+                {readingImage ? (
+                  <Loader2 className="h-4 w-4 animate-spin text-amber-600" />
+                ) : manualRef ? (
+                  <ShieldCheck className="h-4 w-4 text-emerald-600" />
+                ) : (
+                  <Lock className="h-4 w-4 text-slate-400" />
+                )}
+              </div>
+            </div>
+
+            {/* Status Helper Guidance */}
+            {ocrData?.isWrongMerchant ? (
+              <div className="p-3 rounded-xl border-2 border-red-500 bg-red-50 text-red-900 text-xs space-y-1.5 animate-in fade-in shadow-sm">
+                <div className="font-extrabold text-sm text-red-700 flex items-center gap-2">
+                  <ShieldAlert className="h-5 w-5 text-red-600 shrink-0" />
+                  <span>⛔ Payment Slip Blocked — Not Paid to Official KHQR</span>
+                </div>
+                <p className="text-[11px] text-red-800 leading-relaxed font-medium">
+                  This slip was paid to <strong className="underline font-bold text-red-700">{ocrData.detectedPayee || "a foreign merchant"}</strong> instead of our official merchant account (<strong>{config.data?.manual?.accountName || "SAM CHAN PANHA"}</strong>).
+                </p>
+                <p className="text-[10px] text-red-700 pt-1 border-t border-red-200 font-semibold">
+                  🚨 Security Action: Submission blocked. A security alert has been dispatched to administrators.
+                </p>
+              </div>
+            ) : !evidenceImage ? (
+              <p className="text-[11px] text-amber-700 flex items-center gap-1.5 font-medium">
+                <Camera className="h-3.5 w-3.5 shrink-0 text-amber-600" />
+                <span>Upload payment receipt above. Direct manual typing is disabled to prevent typos and financial risk.</span>
+              </p>
+            ) : readingImage ? (
+              <p className="text-[11px] text-sky-700 flex items-center gap-1.5 font-medium">
+                <Loader2 className="h-3.5 w-3.5 animate-spin shrink-0 text-sky-600" />
+                <span>Analyzing receipt with AI OCR to extract Transaction ID...</span>
+              </p>
+            ) : evidenceImage && !manualRef ? (
+              <div className="p-2.5 rounded-lg border border-rose-300 bg-rose-50 text-rose-900 text-xs space-y-1 animate-in fade-in">
+                <div className="font-bold flex items-center gap-1.5">
+                  <ShieldAlert className="h-4 w-4 text-rose-600 shrink-0" />
+                  <span>Transaction ID could not be detected</span>
+                </div>
+                <p className="text-[11px] text-rose-800 leading-relaxed">
+                  The receipt image was uploaded, but the bank Trx ID / reference is missing or blurry. Please click <strong>Change</strong> above to upload a clearer photo.
+                </p>
+              </div>
+            ) : (
+              <div className="flex items-center justify-between text-[11px] text-emerald-700">
+                <span className="flex items-center gap-1 font-semibold">
+                  <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600" />
+                  Auto-extracted &amp; locked to uploaded receipt slip
+                </span>
+                <span className="text-slate-400 text-[10px]">Tamper-proof</span>
+              </div>
+            )}
+
+            {/* Real-time Validation Feedback Chip */}
+            {refCheck?.checking && (
+              <div className="flex items-center gap-1.5 text-xs text-amber-700 bg-amber-50 border border-amber-200 p-2 rounded-lg">
+                <Loader2 className="h-3.5 w-3.5 animate-spin shrink-0" />
+                <span>Verifying reference against bank payment records...</span>
+              </div>
+            )}
+            {refCheck && !refCheck.checking && refCheck.isNotCurrentDate && (
+              <div className="flex flex-col gap-2.5 text-xs bg-rose-50 border-2 border-rose-400 p-3 rounded-xl shadow-xs animate-in fade-in">
+                <div className="flex items-start gap-2.5">
+                  <ShieldAlert className="h-5 w-5 shrink-0 text-rose-600 mt-0.5" />
+                  <div className="flex-1 min-w-0">
+                    <div className="font-extrabold text-sm text-rose-900 flex items-center gap-2">
+                      <span>Transaction Found, But Date is Not Today</span>
+                      <Badge variant="destructive" className="text-[10px] uppercase font-black px-1.5 py-0">
+                        Blocked
+                      </Badge>
+                    </div>
+                    <p className="text-xs text-rose-800 mt-1 leading-relaxed">
+                      Bank record for Trx ID <strong className="font-mono text-slate-900 bg-white px-1 py-0.5 rounded border border-rose-300">{refCheck.trxId || manualRef}</strong> was verified in the Telegram bank group, but its date is <strong className="text-rose-950">{refCheck.transactionDateRaw || refCheck.transactionDateFormatted || "not today"}</strong>.
+                    </p>
+                    <p className="text-[11px] text-rose-700 mt-1">
+                      ⚠️ Automatic activation only accepts payments completed today. Submitting requests for old bank transactions is not allowed.
+                    </p>
+                  </div>
+                </div>
+                <div className="pt-2 border-t border-rose-200 flex flex-wrap items-center justify-between gap-2">
+                  <span className="text-[11px] font-semibold text-rose-900">
+                    Please contact Admin for manual review:
+                  </span>
+                  <a
+                    href={refCheck.telegramAdminLink || "https://t.me/samchanpanha"}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-sky-600 hover:bg-sky-500 text-white font-bold text-xs shadow-sm transition cursor-pointer"
+                  >
+                    <Send className="h-3.5 w-3.5" />
+                    <span>Contact Telegram Admin ({refCheck.telegramAdmin || "@samchanpanha"})</span>
+                    <ExternalLink className="h-3 w-3" />
+                  </a>
+                </div>
+              </div>
+            )}
+            {refCheck && !refCheck.checking && refCheck.duplicate && (
+              <div className="flex items-start gap-2 text-xs text-rose-800 bg-rose-50 border border-rose-300 p-2.5 rounded-lg font-semibold animate-in fade-in">
+                <ShieldAlert className="h-4 w-4 shrink-0 text-rose-600 mt-0.5" />
+                <div>
+                  <div className="font-bold text-rose-900">Duplicate Transaction Detected</div>
+                  <div className="text-[11px] text-rose-700 mt-0.5">
+                    {refCheck.message || "This Trx ID has already been submitted or verified. Please provide a new payment receipt."}
+                  </div>
+                </div>
+              </div>
+            )}
+            {refCheck && !refCheck.checking && !refCheck.duplicate && refCheck.isOld && (
+              <div className="flex items-start gap-2 text-xs text-amber-800 bg-amber-50 border border-amber-300 p-2.5 rounded-lg font-semibold animate-in fade-in">
+                <TriangleAlert className="h-4 w-4 shrink-0 text-amber-600 mt-0.5" />
+                <div>
+                  <div className="font-bold text-amber-900">Old Transaction Reference</div>
+                  <div className="text-[11px] text-amber-800 mt-0.5">
+                    {refCheck.message || "This transaction is older than the allowed limit. Please pay now and submit a fresh receipt."}
+                  </div>
+                </div>
+              </div>
+            )}
+            {refCheck && !refCheck.checking && refCheck.valid && refCheck.isInterbank && !refCheck.isNotCurrentDate && (
+              <div className="flex items-start gap-2 text-xs text-sky-800 bg-sky-50 border border-sky-300 p-2.5 rounded-lg font-semibold animate-in fade-in">
+                <CreditCard className="h-4 w-4 shrink-0 text-sky-600 mt-0.5" />
+                <div className="flex-1">
+                  <div className="font-bold flex items-center justify-between gap-1.5">
+                    <span>{(refCheck.originatingBank || ocrData?.originatingBank) || "Interbank"} Reference Detected</span>
+                    <Badge className="bg-sky-100 text-sky-900 border-sky-300 text-[9px] font-bold">Interbank KHQR</Badge>
+                  </div>
+                  <div className="text-[11px] text-sky-700 mt-0.5">
+                    {refCheck.matchedAba
+                      ? `Correlated to ABA PayWay Trx ID: ${refCheck.abaTrxId || refCheck.trxId}`
+                      : "Valid reference from external bank. Attach payment slip for fastest verification."}
+                  </div>
+                </div>
+              </div>
+            )}
+            {refCheck && !refCheck.checking && refCheck.valid && refCheck.matchedAba && (
+              <div className="flex items-start gap-2 text-xs text-emerald-800 bg-emerald-50 border border-emerald-300 p-2.5 rounded-lg font-semibold animate-in fade-in">
+                <Zap className="h-4 w-4 shrink-0 text-emerald-600 mt-0.5 animate-pulse" />
+                <div>
+                  <div className="font-bold text-emerald-900">Matched Bank Transaction!</div>
+                  <div className="text-[11px] text-emerald-700 mt-0.5">
+                    {refCheck.message || "Payment verified against incoming ABA transaction. Ready for instant auto-approval!"}
+                  </div>
+                </div>
+              </div>
+            )}
+            {refCheck && !refCheck.checking && refCheck.valid && !refCheck.matchedAba && !refCheck.duplicate && !refCheck.isOld && (
+              <div className="flex items-center gap-1.5 text-xs text-emerald-700 bg-emerald-50/60 border border-emerald-200 p-2 rounded-lg">
+                <ShieldCheck className="h-3.5 w-3.5 shrink-0 text-emerald-600" />
+                <span>Valid transaction reference format. Ready for submission.</span>
+              </div>
+            )}
           </div>
 
           {error && (
@@ -1359,11 +2813,11 @@ export function SubscriptionPaywallCard({
           <Button
             type="button"
             onClick={submitPayment}
-            disabled={submitting || !manualRef.trim()}
-            className="w-full h-11 bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-sm shadow-xs"
+            disabled={submitting || !evidenceImage || !manualRef.trim() || isBlockedByRef || (!config.data?.manual?.skipMerchantCheck && ocrData?.isWrongMerchant)}
+            className="w-full h-11 bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-sm shadow-xs disabled:opacity-50"
           >
             {submitting && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
-            Verify Payment & Unlock Dashboard
+            {!evidenceImage ? "Upload Payment Receipt to Verify" : "Verify Payment & Unlock Dashboard"}
           </Button>
         </div>
       </div>
@@ -1372,15 +2826,32 @@ export function SubscriptionPaywallCard({
         open={zoomQrOpen}
         onOpenChange={setZoomQrOpen}
         qrSrc={qrSrc}
+        qrSrcUsd={qrSrcUsd}
+        qrSrcKhr={qrSrcKhr}
         planTitle={`${currentPlan.title} (${cycle === "YEARLY" ? "Yearly" : "Monthly"})`}
         amountText={currency === "USD" ? `$${priceUsd}.00 USD` : `៛${priceKhr.toLocaleString()} KHR`}
+        amountTextUsd={`$${priceUsd}.00 USD`}
+        amountTextKhr={`៛${priceKhr.toLocaleString()} KHR`}
         currency={currency}
+        onCurrencyChange={setCurrency}
         accountName={manual?.accountName || "SAM CHAN PANHA"}
       />
       <TrxIdGuideDialog
         open={guideOpen}
         onOpenChange={setGuideOpen}
-        onUseSample={(id) => setManualRef(id)}
+      />
+      <PaymentOcrModal
+        open={ocrModalOpen}
+        onOpenChange={setOcrModalOpen}
+        plan={{ plan: selectedPlan } as any}
+        cycle={cycle}
+        priceUsd={priceUsd}
+        currency={currency}
+        onConfirmed={(data) => {
+          if (data.manualRef) setManualRef(data.manualRef);
+          if (data.evidenceImage) setEvidenceImage(data.evidenceImage);
+          if (data.ocrData) setOcrData(data.ocrData);
+        }}
       />
     </div>
   );

@@ -12,7 +12,7 @@ import {
   notifySellerPaymentResult,
 } from "@/lib/api/telegram-notify";
 import { isAbaPayWayMessage, parseAbaPayWayMessage } from "@/lib/api/aba-parser";
-import { recordAbaTransaction, syncTelegramGroupUpdates, processTelegramCallbackQuery } from "@/lib/api/aba-sync";
+import { recordAbaTransaction, syncTelegramGroupUpdates, processTelegramCallbackQuery, handleTelegramGroupCommand } from "@/lib/api/aba-sync";
 
 export const dynamic = "force-dynamic";
 
@@ -87,15 +87,15 @@ export async function POST(req: Request) {
       return NextResponse.json({ ok: true });
     }
 
-    // 3. Handle group messages (ABA PayWay payment notifications & text commands)
+    // 3. Handle group messages (ABA PayWay payment notifications, text commands & replies)
     const msg = update.message;
-    if (msg?.text) {
-      const text = msg.text.trim();
+    if (msg) {
+      const text = (msg.text || "").trim();
       const chatId = msg.chat.id;
       const messageId = msg.message_id;
 
       // Check if this is an ABA PayWay / KHQR payment alert
-      if (isAbaPayWayMessage(text)) {
+      if (text && isAbaPayWayMessage(text)) {
         console.log(`[Telegram Webhook] Incoming ABA PayWay alert in chat ${chatId}`);
         const parsed = parseAbaPayWayMessage(text);
         if (parsed) {
@@ -112,63 +112,10 @@ export async function POST(req: Request) {
         return NextResponse.json({ ok: true, abaSynced: true });
       }
 
-      if (text.startsWith("/sync")) {
-        const outcome = await syncTelegramGroupUpdates(botToken, String(chatId));
-        await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            chat_id: chatId,
-            text: `🔄 Sync Complete:\n• Processed: ${outcome.processed} messages\n• New Transactions: ${outcome.newTransactions}\n• Auto-matched Payments: ${outcome.matchedPayments}`,
-          }),
-        });
-        return NextResponse.json({ ok: true });
-      }
-
-      if (text.startsWith("/status")) {
-        const parts = text.split(/\s+/);
-        const ref = parts[1];
-        if (!ref) {
-          await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              chat_id: chatId,
-              text: "Usage: /status <PAY-REFERENCE>\nExample: /status PAY-20261022-A1B2C3",
-            }),
-          });
-        } else {
-          const p = await db.subscriptionPayment.findUnique({
-            where: { reference: ref },
-            include: { tenant: true },
-          });
-          if (!p) {
-            await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ chat_id: chatId, text: `❌ Payment not found for reference: ${ref}` }),
-            });
-          } else {
-            const reply = [
-              `🔍 Payment Status for ${p.reference}`,
-              `Tenant: ${p.tenant?.name ?? p.tenantId}`,
-              `Plan: ${p.plan} (${p.billingCycle})`,
-              `Amount: $${p.amountUsd.toFixed(2)}`,
-              `Status: ${p.status}`,
-              p.verifiedByName ? `Verified by: ${p.verifiedByName}` : "",
-              p.rejectionReason ? `Reason: ${p.rejectionReason}` : "",
-              `Created: ${p.createdAt.toISOString()}`,
-            ]
-              .filter(Boolean)
-              .join("\n");
-
-            await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ chat_id: chatId, text: reply }),
-            });
-          }
-        }
+      // Handle commands (/pending, /approve, /reject, /status, /sync, /help) and replies
+      const handled = await handleTelegramGroupCommand(msg, botToken);
+      if (handled) {
+        return NextResponse.json({ ok: true, commandHandled: true });
       }
     }
 

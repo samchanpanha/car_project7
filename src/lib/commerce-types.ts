@@ -18,6 +18,8 @@ export interface SubscriptionPaymentDTO {
   plan: Exclude<PlanDTO["plan"], "FREE">;
   billingCycle: "MONTHLY" | "YEARLY";
   amountUsd: number;
+  currency?: "USD" | "KHR";
+  amountExpected?: number | null;
   months: number;
   method: PaymentMethod;
   status: PaymentStatus;
@@ -28,6 +30,14 @@ export interface SubscriptionPaymentDTO {
   evidenceImage?: string | null;
   /** list views omit the heavy image and flag its presence instead */
   hasEvidenceImage?: boolean;
+  /** OCR analysis of the uploaded receipt */
+  ocrStatus?: string | null; // PASS | WARN | MISMATCH | UNREADABLE | NOT_RUN
+  ocrConfidence?: number | null;
+  ocrRef?: string | null;
+  ocrAmount?: number | null;
+  ocrCurrency?: string | null;
+  ocrPaidAt?: string | null;
+  riskFlags?: string[];
   /** Telegram bot delivery outcome for this submission */
   telegramSentAt?: string | null;
   telegramError?: string | null;
@@ -57,6 +67,12 @@ export interface PaymentConfigDTO {
     /** Per-cycle KHQR images — different QR codes for monthly vs yearly billing */
     khqrImageMonthly: string | null;
     khqrImageYearly: string | null;
+    /** Per-currency KHQR images — dedicated QR codes for USD vs KHR payments */
+    khqrImageUsd: string | null;
+    khqrImageKhr: string | null;
+    /** KHR exchange rate per USD (default 4100) */
+    khrExchangeRate: number;
+    skipMerchantCheck?: boolean;
   };
   /** admin-configured FREE tier */
   freePlan: {

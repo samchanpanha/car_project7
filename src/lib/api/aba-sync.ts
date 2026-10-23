@@ -524,6 +524,239 @@ export async function processTelegramCallbackQuery(
     return { ok: true, action: "view_pending" };
   }
 
+  // 1. Handle fraud alert cancellation / dismissal
+  if (data.startsWith("fraud_cancel:")) {
+    const alertId = data.replace(/^fraud_cancel:/, "").trim();
+    const alert = await (db as any).fraudAlert.findUnique({
+      where: { id: alertId },
+    });
+
+    if (alert) {
+      await (db as any).fraudAlert.update({
+        where: { id: alertId },
+        data: {
+          status: "DISMISSED",
+          resolvedBy: adminName,
+          resolvedAt: new Date(),
+        },
+      });
+    }
+
+    await answerTelegramCallbackQuery(botToken, query.id, "Fraud alert dismissed.");
+
+    const chatId = query.message?.chat?.id ? String(query.message.chat.id) : targetChatId;
+    const messageId = query.message?.message_id;
+    const isPhoto = Boolean(query.message?.caption);
+    const originalText = query.message?.caption || query.message?.text || "";
+
+    if (chatId && messageId) {
+      const timestamp = new Date().toLocaleString("en-US", { timeZone: "Asia/Phnom_Penh" });
+      const updatedCaption = `${originalText.replace(/👮 Choose Admin Security Action:[\s\S]*$/, "").trim()}\n\n❌ FRAUD ALERT DISMISSED by ${adminName}\n📅 ${timestamp} (Phnom Penh)`;
+      await updateTelegramMessageResolution(
+        botToken,
+        chatId,
+        messageId,
+        updatedCaption,
+        isPhoto,
+        `❌ Dismissed by ${adminName}`,
+      );
+    }
+    return { ok: true, action: "fraud_cancel", paymentId: alertId };
+  }
+
+  // 2. Handle fraud alert user & shop blacklisting
+  if (data.startsWith("fraud_blacklist:")) {
+    const alertId = data.replace(/^fraud_blacklist:/, "").trim();
+    const alert = await (db as any).fraudAlert.findUnique({
+      where: { id: alertId },
+    });
+
+    if (!alert) {
+      await answerTelegramCallbackQuery(botToken, query.id, "Fraud alert record not found", true);
+      return { ok: false, message: "Fraud alert not found" };
+    }
+
+    const targetUser = await db.user.findUnique({ where: { id: alert.userId } });
+    const targetTenant = await db.tenant.findUnique({ where: { id: alert.tenantId } });
+
+    // A. Blacklist User
+    await (db.user as any).update({
+      where: { id: alert.userId },
+      data: {
+        isBlacklisted: true,
+        blacklistReason: `Blacklisted by ${adminName} via Telegram: submitted invalid/foreign payment slip (paid to "${alert.detectedPayee || "foreign merchant"}")`,
+        blacklistedAt: new Date(),
+      },
+    });
+
+    // B. Blacklist Tenant
+    await db.tenant.update({
+      where: { id: alert.tenantId },
+      data: {
+        status: "BLACKLISTED",
+      },
+    });
+
+    // C. Blacklist Tenant Memberships
+    await db.tenantMember.updateMany({
+      where: { tenantId: alert.tenantId },
+      data: { status: "BLACKLISTED" },
+    });
+
+    // D. Reject any pending payment requests
+    await db.subscriptionPayment.updateMany({
+      where: {
+        tenantId: alert.tenantId,
+        status: { in: ["PENDING", "AWAITING_VERIFICATION"] },
+      },
+      data: {
+        status: "REJECTED",
+        rejectionReason: `User & Dealership blacklisted by ${adminName} for submitting invalid payment slip`,
+        reviewedAt: new Date(),
+        reviewedById: `telegram:${adminName}`,
+      },
+    });
+
+    // E. Mark FraudAlert resolved
+    await (db as any).fraudAlert.update({
+      where: { id: alertId },
+      data: {
+        status: "BLACKLISTED",
+        resolvedBy: adminName,
+        resolvedAt: new Date(),
+      },
+    });
+
+    await answerTelegramCallbackQuery(
+      botToken,
+      query.id,
+      `🚫 USER & SHOP BLACKLISTED!\n\nUser ${targetUser?.name || "User"} has been banned from the marketplace.`,
+      true,
+    );
+
+    const chatId = query.message?.chat?.id ? String(query.message.chat.id) : targetChatId;
+    const messageId = query.message?.message_id;
+    const isPhoto = Boolean(query.message?.caption);
+    const originalText = query.message?.caption || query.message?.text || "";
+
+    if (chatId && messageId) {
+      const timestamp = new Date().toLocaleString("en-US", { timeZone: "Asia/Phnom_Penh" });
+      const updatedCaption = [
+        originalText.replace(/👮 Choose Admin Security Action:[\s\S]*$/, "").trim(),
+        "",
+        `🚫 USER & SHOP BLACKLISTED by ${adminName}!`,
+        `👤 User: ${targetUser?.name} (${targetUser?.phone})`,
+        `🏢 Dealership: ${targetTenant?.name}`,
+        `📅 ${timestamp} (Phnom Penh)`,
+        `⛔ Access permanently revoked. All pending payments rejected.`,
+      ].join("\n");
+
+      await updateTelegramMessageResolution(
+        botToken,
+        chatId,
+        messageId,
+        updatedCaption,
+        isPhoto,
+        `🚫 Blacklisted by ${adminName}`,
+      );
+
+      // Post audit confirmation
+      try {
+        await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            chat_id: chatId,
+            text: [
+              `🚫 Security Enforcement: Account Blacklisted`,
+              `━━━━━━━━━━━━━━━━━━━━━━━━━━━`,
+              `👤 User: ${targetUser?.name} (${targetUser?.phone})`,
+              `🏢 Dealership: ${targetTenant?.name}`,
+              `👮 Admin: ${adminName}`,
+              `📅 ${timestamp} (Phnom Penh)`,
+              `⚡ Status: PERMANENTLY BANNED FROM PLATFORM`,
+              `Reason: Foreign payment slip submitted (paid to "${alert.detectedPayee || "foreign merchant"}")`,
+            ].join("\n"),
+          }),
+        });
+      } catch {}
+    }
+
+    return { ok: true, action: "fraud_blacklist", paymentId: alertId };
+  }
+
+  // 3. Handle blacklist directly from payment submission [Blacklist User] button
+  if (data.startsWith("blacklist_payment:")) {
+    const payId = data.replace(/^blacklist_payment:/, "").trim();
+    const payment = await db.subscriptionPayment.findUnique({
+      where: { id: payId },
+      include: { tenant: { include: { members: { where: { role: "OWNER" }, include: { user: true } } } } },
+    });
+
+    if (!payment) {
+      await answerTelegramCallbackQuery(botToken, query.id, "Payment not found", true);
+      return { ok: false, message: "Payment not found" };
+    }
+
+    const ownerMember = payment.tenant.members[0];
+    const targetUser = ownerMember?.user;
+
+    if (targetUser) {
+      await (db.user as any).update({
+        where: { id: targetUser.id },
+        data: {
+          isBlacklisted: true,
+          blacklistReason: `Blacklisted by ${adminName} via Telegram for payment fraud on ${payment.reference}`,
+          blacklistedAt: new Date(),
+        },
+      });
+    }
+
+    await db.tenant.update({
+      where: { id: payment.tenantId },
+      data: { status: "BLACKLISTED" },
+    });
+
+    await db.tenantMember.updateMany({
+      where: { tenantId: payment.tenantId },
+      data: { status: "BLACKLISTED" },
+    });
+
+    await db.subscriptionPayment.update({
+      where: { id: payment.id },
+      data: {
+        status: "REJECTED",
+        rejectionReason: `Blacklisted by ${adminName} for fraudulent submission`,
+        reviewedAt: new Date(),
+        reviewedById: `telegram:${adminName}`,
+        notifiedSeller: true,
+        notifiedAt: new Date(),
+      },
+    });
+
+    await answerTelegramCallbackQuery(botToken, query.id, `🚫 Dealership ${payment.tenant.name} Blacklisted!`, true);
+
+    const chatId = query.message?.chat?.id ? String(query.message.chat.id) : payment.telegramGroupId || targetChatId;
+    const messageId = query.message?.message_id || payment.telegramMessageId;
+    const isPhoto = Boolean(query.message?.caption);
+    const originalText = query.message?.caption || query.message?.text || "";
+
+    if (chatId && messageId) {
+      const timestamp = new Date().toLocaleString("en-US", { timeZone: "Asia/Phnom_Penh" });
+      const updatedCaption = `${originalText.replace(/⚡ Tap below to verify[\s\S]*$/, "").trim()}\n\n🚫 DEALER BLACKLISTED by ${adminName}\n📅 ${timestamp} (Phnom Penh)\n⛔ Access permanently revoked.`;
+      await updateTelegramMessageResolution(
+        botToken,
+        chatId,
+        messageId,
+        updatedCaption,
+        isPhoto,
+        `🚫 Blacklisted by ${adminName}`,
+      );
+    }
+
+    return { ok: true, action: "blacklist_payment", paymentId: payId };
+  }
+
   const [action, paymentId] = data.split(":");
   if (!paymentId || (action !== "approve" && action !== "reject")) {
     await answerTelegramCallbackQuery(botToken, query.id, "Unknown action");
@@ -563,7 +796,18 @@ export async function processTelegramCallbackQuery(
     }
 
     // Verify & Activate subscription
-    await verifyPaymentAndActivate(payment, `telegram:${adminName}`);
+    try {
+      await verifyPaymentAndActivate(payment, `telegram:${adminName}`);
+    } catch (actErr: any) {
+      console.error("[processTelegramCallbackQuery] verifyPaymentAndActivate failed:", actErr);
+      await answerTelegramCallbackQuery(
+        botToken,
+        query.id,
+        `⚠️ Could not approve: ${actErr.message || "Unknown error"}`,
+        true,
+      );
+      return { ok: false, message: actErr.message };
+    }
 
     // Update payment record
     await db.subscriptionPayment.update({
@@ -668,7 +912,18 @@ export async function processTelegramCallbackQuery(
     }
 
     const rejectionReason = `Rejected via Telegram by ${adminName}`;
-    await rejectPayment(payment, `telegram:${adminName}`, rejectionReason);
+    try {
+      await rejectPayment(payment, `telegram:${adminName}`, rejectionReason);
+    } catch (rejErr: any) {
+      console.error("[processTelegramCallbackQuery] rejectPayment failed:", rejErr);
+      await answerTelegramCallbackQuery(
+        botToken,
+        query.id,
+        `⚠️ Could not reject: ${rejErr.message || "Unknown error"}`,
+        true,
+      );
+      return { ok: false, message: rejErr.message };
+    }
 
     await db.subscriptionPayment.update({
       where: { id: payment.id },
@@ -734,14 +989,34 @@ export async function processTelegramCallbackQuery(
 }
 
 /**
- * Handles text commands posted in the Telegram group (/status, /pending, /approve, /reject, /aba, /sync, /help)
+ * Handles text commands and replies posted in the Telegram group (/status, /pending, /approve, /reject, /aba, /sync, /help)
  */
-async function handleTelegramGroupCommand(
-  text: string,
-  chatId: string | number,
-  senderName: string,
-  botToken: string,
+export async function handleTelegramGroupCommand(
+  rawMsgOrText: any,
+  arg2?: any,
+  arg3?: any,
+  arg4?: any,
 ): Promise<boolean> {
+  let text = "";
+  let chatId: string | number = "-1004489863210";
+  let senderName = "Admin";
+  let botToken = "";
+  let replyToMsg: any = null;
+
+  if (typeof rawMsgOrText === "object" && rawMsgOrText !== null) {
+    const msg = rawMsgOrText;
+    text = (msg.text || msg.caption || "").trim();
+    chatId = msg.chat?.id || "-1004489863210";
+    senderName = msg.from?.username ? `@${msg.from.username}` : msg.from?.first_name || "Admin";
+    botToken = String(arg2 || "");
+    replyToMsg = msg.reply_to_message;
+  } else {
+    text = String(rawMsgOrText || "").trim();
+    chatId = arg2;
+    senderName = String(arg3 || "Admin");
+    botToken = String(arg4 || "");
+  }
+
   const trimmed = text.trim();
   const lower = trimmed.toLowerCase();
 
@@ -888,168 +1163,361 @@ async function handleTelegramGroupCommand(
     return true;
   }
 
-  // /approve <ref_or_trx>
-  if (lower.startsWith("/approve")) {
-    const query = trimmed.replace(/^\/approve(@\w+)?/i, "").trim();
-    if (!query) {
-      try {
-        await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            chat_id: chatId,
-            text: `ℹ️ Usage: /approve <PaymentRef or BankTrxID>\nExample: /approve PAY-20261022-85KSU4`,
-          }),
-        });
-      } catch {}
-      return true;
-    }
+  // Check if message is an APPROVE intent:
+  // 1. /approve ...
+  // 2. OR reply to a payment card with words: approve, approved, ok, yes, done, y, ✅
+  const isApproveIntent =
+    lower.startsWith("/approve") ||
+    (Boolean(replyToMsg) && /^(approve|approved|ok|yes|y|done|verified|activate|✅)($|\s)/i.test(lower));
 
-    const payment = await db.subscriptionPayment.findFirst({
-      where: {
-        OR: [
-          { reference: query },
-          { manualRef: query },
-        ],
-        status: "AWAITING_VERIFICATION",
-      },
-      include: { tenant: true },
-    });
+  // Check if message is a REJECT intent:
+  // 1. /reject ...
+  // 2. OR reply to a payment card with words: reject, rejected, no, cancel, deny, declined, ❌
+  const isRejectIntent =
+    lower.startsWith("/reject") ||
+    (Boolean(replyToMsg) && /^(reject|rejected|no|cancel|deny|declined|❌)($|\s)/i.test(lower));
 
-    if (!payment) {
-      try {
-        await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            chat_id: chatId,
-            text: `⚠️ No pending payment found matching '${query}'. Check /pending for list.`,
-          }),
-        });
-      } catch {}
-      return true;
-    }
+  if (isApproveIntent) {
+    let targetPayment: any = null;
 
-    await verifyPaymentAndActivate(payment, `telegram:${senderName}`);
-    await db.subscriptionPayment.update({
-      where: { id: payment.id },
-      data: { verifiedByName: senderName, notifiedSeller: true, notifiedAt: new Date() },
-    });
-
-    // Link matching ABA transaction
-    if (payment.manualRef) {
-      const trimmedRef = payment.manualRef.trim();
-      await db.abaTransaction.updateMany({
+    // 1. If this was a reply to a message sent by the bot
+    if (replyToMsg?.message_id) {
+      targetPayment = await db.subscriptionPayment.findFirst({
         where: {
-          OR: [{ trxId: trimmedRef }, { apv: trimmedRef }],
-          status: { in: ["UNMATCHED", "UNDERPAID", "AMBIGUOUS"] },
+          telegramMessageId: replyToMsg.message_id,
+          status: "AWAITING_VERIFICATION",
         },
+        include: { tenant: true },
+      });
+
+      if (!targetPayment) {
+        // Try extracting reference like PAY-20261023-XXXXXX from reply text/caption
+        const refMatch = (replyToMsg.caption || replyToMsg.text || "").match(/PAY-\d{8}-[A-Za-z0-9]+/);
+        if (refMatch) {
+          targetPayment = await db.subscriptionPayment.findFirst({
+            where: { reference: refMatch[0], status: "AWAITING_VERIFICATION" },
+            include: { tenant: true },
+          });
+        }
+      }
+    }
+
+    // 2. If query was supplied in command (/approve <query>)
+    const query = trimmed.replace(/^\/approve(?:@\w+)?/i, "").trim();
+    if (!targetPayment && query) {
+      const q = query.toLowerCase();
+      const allPending = await db.subscriptionPayment.findMany({
+        where: { status: "AWAITING_VERIFICATION" },
+        include: { tenant: true },
+        orderBy: { createdAt: "desc" },
+      });
+      targetPayment = allPending.find(
+        (p) =>
+          p.reference.toLowerCase() === q ||
+          p.reference.toLowerCase().includes(q) ||
+          (p.manualRef && p.manualRef.toLowerCase() === q) ||
+          (p.manualRef && p.manualRef.toLowerCase().includes(q)) ||
+          p.id.toLowerCase() === q ||
+          p.tenant.name.toLowerCase().includes(q),
+      ) ?? null;
+    }
+
+    // 3. If no query and not replied, check if there is exactly 1 pending payment
+    if (!targetPayment && !query) {
+      const allPending = await db.subscriptionPayment.findMany({
+        where: { status: "AWAITING_VERIFICATION" },
+        include: { tenant: true },
+        orderBy: { createdAt: "desc" },
+      });
+
+      if (allPending.length === 1) {
+        targetPayment = allPending[0];
+      } else if (allPending.length === 0) {
+        try {
+          await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              chat_id: chatId,
+              text: `ℹ️ No pending payments waiting for verification.`,
+            }),
+          });
+        } catch {}
+        return true;
+      } else {
+        // Multiple pending, prompt admin with interactive buttons
+        try {
+          await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              chat_id: chatId,
+              text: `📋 Multiple pending payments found (${allPending.length}). Tap which one to approve:`,
+              reply_markup: {
+                inline_keyboard: allPending.map((p) => [
+                  {
+                    text: `✅ Approve ${p.reference} (${p.tenant.name} - $${p.amountUsd})`,
+                    callback_data: `approve:${p.id}`,
+                  },
+                ]),
+              },
+            }),
+          });
+        } catch {}
+        return true;
+      }
+    }
+
+    if (!targetPayment) {
+      try {
+        await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            chat_id: chatId,
+            text: `⚠️ No pending payment found matching '${query || "your message"}'. Type /pending to list pending requests.`,
+          }),
+        });
+      } catch {}
+      return true;
+    }
+
+    // Execute approval & activate subscription
+    try {
+      await verifyPaymentAndActivate(targetPayment, `telegram:${senderName}`);
+      await db.subscriptionPayment.update({
+        where: { id: targetPayment.id },
         data: {
-          status: "MATCHED",
-          subscriptionPaymentId: payment.id,
-          matchedAt: new Date(),
-          matchedBy: `TELEGRAM:${senderName}`,
-          verificationNote: `Approved via Telegram /approve by ${senderName}`,
+          verifiedByName: senderName,
+          notifiedSeller: true,
+          notifiedAt: new Date(),
+          note: targetPayment.note
+            ? `${targetPayment.note} | Approved via Telegram by ${senderName}`
+            : `Approved via Telegram by ${senderName}`,
         },
       });
-    }
 
-    // Update original card in Telegram if messageId exists
-    if (payment.telegramGroupId && payment.telegramMessageId) {
+      // Link matching ABA transaction
+      if (targetPayment.manualRef) {
+        const trimmedRef = targetPayment.manualRef.trim();
+        await db.abaTransaction.updateMany({
+          where: {
+            OR: [{ trxId: trimmedRef }, { apv: trimmedRef }],
+            status: { in: ["UNMATCHED", "UNDERPAID", "AMBIGUOUS"] },
+          },
+          data: {
+            status: "MATCHED",
+            subscriptionPaymentId: targetPayment.id,
+            matchedAt: new Date(),
+            matchedBy: `TELEGRAM:${senderName}`,
+            verificationNote: `Approved via Telegram by ${senderName}`,
+          },
+        });
+      }
+
+      // Update original card in Telegram if messageId exists
+      const targetMsgId = targetPayment.telegramMessageId || replyToMsg?.message_id;
+      const targetChat = targetPayment.telegramGroupId || String(chatId);
       const timestamp = new Date().toLocaleString("en-US", { timeZone: "Asia/Phnom_Penh" });
-      await updateTelegramMessageResolution(
-        botToken,
-        payment.telegramGroupId,
-        payment.telegramMessageId,
-        `🔐 KhLan — Subscription Payment (${payment.reference})\n━━━━━━━━━━━━━━━━━━━━━━━━━━━\n🏢 Tenant: ${payment.tenant.name}\n📋 Plan: ${payment.plan} (${payment.billingCycle})\n💰 Amount: $${payment.amountUsd.toFixed(2)}\n\n✅ VERIFIED & ACTIVATED by ${senderName}\n📅 ${timestamp} (Phnom Penh)\n⚡ Status: Processing Complete · ACTIVE`,
-        Boolean(payment.evidenceImage),
-        `✅ Processing Complete · Approved by ${senderName}`,
-      );
-    }
 
-    try {
+      if (targetChat && targetMsgId) {
+        await updateTelegramMessageResolution(
+          botToken,
+          targetChat,
+          targetMsgId,
+          `🔐 KhLan — Subscription Payment (${targetPayment.reference})\n━━━━━━━━━━━━━━━━━━━━━━━━━━━\n🏢 Tenant: ${targetPayment.tenant.name}\n📋 Plan: ${targetPayment.plan} (${targetPayment.billingCycle})\n💰 Amount: $${targetPayment.amountUsd.toFixed(2)}\n${targetPayment.manualRef ? `🏦 Bank Ref: ${targetPayment.manualRef}\n` : ""}\n✅ PROCESSING COMPLETE · APPROVED & ACTIVATED\n👤 Verified by: ${senderName}\n📅 ${timestamp} (Phnom Penh)\n⚡ Status: Processing Complete · ACTIVE`,
+          Boolean(targetPayment.evidenceImage),
+          `✅ Processing Complete · Approved by ${senderName}`,
+        );
+      }
+
       await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           chat_id: chatId,
-          text: `✅ Payment ${payment.reference} APPROVED & ACTIVATED for ${payment.tenant.name} (${payment.plan}) by ${senderName}! Processing complete.`,
+          text: [
+            `🎉 Payment Verified & Processing Complete!`,
+            `━━━━━━━━━━━━━━━━━━━━━━━━━━━`,
+            `🏢 Dealer / Tenant: ${targetPayment.tenant.name}`,
+            `📋 Plan: ${targetPayment.plan} (${targetPayment.billingCycle})`,
+            `💰 Amount: $${targetPayment.amountUsd.toFixed(2)}`,
+            `🔖 Reference: ${targetPayment.reference}`,
+            targetPayment.manualRef ? `🏦 Bank Ref: ${targetPayment.manualRef}` : null,
+            `👤 Approved by: ${senderName}`,
+            `📅 ${timestamp} (Phnom Penh)`,
+            `⚡ Status: PROCESSING COMPLETE · SUBSCRIPTION ACTIVE!`,
+          ].filter(Boolean).join("\n"),
         }),
       });
-    } catch {}
+    } catch (err: any) {
+      console.error("[handleTelegramGroupCommand] Approve error:", err);
+      await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          chat_id: chatId,
+          text: `⚠️ Could not complete approval: ${err.message || "Unknown error"}`,
+        }),
+      });
+    }
     return true;
   }
 
-  // /reject <ref_or_trx>
-  if (lower.startsWith("/reject")) {
-    const query = trimmed.replace(/^\/reject(@\w+)?/i, "").trim();
-    if (!query) {
+  if (isRejectIntent) {
+    let targetPayment: any = null;
+
+    if (replyToMsg?.message_id) {
+      targetPayment = await db.subscriptionPayment.findFirst({
+        where: {
+          telegramMessageId: replyToMsg.message_id,
+          status: "AWAITING_VERIFICATION",
+        },
+        include: { tenant: true },
+      });
+
+      if (!targetPayment) {
+        const refMatch = (replyToMsg.caption || replyToMsg.text || "").match(/PAY-\d{8}-[A-Za-z0-9]+/);
+        if (refMatch) {
+          targetPayment = await db.subscriptionPayment.findFirst({
+            where: { reference: refMatch[0], status: "AWAITING_VERIFICATION" },
+            include: { tenant: true },
+          });
+        }
+      }
+    }
+
+    const query = trimmed.replace(/^\/reject(?:@\w+)?/i, "").trim();
+    if (!targetPayment && query) {
+      const q = query.toLowerCase();
+      const allPending = await db.subscriptionPayment.findMany({
+        where: { status: "AWAITING_VERIFICATION" },
+        include: { tenant: true },
+        orderBy: { createdAt: "desc" },
+      });
+      targetPayment = allPending.find(
+        (p) =>
+          p.reference.toLowerCase() === q ||
+          p.reference.toLowerCase().includes(q) ||
+          (p.manualRef && p.manualRef.toLowerCase() === q) ||
+          (p.manualRef && p.manualRef.toLowerCase().includes(q)) ||
+          p.id.toLowerCase() === q ||
+          p.tenant.name.toLowerCase().includes(q),
+      ) ?? null;
+    }
+
+    if (!targetPayment && !query) {
+      const allPending = await db.subscriptionPayment.findMany({
+        where: { status: "AWAITING_VERIFICATION" },
+        include: { tenant: true },
+        orderBy: { createdAt: "desc" },
+      });
+
+      if (allPending.length === 1) {
+        targetPayment = allPending[0];
+      } else if (allPending.length === 0) {
+        try {
+          await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              chat_id: chatId,
+              text: `ℹ️ No pending payments waiting for rejection.`,
+            }),
+          });
+        } catch {}
+        return true;
+      } else {
+        try {
+          await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              chat_id: chatId,
+              text: `📋 Multiple pending payments found (${allPending.length}). Tap which one to reject:`,
+              reply_markup: {
+                inline_keyboard: allPending.map((p) => [
+                  {
+                    text: `❌ Reject ${p.reference} (${p.tenant.name})`,
+                    callback_data: `reject:${p.id}`,
+                  },
+                ]),
+              },
+            }),
+          });
+        } catch {}
+        return true;
+      }
+    }
+
+    if (!targetPayment) {
       try {
         await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             chat_id: chatId,
-            text: `ℹ️ Usage: /reject <PaymentRef or BankTrxID>\nExample: /reject PAY-20261022-85KSU4`,
+            text: `⚠️ No pending payment found matching '${query || "your message"}'. Type /pending to list pending requests.`,
           }),
         });
       } catch {}
       return true;
-    }
-
-    const payment = await db.subscriptionPayment.findFirst({
-      where: {
-        OR: [
-          { reference: query },
-          { manualRef: query },
-        ],
-        status: "AWAITING_VERIFICATION",
-      },
-      include: { tenant: true },
-    });
-
-    if (!payment) {
-      try {
-        await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            chat_id: chatId,
-            text: `⚠️ No pending payment found matching '${query}'. Check /pending for list.`,
-          }),
-        });
-      } catch {}
-      return true;
-    }
-
-    await rejectPayment(payment, `telegram:${senderName}`, `Rejected via Telegram /reject by ${senderName}`);
-    await db.subscriptionPayment.update({
-      where: { id: payment.id },
-      data: { verifiedByName: senderName, notifiedSeller: true, notifiedAt: new Date() },
-    });
-
-    if (payment.telegramGroupId && payment.telegramMessageId) {
-      const timestamp = new Date().toLocaleString("en-US", { timeZone: "Asia/Phnom_Penh" });
-      await updateTelegramMessageResolution(
-        botToken,
-        payment.telegramGroupId,
-        payment.telegramMessageId,
-        `🔐 KhLan — Subscription Payment (${payment.reference})\n━━━━━━━━━━━━━━━━━━━━━━━━━━━\n🏢 Tenant: ${payment.tenant.name}\n📋 Plan: ${payment.plan} (${payment.billingCycle})\n💰 Amount: $${payment.amountUsd.toFixed(2)}\n\n❌ REJECTED by ${senderName}\n📅 ${timestamp} (Phnom Penh)\nStatus: REJECTED (Subscription NOT activated)`,
-        Boolean(payment.evidenceImage),
-        `❌ Rejected by ${senderName}`,
-      );
     }
 
     try {
+      const rejectionReason = `Rejected via Telegram by ${senderName}`;
+      await rejectPayment(targetPayment, `telegram:${senderName}`, rejectionReason);
+      await db.subscriptionPayment.update({
+        where: { id: targetPayment.id },
+        data: {
+          verifiedByName: senderName,
+          notifiedSeller: true,
+          notifiedAt: new Date(),
+        },
+      });
+
+      const targetMsgId = targetPayment.telegramMessageId || replyToMsg?.message_id;
+      const targetChat = targetPayment.telegramGroupId || String(chatId);
+      const timestamp = new Date().toLocaleString("en-US", { timeZone: "Asia/Phnom_Penh" });
+
+      if (targetChat && targetMsgId) {
+        await updateTelegramMessageResolution(
+          botToken,
+          targetChat,
+          targetMsgId,
+          `🔐 KhLan — Subscription Payment (${targetPayment.reference})\n━━━━━━━━━━━━━━━━━━━━━━━━━━━\n🏢 Tenant: ${targetPayment.tenant.name}\n📋 Plan: ${targetPayment.plan} (${targetPayment.billingCycle})\n💰 Amount: $${targetPayment.amountUsd.toFixed(2)}\n\n❌ REJECTED by ${senderName}\n📅 ${timestamp} (Phnom Penh)\nStatus: REJECTED (Subscription NOT activated)`,
+          Boolean(targetPayment.evidenceImage),
+          `❌ Rejected by ${senderName}`,
+        );
+      }
+
       await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           chat_id: chatId,
-          text: `❌ Payment ${payment.reference} REJECTED by ${senderName}.`,
+          text: [
+            `❌ Payment Rejected`,
+            `━━━━━━━━━━━━━━━━━━━━━━━━━━━`,
+            `🏢 Dealer / Tenant: ${targetPayment.tenant.name}`,
+            `🔖 Reference: ${targetPayment.reference}`,
+            `👤 Rejected by: ${senderName}`,
+            `📅 ${timestamp} (Phnom Penh)`,
+            `⚠️ Status: REJECTED (Subscription NOT activated)`,
+          ].join("\n"),
         }),
       });
-    } catch {}
+    } catch (err: any) {
+      console.error("[handleTelegramGroupCommand] Reject error:", err);
+      await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          chat_id: chatId,
+          text: `⚠️ Could not reject payment: ${err.message || "Unknown error"}`,
+        }),
+      });
+    }
     return true;
   }
 
@@ -1058,13 +1526,13 @@ async function handleTelegramGroupCommand(
     const help = [
       `🤖 KhLan Telegram Group Bot Commands:`,
       `━━━━━━━━━━━━━━━━━━━━━━━━━━━`,
-      `• /pending — List pending subscription payments with [Approve]/[Reject] buttons`,
-      `• /approve <Ref/TrxID> — Directly approve and activate subscription`,
-      `• /reject <Ref/TrxID> — Reject a pending payment`,
+      `• /pending — List pending subscription payments with 1-tap [Approve]/[Reject] buttons`,
+      `• /approve [Ref/TrxID] — Directly approve and activate subscription (or reply 'approve' / 'ok' to any payment slip)`,
+      `• /reject [Ref/TrxID] — Reject a pending payment (or reply 'reject' / 'no' to any payment slip)`,
       `• /status — Check syncer and database statistics`,
       `• /sync — Trigger reconciliation check`,
       ``,
-      `💡 PayWay alerts posted here are automatically recorded, deduplicated, and auto-activated!`,
+      `💡 Tip: You can also tap the [✅ Approve & Activate] or [❌ Reject] buttons directly on each payment receipt above!`,
     ].join("\n");
 
     try {
@@ -1156,8 +1624,11 @@ export async function syncTelegramGroupUpdates(
       const senderName = msg.from?.username ? `@${msg.from.username}` : msg.from?.first_name || "Admin";
 
       // Check if it's a command (/pending, /status, /approve, /reject, /help)
-      if (messageText.startsWith("/")) {
-        const handled = await handleTelegramGroupCommand(messageText, msg.chat.id, senderName, botToken);
+      // OR a reply message (e.g. replying "approve" / "reject" to a payment slip)
+      const isCmd = messageText.startsWith("/");
+      const isReply = Boolean(msg.reply_to_message);
+      if (isCmd || isReply) {
+        const handled = await handleTelegramGroupCommand(msg, botToken);
         if (handled) {
           outcome.commandsProcessed++;
           continue;

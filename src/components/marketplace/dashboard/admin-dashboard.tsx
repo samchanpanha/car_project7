@@ -26,6 +26,7 @@ import {
   VerificationBadge, errorText, isForbidden,
 } from "./bits";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
@@ -957,12 +958,33 @@ function AdminPayments() {
                       <p className="flex flex-wrap items-center gap-1.5 text-sm font-semibold text-slate-900">
                         {p.tenantName} · {p.plan} ({p.billingCycle === "MONTHLY" ? t("billingMonthly") : t("billingYearly")})
                         <PaymentStatusBadge status={p.status} />
+                        <Badge className="bg-slate-100 text-slate-800 border-slate-300 text-[10px] font-bold">
+                          {p.currency === "KHR" ? "KHR (៛)" : "USD ($)"}
+                        </Badge>
+                        {p.ocrStatus && (
+                          <Badge className={cn(
+                            "text-[10px] font-bold",
+                            p.ocrStatus === "PASS" ? "bg-emerald-100 text-emerald-900 border-emerald-300" :
+                            p.ocrStatus === "WARN" ? "bg-amber-100 text-amber-900 border-amber-300" :
+                            "bg-rose-100 text-rose-900 border-rose-300"
+                          )}>
+                            OCR: {p.ocrStatus} {p.ocrConfidence ? `(${p.ocrConfidence}%)` : ""}
+                          </Badge>
+                        )}
                       </p>
                       <p className="mt-1 text-xs text-slate-500">
                         {t("payAmount")}: <span className="font-bold text-amber-700">{formatUsd(p.amountUsd)}</span>
+                        {p.amountExpected && p.currency === "KHR" ? ` (៛${p.amountExpected.toLocaleString()} KHR)` : ""}
                         {" · "}{t("payFromTenant")}: <code className="rounded bg-slate-100 px-1.5 py-0.5 text-[10px]">{p.reference}</code>
                         {p.manualRef ? ` · ${t("payManualRef")}: ${p.manualRef}` : ""}
                       </p>
+                      {p.ocrRef && (
+                        <p className="mt-0.5 text-[11px] text-emerald-700 font-medium">
+                          ✨ OCR Detected Trx: <code className="font-mono font-bold bg-emerald-50 px-1 py-0.5 rounded border border-emerald-200">{p.ocrRef}</code>
+                          {p.ocrAmount ? ` · Detected: $${p.ocrAmount}` : ""}
+                          {p.ocrPaidAt ? ` · ${new Date(p.ocrPaidAt).toLocaleString()}` : ""}
+                        </p>
+                      )}
                       <p className="mt-0.5 text-[11px] text-slate-400">
                         {t("payMethodManual")}
                         {" · "}{timeAgo(p.createdAt, locale)}
@@ -987,7 +1009,9 @@ function AdminPayments() {
                           aria-label={t("payEvidenceTitle")}
                         >
                           <img src={p.evidenceImage} alt={t("payEvidenceTitle")} className="h-16 w-16 rounded-md border border-slate-200 object-cover" />
-                          <span className="text-[11px] font-medium text-slate-500 underline decoration-dotted">{t("payEvidenceTitle")}</span>
+                          <span className="text-[11px] font-medium text-slate-500 underline decoration-dotted">
+                            View Receipt &amp; OCR Analysis
+                          </span>
                         </button>
                       )}
                     </div>
@@ -1026,15 +1050,69 @@ function AdminPayments() {
             </div>
           )}
 
-          {/* Screenshot viewer */}
+          {/* Screenshot & OCR Review Modal */}
           <Dialog open={Boolean(viewing)} onOpenChange={(o) => !o && setViewing(null)}>
-            <DialogContent className="sm:max-w-lg">
+            <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-y-auto">
               <DialogHeader>
-                <DialogTitle>{t("payEvidenceTitle")}</DialogTitle>
+                <div className="flex items-center justify-between">
+                  <DialogTitle>{t("payEvidenceTitle")} &amp; OCR Analysis</DialogTitle>
+                  {viewing && (
+                    <Badge className="bg-slate-100 text-slate-800 border-slate-300 text-xs">
+                      {viewing.currency === "KHR" ? "KHR (៛)" : "USD ($)"}
+                    </Badge>
+                  )}
+                </div>
               </DialogHeader>
               {viewing?.evidenceImage && (
-                <div className="space-y-2">
-                  <img src={viewing.evidenceImage} alt={t("payEvidenceTitle")} className="max-h-[60vh] w-full rounded-lg border border-slate-200 object-contain" />
+                <div className="space-y-3">
+                  <div className="rounded-xl border border-slate-200 bg-slate-950 p-2 flex justify-center">
+                    <img src={viewing.evidenceImage} alt={t("payEvidenceTitle")} className="max-h-[50vh] w-auto rounded-lg object-contain" />
+                  </div>
+
+                  {/* OCR Inspection Cards */}
+                  <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 text-xs space-y-2">
+                    <div className="flex items-center justify-between border-b border-slate-200 pb-1.5">
+                      <span className="font-bold text-slate-700">OCR Extraction &amp; Verification</span>
+                      {viewing.ocrStatus && (
+                        <Badge className={cn(
+                          "text-[10px] font-black",
+                          viewing.ocrStatus === "PASS" ? "bg-emerald-100 text-emerald-900 border-emerald-300" :
+                          viewing.ocrStatus === "WARN" ? "bg-amber-100 text-amber-900 border-amber-300" :
+                          "bg-rose-100 text-rose-900 border-rose-300"
+                        )}>
+                          {viewing.ocrStatus} ({viewing.ocrConfidence || 0}%)
+                        </Badge>
+                      )}
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-2 text-slate-600">
+                      <div>
+                        <span className="text-slate-400 block text-[10px]">Seller Entered Ref:</span>
+                        <code className="font-mono font-bold text-slate-900">{viewing.manualRef || "None"}</code>
+                      </div>
+                      <div>
+                        <span className="text-slate-400 block text-[10px]">OCR Scanned Ref:</span>
+                        <code className="font-mono font-bold text-emerald-700">{viewing.ocrRef || "None detected"}</code>
+                      </div>
+                      <div>
+                        <span className="text-slate-400 block text-[10px]">Required Amount:</span>
+                        <span className="font-bold text-slate-900">${viewing.amountUsd.toFixed(2)} USD</span>
+                      </div>
+                      <div>
+                        <span className="text-slate-400 block text-[10px]">OCR Detected Amount:</span>
+                        <span className="font-bold text-emerald-700">
+                          {viewing.ocrAmount ? `$${viewing.ocrAmount}` : "None detected"}
+                        </span>
+                      </div>
+                      {viewing.ocrPaidAt && (
+                        <div className="col-span-2">
+                          <span className="text-slate-400 block text-[10px]">Receipt Timestamp:</span>
+                          <span className="font-semibold text-slate-800">{new Date(viewing.ocrPaidAt).toLocaleString()}</span>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
                   <p className="text-center text-xs text-slate-500">
                     {viewing.tenantName} · {formatUsd(viewing.amountUsd)} · <code>{viewing.reference}</code>
                   </p>
@@ -1987,6 +2065,11 @@ interface ManualConfig {
   khqrImage: string | null;
   khqrImageMonthly?: string | null;
   khqrImageYearly?: string | null;
+  khqrImageUsd?: string | null;
+  khqrImageKhr?: string | null;
+  khrExchangeRate?: number;
+  maxTrxAgeHours?: number;
+  skipMerchantCheck?: boolean;
   instructionsEn: string | null;
   instructionsKm: string | null;
   telegram: string | null;
@@ -2005,10 +2088,14 @@ function AdminPaymentConfig() {
   const [readingQr, setReadingQr] = useState(false);
   const [readingMonthly, setReadingMonthly] = useState(false);
   const [readingYearly, setReadingYearly] = useState(false);
+  const [readingUsd, setReadingUsd] = useState(false);
+  const [readingKhr, setReadingKhr] = useState(false);
   const [testingTg, setTestingTg] = useState(false);
   const qrInput = useRef<HTMLInputElement>(null);
   const qrInputMonthly = useRef<HTMLInputElement>(null);
   const qrInputYearly = useRef<HTMLInputElement>(null);
+  const qrInputUsd = useRef<HTMLInputElement>(null);
+  const qrInputKhr = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (data) setForm(data);
@@ -2026,6 +2113,11 @@ function AdminPaymentConfig() {
         khqrImage: form.khqrImage || null,
         khqrImageMonthly: form.khqrImageMonthly || null,
         khqrImageYearly: form.khqrImageYearly || null,
+        khqrImageUsd: form.khqrImageUsd || null,
+        khqrImageKhr: form.khqrImageKhr || null,
+        khrExchangeRate: Number(form.khrExchangeRate) || 4100,
+        maxTrxAgeHours: Number(form.maxTrxAgeHours) || 72,
+        skipMerchantCheck: form.skipMerchantCheck ?? true,
         instructionsEn: form.instructionsEn || null,
         instructionsKm: form.instructionsKm || null,
         telegram: form.telegram || null,
@@ -2045,6 +2137,34 @@ function AdminPaymentConfig() {
       toast.error(isForbidden(e) ? t("toastForbidden") : errorText(e));
     } finally {
       setSaving(false);
+    }
+  };
+
+  const pickQrUsd = async (file: File | undefined) => {
+    if (!file) return;
+    setReadingUsd(true);
+    try {
+      const dataUrl = await fileToDataUrl(file, 720, 0.9);
+      setForm((f) => (f ? { ...f, khqrImageUsd: dataUrl } : f));
+    } catch {
+      toast.error(t("errorGeneric"));
+    } finally {
+      setReadingUsd(false);
+      if (qrInputUsd.current) qrInputUsd.current.value = "";
+    }
+  };
+
+  const pickQrKhr = async (file: File | undefined) => {
+    if (!file) return;
+    setReadingKhr(true);
+    try {
+      const dataUrl = await fileToDataUrl(file, 720, 0.9);
+      setForm((f) => (f ? { ...f, khqrImageKhr: dataUrl } : f));
+    } catch {
+      toast.error(t("errorGeneric"));
+    } finally {
+      setReadingKhr(false);
+      if (qrInputKhr.current) qrInputKhr.current.value = "";
     }
   };
 
@@ -2245,6 +2365,175 @@ function AdminPaymentConfig() {
           />
         </div>
 
+        {/* Currency KHQR image uploads (USD & KHR) */}
+        <div className="sm:col-span-2 space-y-3 rounded-xl border border-emerald-200 dark:border-emerald-800 bg-emerald-50/50 dark:bg-emerald-950/20 p-3.5">
+          <div>
+            <div className="flex items-center gap-2">
+              <span className="flex h-5 w-5 items-center justify-center rounded-md bg-emerald-600 text-white font-bold text-[10px]">
+                ៛/$
+              </span>
+              <Label className="text-xs font-bold text-slate-800 dark:text-slate-200">
+                KHQR Payment Images by Currency (USD vs KHR)
+              </Label>
+            </div>
+            <p className="mt-0.5 text-[11px] text-slate-500">
+              Configure currency-specific QR codes. When a seller selects USD or KHR at checkout, the matching currency QR code is displayed immediately.
+            </p>
+          </div>
+
+          <div className="grid gap-3 sm:grid-cols-2">
+            {/* USD KHQR */}
+            <div className="rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-3 shadow-xs">
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-xs font-semibold text-slate-700 dark:text-slate-300">USD KHQR Image</span>
+                <span className="rounded-full bg-sky-100 text-sky-900 border border-sky-300 px-2 py-0.5 text-[10px] font-bold">USD ($)</span>
+              </div>
+              {form.khqrImageUsd ? (
+                <div className="flex items-center gap-3">
+                  <img src={form.khqrImageUsd} alt="USD KHQR" className="h-24 w-24 rounded-lg border border-slate-200 object-contain p-1" />
+                  <div className="flex flex-col gap-1.5">
+                    <p className="flex items-center gap-1 text-[11px] font-medium text-emerald-700 dark:text-emerald-400">
+                      <ImageIcon className="h-3.5 w-3.5" aria-hidden />
+                      Uploaded
+                    </p>
+                    <Button type="button" variant="outline" size="sm" className="h-7 text-[11px]" onClick={() => qrInputUsd.current?.click()}>
+                      {t("payUploadChange")}
+                    </Button>
+                    <Button type="button" variant="ghost" size="sm" className="h-7 text-[11px] text-rose-600 hover:bg-rose-50"
+                      onClick={() => setForm({ ...form, khqrImageUsd: null })}>
+                      {t("payConfigQrRemove")}
+                    </Button>
+                  </div>
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => qrInputUsd.current?.click()}
+                  disabled={readingUsd}
+                  className={cn(
+                    "flex min-h-[44px] w-full cursor-pointer items-center justify-center gap-2 rounded-lg border border-dashed border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/50 px-3 py-2.5 text-xs font-medium text-slate-600 dark:text-slate-300 transition-colors hover:border-emerald-500 hover:bg-emerald-50/50",
+                    readingUsd && "opacity-60",
+                  )}
+                >
+                  {readingUsd ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : <Upload className="h-4 w-4 text-slate-400" aria-hidden />}
+                  Upload USD KHQR ($)
+                </button>
+              )}
+            </div>
+
+            {/* KHR KHQR */}
+            <div className="rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-3 shadow-xs">
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-xs font-semibold text-slate-700 dark:text-slate-300">KHR KHQR Image</span>
+                <span className="rounded-full bg-amber-100 text-amber-900 border border-amber-300 px-2 py-0.5 text-[10px] font-bold">KHR (៛)</span>
+              </div>
+              {form.khqrImageKhr ? (
+                <div className="flex items-center gap-3">
+                  <img src={form.khqrImageKhr} alt="KHR KHQR" className="h-24 w-24 rounded-lg border border-slate-200 object-contain p-1" />
+                  <div className="flex flex-col gap-1.5">
+                    <p className="flex items-center gap-1 text-[11px] font-medium text-emerald-700 dark:text-emerald-400">
+                      <ImageIcon className="h-3.5 w-3.5" aria-hidden />
+                      Uploaded
+                    </p>
+                    <Button type="button" variant="outline" size="sm" className="h-7 text-[11px]" onClick={() => qrInputKhr.current?.click()}>
+                      {t("payUploadChange")}
+                    </Button>
+                    <Button type="button" variant="ghost" size="sm" className="h-7 text-[11px] text-rose-600 hover:bg-rose-50"
+                      onClick={() => setForm({ ...form, khqrImageKhr: null })}>
+                      {t("payConfigQrRemove")}
+                    </Button>
+                  </div>
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => qrInputKhr.current?.click()}
+                  disabled={readingKhr}
+                  className={cn(
+                    "flex min-h-[44px] w-full cursor-pointer items-center justify-center gap-2 rounded-lg border border-dashed border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/50 px-3 py-2.5 text-xs font-medium text-slate-600 dark:text-slate-300 transition-colors hover:border-amber-500 hover:bg-amber-50/50",
+                    readingKhr && "opacity-60",
+                  )}
+                >
+                  {readingKhr ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : <Upload className="h-4 w-4 text-slate-400" aria-hidden />}
+                  Upload KHR KHQR (៛)
+                </button>
+              )}
+            </div>
+          </div>
+
+          {/* Hidden inputs for USD and KHR */}
+          <input
+            ref={qrInputUsd}
+            type="file"
+            accept="image/*"
+            className="hidden"
+            aria-label="Upload USD KHQR"
+            onChange={(e) => pickQrUsd(e.target.files?.[0])}
+          />
+          <input
+            ref={qrInputKhr}
+            type="file"
+            accept="image/*"
+            className="hidden"
+            aria-label="Upload KHR KHQR"
+            onChange={(e) => pickQrKhr(e.target.files?.[0])}
+          />
+        </div>
+
+        {/* Currency rate & Freshness settings */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:col-span-2">
+          <div>
+            <Label htmlFor="pc-rate" className="text-xs font-semibold text-slate-700 dark:text-slate-300">
+              KHR Exchange Rate (៛ per $1 USD)
+            </Label>
+            <Input
+              id="pc-rate"
+              type="number"
+              value={form.khrExchangeRate ?? 4100}
+              onChange={(e) => setForm({ ...form, khrExchangeRate: Number(e.target.value) || 4100 })}
+              className="mt-1.5 h-9"
+              min={1000}
+              max={20000}
+            />
+            <p className="mt-1 text-[11px] text-slate-400">Used to convert plan prices to exact Khmer Riel (default 4,100).</p>
+          </div>
+          <div>
+            <Label htmlFor="pc-maxage" className="text-xs font-semibold text-slate-700 dark:text-slate-300">
+              Max Transaction Freshness (Hours)
+            </Label>
+            <Input
+              id="pc-maxage"
+              type="number"
+              value={form.maxTrxAgeHours ?? 72}
+              onChange={(e) => setForm({ ...form, maxTrxAgeHours: Number(e.target.value) || 72 })}
+              className="mt-1.5 h-9"
+              min={1}
+              max={720}
+            />
+            <p className="mt-1 text-[11px] text-slate-400">Prevents users from submitting old bank transactions (default 72h = 3 days).</p>
+          </div>
+        </div>
+
+        {/* Skip Merchant Payee Check Switch */}
+        <div className="sm:col-span-2 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-3.5 shadow-xs">
+          <div className="flex items-start justify-between gap-3">
+            <div className="min-w-0">
+              <Label htmlFor="pc-skip-merchant" className="text-sm font-semibold text-slate-900 dark:text-slate-100 flex items-center gap-2 cursor-pointer">
+                <ShieldCheck className="h-4 w-4 text-emerald-600" />
+                {t("paySkipMerchantTitle")}
+              </Label>
+              <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">
+                {t("paySkipMerchantDesc")}
+              </p>
+            </div>
+            <Switch
+              id="pc-skip-merchant"
+              checked={form.skipMerchantCheck ?? true}
+              onCheckedChange={(v) => setForm({ ...form, skipMerchantCheck: v })}
+            />
+          </div>
+        </div>
+
         <div className="sm:col-span-2">
           <Label htmlFor="pc-payload" className="text-xs text-slate-500">{t("payConfigKhqrPayload")}</Label>
           <Textarea id="pc-payload" value={form.khqrPayload ?? ""} onChange={(e) => setForm({ ...form, khqrPayload: e.target.value })} rows={2} className="mt-1.5 font-mono text-xs field-sizing-fixed min-w-0" maxLength={600} />
@@ -2342,9 +2631,14 @@ function AdminPaymentConfig() {
 
 function AdminPlanPricing() {
   const t = useT();
-  const { data, loading, error, refetch } = useFetch<{ plans: PlanPricingConfig }>("/api/admin/plans");
+  const { data, loading, error, refetch } = useFetch<{
+    plans: PlanPricingConfig;
+    khrExchangeRate?: number;
+  }>("/api/admin/plans");
   const [form, setForm] = useState<PlanPricingConfig | null>(null);
   const [saving, setSaving] = useState(false);
+
+  const khrRate = data?.khrExchangeRate || 4100;
 
   useEffect(() => {
     if (data) setForm(data.plans);
@@ -2364,69 +2658,293 @@ function AdminPlanPricing() {
     }
   };
 
+  const autoCalcKhrForPlan = (plan: keyof PlanPricingConfig) => {
+    if (!form) return;
+    const planCfg = form[plan];
+    const m = Math.round((planCfg.priceUsdMonthly * khrRate) / 100) * 100;
+    const y = Math.round((planCfg.priceUsdYearly * khrRate) / 100) * 100;
+    setForm({
+      ...form,
+      [plan]: {
+        ...planCfg,
+        priceKhrMonthly: m,
+        priceKhrYearly: y,
+      },
+    });
+    toast.success(`Calculated KHR for ${plan}: ៛${m.toLocaleString()} / ៛${y.toLocaleString()}`);
+  };
+
+  const autoCalcAllKhr = () => {
+    if (!form) return;
+    const updated = { ...form };
+    for (const key of Object.keys(updated) as Array<keyof PlanPricingConfig>) {
+      const p = updated[key];
+      updated[key] = {
+        ...p,
+        priceKhrMonthly: Math.round((p.priceUsdMonthly * khrRate) / 100) * 100,
+        priceKhrYearly: Math.round((p.priceUsdYearly * khrRate) / 100) * 100,
+      };
+    }
+    setForm(updated);
+    toast.success(`Synced all plans with exchange rate $1 = ${khrRate.toLocaleString()} ៛`);
+  };
+
   if (loading && !data) return <Skeleton className="h-64 w-full rounded-xl" />;
   if (error && !data) return <FetchErrorState message={error} onRetry={refetch} />;
   if (!form) return null;
 
   const planKeys = Object.keys(form) as Array<keyof PlanPricingConfig>;
 
-  const num = (plan: keyof PlanPricingConfig, field: keyof PlanPricingConfig["BASIC"], value: string) =>
+  const num = (
+    plan: keyof PlanPricingConfig,
+    field: keyof PlanPricingConfig["BASIC"],
+    value: string,
+  ) =>
     setForm({ ...form, [plan]: { ...form[plan], [field]: Number(value) || 0 } });
 
   return (
     <SectionCard title={t("payPlansTitle")}>
-      <p className="-mt-2 mb-3 text-xs text-slate-400">{t("payPlansDesc")}</p>
-      <div className="space-y-3">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 -mt-2 mb-4">
+        <p className="text-xs text-slate-500 max-w-2xl">{t("payPlansDesc")}</p>
+        <div className="flex items-center gap-2">
+          <Badge variant="outline" className="text-[11px] bg-emerald-50 text-emerald-700 border-emerald-200 font-semibold py-1 px-2.5 flex items-center gap-1.5 shrink-0">
+            <Wallet className="h-3.5 w-3.5 text-emerald-600" />
+            <span>{t("payPlansRateNotice", { rate: khrRate.toLocaleString() })}</span>
+          </Badge>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={autoCalcAllKhr}
+            className="text-xs h-7 gap-1 border-slate-200 text-slate-700 hover:bg-slate-100"
+            title="Auto-calculate all KHR prices using the exchange rate"
+          >
+            <Sparkles className="h-3.5 w-3.5 text-amber-500" />
+            <span className="hidden sm:inline">Auto-calc All KHR</span>
+          </Button>
+        </div>
+      </div>
+
+      <div className="space-y-4">
         {planKeys.map((plan) => {
           const cfg = form[plan];
+          const khrMonthly = cfg.priceKhrMonthly ?? Math.round((cfg.priceUsdMonthly * khrRate) / 100) * 100;
+          const khrYearly = cfg.priceKhrYearly ?? Math.round((cfg.priceUsdYearly * khrRate) / 100) * 100;
+
           return (
-            <div key={plan} className={cn("rounded-xl border p-3", cfg.enabled ? "border-slate-200" : "border-slate-200 bg-slate-50/60 opacity-75")}>
-              <div className="flex items-center justify-between gap-3">
-                <p className="text-sm font-bold text-slate-900">{plan}</p>
-                <div className="flex items-center gap-2">
-                  <Label htmlFor={`pl-${plan}-enabled`} className="text-[11px] font-medium text-slate-500">{t("payPlansEnabled")}</Label>
-                  <Switch
-                    id={`pl-${plan}-enabled`}
-                    checked={cfg.enabled}
-                    onCheckedChange={(v) => setForm({ ...form, [plan]: { ...cfg, enabled: v } })}
-                  />
+            <div
+              key={plan}
+              className={cn(
+                "rounded-xl border p-4 transition-all duration-150",
+                cfg.enabled
+                  ? "border-slate-200 bg-white shadow-xs hover:border-slate-300"
+                  : "border-dashed border-slate-300 bg-slate-50/70 opacity-75"
+              )}
+            >
+              {/* Header row: plan name, status badge, preview, switch */}
+              <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 pb-3">
+                <div className="flex items-center gap-2.5">
+                  <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-amber-100 text-amber-900 font-bold text-xs">
+                    {plan.slice(0, 2)}
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <p className="text-sm font-bold text-slate-900">{plan}</p>
+                      {cfg.enabled ? (
+                        <Badge className="bg-emerald-100 text-emerald-800 border-0 text-[10px] font-semibold">Active</Badge>
+                      ) : (
+                        <Badge variant="outline" className="text-slate-400 border-slate-200 text-[10px]">Disabled</Badge>
+                      )}
+                    </div>
+                    <p className="text-[11px] text-slate-500">
+                      Seller preview: ${cfg.priceUsdMonthly}/mo (${cfg.priceUsdYearly}/yr) · ៛{khrMonthly.toLocaleString()}/mo · {cfg.listingsLimit} listings · {cfg.featuredLimit} featured · {cfg.seats} seats
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-3">
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => autoCalcKhrForPlan(plan)}
+                    className="h-8 text-xs text-slate-600 hover:text-slate-900 hover:bg-slate-100 gap-1"
+                    title={t("payPlansAutoSyncKhr")}
+                  >
+                    <RefreshCw className="h-3 w-3 text-slate-500" />
+                    <span>{t("payPlansAutoSyncKhr")}</span>
+                  </Button>
+                  <div className="flex items-center gap-2 pl-2 border-l border-slate-200">
+                    <Label htmlFor={`pl-${plan}-enabled`} className="text-[11px] font-medium text-slate-500 cursor-pointer">
+                      {t("payPlansEnabled")}
+                    </Label>
+                    <Switch
+                      id={`pl-${plan}-enabled`}
+                      checked={cfg.enabled}
+                      onCheckedChange={(v) => setForm({ ...form, [plan]: { ...cfg, enabled: v } })}
+                    />
+                  </div>
                 </div>
               </div>
-              <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
-                <div>
-                  <Label htmlFor={`pl-${plan}-m`} className="text-xs text-slate-500">{t("payPlansMonthly")}</Label>
-                  <Input id={`pl-${plan}-m`} type="number" min={0} step={1} value={cfg.priceUsdMonthly}
-                    onChange={(e) => num(plan, "priceUsdMonthly", e.target.value)} className="mt-1.5 h-9" />
+
+              {/* Grid of pricing & limits */}
+              <div className="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-12">
+                {/* Currency 1: USD Section */}
+                <div className="lg:col-span-4 rounded-lg bg-slate-50/80 p-3 border border-slate-200/80">
+                  <div className="flex items-center gap-1.5 mb-2.5">
+                    <DollarSign className="h-3.5 w-3.5 text-blue-600" />
+                    <span className="text-xs font-bold text-slate-800">{t("payPlansCurrencyUsd")}</span>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <Label htmlFor={`pl-${plan}-m`} className="text-[11px] text-slate-600 font-medium">
+                        {t("payPlansMonthly")}
+                      </Label>
+                      <div className="relative mt-1">
+                        <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-xs text-slate-400 font-semibold">$</span>
+                        <Input
+                          id={`pl-${plan}-m`}
+                          type="number"
+                          min={0}
+                          step={1}
+                          value={cfg.priceUsdMonthly}
+                          onChange={(e) => num(plan, "priceUsdMonthly", e.target.value)}
+                          className="h-8.5 pl-6 text-xs font-semibold bg-white"
+                        />
+                      </div>
+                    </div>
+                    <div>
+                      <Label htmlFor={`pl-${plan}-y`} className="text-[11px] text-slate-600 font-medium">
+                        {t("payPlansYearly")}
+                      </Label>
+                      <div className="relative mt-1">
+                        <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-xs text-slate-400 font-semibold">$</span>
+                        <Input
+                          id={`pl-${plan}-y`}
+                          type="number"
+                          min={0}
+                          step={1}
+                          value={cfg.priceUsdYearly}
+                          onChange={(e) => num(plan, "priceUsdYearly", e.target.value)}
+                          className="h-8.5 pl-6 text-xs font-semibold bg-white"
+                        />
+                      </div>
+                    </div>
+                  </div>
                 </div>
-                <div>
-                  <Label htmlFor={`pl-${plan}-y`} className="text-xs text-slate-500">{t("payPlansYearly")}</Label>
-                  <Input id={`pl-${plan}-y`} type="number" min={0} step={1} value={cfg.priceUsdYearly}
-                    onChange={(e) => num(plan, "priceUsdYearly", e.target.value)} className="mt-1.5 h-9" />
+
+                {/* Currency 2: KHR Section */}
+                <div className="lg:col-span-4 rounded-lg bg-emerald-50/50 p-3 border border-emerald-200/60">
+                  <div className="flex items-center justify-between mb-2.5">
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-xs font-bold text-emerald-800">៛ {t("payPlansCurrencyKhr")}</span>
+                    </div>
+                    <span className="text-[10px] text-emerald-700/80 font-medium">KHQR amount</span>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <Label htmlFor={`pl-${plan}-km`} className="text-[11px] text-emerald-900 font-medium">
+                        {t("payPlansMonthlyKhr")}
+                      </Label>
+                      <div className="relative mt-1">
+                        <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-xs text-emerald-600 font-bold">៛</span>
+                        <Input
+                          id={`pl-${plan}-km`}
+                          type="number"
+                          min={0}
+                          step={100}
+                          value={cfg.priceKhrMonthly ?? Math.round((cfg.priceUsdMonthly * khrRate) / 100) * 100}
+                          onChange={(e) => num(plan, "priceKhrMonthly", e.target.value)}
+                          className="h-8.5 pl-6 text-xs font-semibold bg-white text-emerald-950 border-emerald-300 focus-visible:ring-emerald-400"
+                        />
+                      </div>
+                    </div>
+                    <div>
+                      <Label htmlFor={`pl-${plan}-ky`} className="text-[11px] text-emerald-900 font-medium">
+                        {t("payPlansYearlyKhr")}
+                      </Label>
+                      <div className="relative mt-1">
+                        <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-xs text-emerald-600 font-bold">៛</span>
+                        <Input
+                          id={`pl-${plan}-ky`}
+                          type="number"
+                          min={0}
+                          step={100}
+                          value={cfg.priceKhrYearly ?? Math.round((cfg.priceUsdYearly * khrRate) / 100) * 100}
+                          onChange={(e) => num(plan, "priceKhrYearly", e.target.value)}
+                          className="h-8.5 pl-6 text-xs font-semibold bg-white text-emerald-950 border-emerald-300 focus-visible:ring-emerald-400"
+                        />
+                      </div>
+                    </div>
+                  </div>
                 </div>
-                <div>
-                  <Label htmlFor={`pl-${plan}-l`} className="text-xs text-slate-500">{t("payPlansListings")}</Label>
-                  <Input id={`pl-${plan}-l`} type="number" min={0} max={9999} value={cfg.listingsLimit}
-                    onChange={(e) => num(plan, "listingsLimit", e.target.value)} className="mt-1.5 h-9" />
-                </div>
-                <div>
-                  <Label htmlFor={`pl-${plan}-f`} className="text-xs text-slate-500">{t("payPlansFeatured")}</Label>
-                  <Input id={`pl-${plan}-f`} type="number" min={0} max={9999} value={cfg.featuredLimit}
-                    onChange={(e) => num(plan, "featuredLimit", e.target.value)} className="mt-1.5 h-9" />
-                </div>
-                <div>
-                  <Label htmlFor={`pl-${plan}-s`} className="text-xs text-slate-500">{t("subSeatsLabel")}</Label>
-                  <Input id={`pl-${plan}-s`} type="number" min={1} max={9999} value={cfg.seats}
-                    onChange={(e) => num(plan, "seats", e.target.value)} className="mt-1.5 h-9" />
+
+                {/* Section 3: Limits & Seats */}
+                <div className="lg:col-span-4 rounded-lg bg-slate-50/80 p-3 border border-slate-200/80">
+                  <div className="flex items-center gap-1.5 mb-2.5">
+                    <ShieldCheck className="h-3.5 w-3.5 text-amber-600" />
+                    <span className="text-xs font-bold text-slate-800">Limits & Activation</span>
+                  </div>
+                  <div className="grid grid-cols-3 gap-2">
+                    <div>
+                      <Label htmlFor={`pl-${plan}-l`} className="text-[11px] text-slate-600 font-medium">
+                        {t("payPlansListings")}
+                      </Label>
+                      <Input
+                        id={`pl-${plan}-l`}
+                        type="number"
+                        min={0}
+                        max={9999}
+                        value={cfg.listingsLimit}
+                        onChange={(e) => num(plan, "listingsLimit", e.target.value)}
+                        className="mt-1 h-8.5 text-xs font-medium bg-white"
+                      />
+                    </div>
+                    <div>
+                      <Label htmlFor={`pl-${plan}-f`} className="text-[11px] text-slate-600 font-medium">
+                        {t("payPlansFeatured")}
+                      </Label>
+                      <Input
+                        id={`pl-${plan}-f`}
+                        type="number"
+                        min={0}
+                        max={9999}
+                        value={cfg.featuredLimit}
+                        onChange={(e) => num(plan, "featuredLimit", e.target.value)}
+                        className="mt-1 h-8.5 text-xs font-medium bg-white"
+                      />
+                    </div>
+                    <div>
+                      <Label htmlFor={`pl-${plan}-s`} className="text-[11px] text-slate-600 font-medium">
+                        {t("subSeatsLabel")}
+                      </Label>
+                      <Input
+                        id={`pl-${plan}-s`}
+                        type="number"
+                        min={1}
+                        max={9999}
+                        value={cfg.seats}
+                        onChange={(e) => num(plan, "seats", e.target.value)}
+                        className="mt-1 h-8.5 text-xs font-medium bg-white"
+                      />
+                    </div>
+                  </div>
                 </div>
               </div>
             </div>
           );
         })}
       </div>
-      <Button onClick={save} disabled={saving} className="mt-4 bg-amber-500 hover:bg-amber-400 text-slate-950 font-semibold">
-        {saving && <Loader2 className="h-4 w-4 mr-2 animate-spin" aria-hidden />}
-        {t("saveChanges")}
-      </Button>
+
+      <div className="mt-5 flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-t border-slate-100 pt-4">
+        <p className="text-xs text-slate-400">
+          * Prices, limits and availability set here directly drive seller plan cards, KHQR amounts, and activation limits.
+        </p>
+        <Button onClick={save} disabled={saving} className="bg-amber-500 hover:bg-amber-400 text-slate-950 font-semibold px-5">
+          {saving && <Loader2 className="h-4 w-4 mr-2 animate-spin" aria-hidden />}
+          {t("saveChanges")}
+        </Button>
+      </div>
     </SectionCard>
   );
 }

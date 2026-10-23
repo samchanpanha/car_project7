@@ -58,20 +58,38 @@ export async function requireAdmin(): Promise<DemoUser> {
   return user;
 }
 
-/**
- * Guard: current user must be an ACTIVE member of a tenant.
- * Returns the user, the membership row and the tenant.
- */
 export async function requireTenantMember(): Promise<{
   user: DemoUser;
   member: TenantMember;
   tenant: Tenant;
 }> {
   const user = await getCurrentUser();
+  try {
+    const rows = await db.$queryRawUnsafe<Array<{ isBlacklisted: number | boolean; blacklistReason: string | null }>>(
+      `SELECT isBlacklisted, blacklistReason FROM "User" WHERE id = ? LIMIT 1`,
+      user.id,
+    );
+    const dbUser = rows?.[0];
+    if (dbUser && (dbUser.isBlacklisted === 1 || dbUser.isBlacklisted === true)) {
+      throw new HttpError(
+        403,
+        `Your account has been blacklisted${dbUser.blacklistReason ? `: ${dbUser.blacklistReason}` : ""}. Access is restricted.`,
+      );
+    }
+  } catch (err) {
+    if (err instanceof HttpError) throw err;
+    // If column query fails for any unexpected reason, continue safely
+  }
+
   const member = await db.tenantMember.findFirst({
     where: { userId: user.id, status: "ACTIVE" },
     include: { tenant: true },
   });
   if (!member) throw new HttpError(403, "Forbidden");
+
+  if (member.tenant.status === "BLACKLISTED") {
+    throw new HttpError(403, "Your dealership account has been blacklisted for security violations. Access denied.");
+  }
+
   return { user, member, tenant: member.tenant };
 }

@@ -16,12 +16,25 @@ export async function GET() {
         instructionsEn: config.instructionsEn,
         instructionsKm: config.instructionsKm,
         telegram: config.telegram,
-        hasKhqr: Boolean(config.khqrImage || config.khqrPayload || config.khqrImageUrl || config.khqrImageMonthly || config.khqrImageYearly),
+        hasKhqr: Boolean(
+          config.khqrImage ||
+          config.khqrPayload ||
+          config.khqrImageUrl ||
+          config.khqrImageMonthly ||
+          config.khqrImageYearly ||
+          config.khqrImageUsd ||
+          config.khqrImageKhr
+        ),
         khqrDataUrl: await khqrDataUrl(config),
         khqrImage: config.khqrImage,
         // Per-cycle KHQR images — fall back to static placeholders
         khqrImageMonthly: config.khqrImageMonthly || "/khqr/khqr-monthly.jpg",
         khqrImageYearly: config.khqrImageYearly || "/khqr/khqr-yearly.jpg",
+        // Per-currency KHQR images — fallback to cycle or default QR
+        khqrImageUsd: config.khqrImageUsd || config.khqrImageMonthly || config.khqrImage || "/khqr/khqr-monthly.jpg",
+        khqrImageKhr: config.khqrImageKhr || config.khqrImageYearly || config.khqrImage || "/khqr/khqr-yearly.jpg",
+        khrExchangeRate: config.khrExchangeRate || 4100,
+        skipMerchantCheck: config.skipMerchantCheck ?? true,
       },
       freePlan: config.freePlan,
     };

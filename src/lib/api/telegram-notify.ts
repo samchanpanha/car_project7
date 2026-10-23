@@ -94,19 +94,69 @@ export async function sendPaymentProofToTelegram(
     manualRef?: string | null;
     note?: string | null;
     evidenceImage?: string | null; // data URL
+    originatingBank?: string | null;
+    payerName?: string | null;
+    payerAccount?: string | null;
+    matchedAbaTrxId?: string | null;
+    isInterbank?: boolean;
+    ocrRef?: string | null;
+    ocrAmount?: number | null;
+    ocrCurrency?: string | null;
+    ocrStatus?: string | null;
+    riskFlags?: string[] | null;
+    payee?: string | null;
   },
 ): Promise<TelegramDelivery> {
   if (!telegramConfigured(cfg)) return { sent: false, error: "not_configured" };
 
+  const hasMismatch = payment.riskFlags?.includes("TRX_ID_MISMATCH") ||
+    Boolean(payment.manualRef && payment.ocrRef && payment.manualRef.trim() !== payment.ocrRef.trim());
+  const hasRisk = Boolean((payment.riskFlags && payment.riskFlags.length > 0) || hasMismatch);
+
   const lines = [
-    "🔐 KhLan — Subscription Payment Request",
+    hasRisk ? "🚨 HIGH RISK PAYMENT WARNING 🚨" : "🔐 KhLan — Subscription Payment Request",
     "━━━━━━━━━━━━━━━━━━━━━━━━━━━",
     `🏢 Tenant: ${payment.tenantName}`,
     `📋 Plan: ${payment.plan} (${payment.billingCycle})`,
     `💰 Amount: $${payment.amountUsd.toFixed(2)}`,
-    `🔖 Reference: ${payment.reference}`,
+    `🔖 System Ref: ${payment.reference}`,
   ];
-  if (payment.manualRef) lines.push(`🏦 Bank Ref: ${payment.manualRef}`);
+  if (payment.originatingBank) lines.push(`🏛️ Originating Bank: ${payment.originatingBank}`);
+  if (payment.manualRef) lines.push(`🧾 Customer Ref: ${payment.manualRef}`);
+
+  // Anti-Fraud & OCR Verification Audit
+  if (payment.ocrRef || payment.ocrStatus || (payment.riskFlags && payment.riskFlags.length > 0)) {
+    lines.push("━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+    lines.push("🛡️ Anti-Fraud Slip Audit:");
+    if (payment.ocrRef) {
+      if (payment.manualRef && payment.manualRef.trim() === payment.ocrRef.trim()) {
+        lines.push(`• Trx ID: ✅ MATCHED (${payment.ocrRef})`);
+      } else {
+        lines.push(`• Slip Scanned Trx: ${payment.ocrRef} ${hasMismatch ? "❌ (MISMATCH)" : ""}`);
+      }
+    }
+    if (payment.payee) {
+      lines.push(`• Payee on Slip: ${payment.payee}`);
+    }
+    if (payment.ocrAmount != null) {
+      lines.push(`• Amount on Slip: ${payment.ocrCurrency || "USD"} ${payment.ocrAmount.toLocaleString()}`);
+    }
+    if (payment.riskFlags && payment.riskFlags.length > 0) {
+      lines.push(`• Risk Flags: ⚠️ ${payment.riskFlags.join(", ")}`);
+    } else {
+      lines.push(`• Risk Score: ✅ CLEAN (0 Flags)`);
+    }
+  }
+
+  if (payment.payerName || payment.payerAccount) {
+    const who = [payment.payerName, payment.payerAccount ? `(${payment.payerAccount})` : ""].filter(Boolean).join(" ");
+    lines.push(`👤 Payer: ${who}`);
+  }
+  if (payment.matchedAbaTrxId) {
+    lines.push(`⚡ ABA PayWay Trx: ${payment.matchedAbaTrxId}`);
+  } else if (payment.isInterbank) {
+    lines.push(`⏳ ABA PayWay Status: Awaiting Telegram syncer`);
+  }
   if (payment.note) lines.push(`📝 Note: ${payment.note}`);
   lines.push("", "⚡ Tap below to verify or reject directly from Telegram:");
   const caption = lines.join("\n");
@@ -117,6 +167,9 @@ export async function sendPaymentProofToTelegram(
           [
             { text: "✅ Approve & Activate", callback_data: `approve:${payment.paymentId}` },
             { text: "❌ Reject", callback_data: `reject:${payment.paymentId}` },
+          ],
+          [
+            { text: "🚫 Blacklist User & Shop", callback_data: `blacklist_payment:${payment.paymentId}` },
           ],
         ],
       }
@@ -332,3 +385,90 @@ export async function sendSubscriptionExpiryReminder(
 
   return sendTelegramMessage(cfg, text);
 }
+
+/**
+ * Send an immediate Security / Fraud Alert to the Telegram group when an invalid,
+ * fake, or foreign payment slip (not paid to our KHQR merchant) is detected and blocked.
+ * Includes inline [Cancel] and [Blacklist User] action buttons.
+ */
+export async function sendFraudAlertToTelegram(
+  cfg: TelegramBotConfig,
+  alert: {
+    alertId: string;
+    userId: string;
+    tenantId: string;
+    tenantName: string;
+    userName: string;
+    userPhone?: string | null;
+    userEmail?: string | null;
+    reason: string;
+    detectedPayee: string | null;
+    expectedPayee: string;
+    amount?: number | null;
+    currency?: string | null;
+    slipRef?: string | null;
+    slipDateRaw?: string | null;
+    evidenceImage?: string | null; // data URL
+  },
+): Promise<TelegramDelivery> {
+  if (!telegramConfigured(cfg)) return { sent: false, error: "not_configured" };
+
+  const lines = [
+    "🚨 SECURITY ALERT: FOREIGN / FAKE SLIP BLOCKED! 🚨",
+    "━━━━━━━━━━━━━━━━━━━━━━━━━━━",
+    `🏢 Dealer / Tenant: ${alert.tenantName}`,
+    `👤 Submitter: ${alert.userName} (${alert.userPhone || "No Phone"}${alert.userEmail ? ` | ${alert.userEmail}` : ""})`,
+    `❌ Violation: Not Paid to Official KHQR`,
+    `🧾 Detected Payee on Slip: ${alert.detectedPayee || "Unknown / Foreign Account"}`,
+    `👑 Official Merchant: ${alert.expectedPayee}`,
+  ];
+
+  if (alert.amount != null) {
+    lines.push(`💰 Slip Amount: ${alert.currency || "USD"} ${alert.amount.toLocaleString()}`);
+  }
+  if (alert.slipDateRaw) {
+    lines.push(`📅 Slip Date: ${alert.slipDateRaw}`);
+  }
+  if (alert.slipRef) {
+    lines.push(`🏦 Slip Trx ID: ${alert.slipRef}`);
+  }
+
+  lines.push("━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+  lines.push("⛔ SYSTEM ACTION: SUBMISSION BLOCKED");
+  lines.push("The user was blocked from submitting this transaction.");
+  lines.push("");
+  lines.push("👮 Choose Admin Security Action:");
+
+  const caption = lines.join("\n");
+
+  const replyMarkup = {
+    inline_keyboard: [
+      [
+        { text: "❌ Cancel / Dismiss", callback_data: `fraud_cancel:${alert.alertId}` },
+        { text: "🚫 Blacklist User & Shop", callback_data: `fraud_blacklist:${alert.alertId}` },
+      ],
+    ],
+  };
+
+  const dataUrl = alert.evidenceImage;
+  if (!dataUrl || !dataUrl.startsWith("data:image/")) {
+    return sendTelegramMessage(cfg, caption, replyMarkup);
+  }
+
+  const match = /^data:(image\/[a-zA-Z0-9.+-]+);base64,(.+)$/.exec(dataUrl);
+  if (!match) return sendTelegramMessage(cfg, caption, replyMarkup);
+  const [, mime, b64] = match;
+  try {
+    const bytes = Buffer.from(b64, "base64");
+    if (bytes.length === 0) return sendTelegramMessage(cfg, caption, replyMarkup);
+    const form = new FormData();
+    form.set("chat_id", cfg.telegramChatId!);
+    form.set("caption", caption);
+    form.set("reply_markup", JSON.stringify(replyMarkup));
+    form.set("photo", new Blob([new Uint8Array(bytes)], { type: mime }), "fraud-slip.jpg");
+    return await tgFetch(cfg.telegramBotToken!, "sendPhoto", { method: "POST", body: form });
+  } catch {
+    return sendTelegramMessage(cfg, caption, replyMarkup);
+  }
+}
+

@@ -15,6 +15,8 @@ export type PaidPlanKey = Exclude<PlanKey, "FREE">;
 export interface PlanPriceCfg {
   priceUsdMonthly: number;
   priceUsdYearly: number;
+  priceKhrMonthly?: number;
+  priceKhrYearly?: number;
   listingsLimit: number;
   featuredLimit: number;
   seats: number;
@@ -45,14 +47,23 @@ function clampPrice(n: unknown, fallback: number): number {
   return Math.min(99999, Math.max(0, v));
 }
 
-/** Code-level defaults — derived once from the canonical catalog. */
+function clampKhrPrice(n: unknown, fallback: number): number {
+  const v = typeof n === "number" && Number.isFinite(n) ? Math.round(n) : fallback;
+  return Math.min(999_999_999, Math.max(0, v));
+}
+
+/** Code-level defaults — derived once from the canonical catalog with standard 4100 KHR rate. */
 function defaultPricing(): PlanPricingConfig {
   const out = {} as PlanPricingConfig;
   for (const key of PAID_PLAN_KEYS) {
     const row = PLAN_CATALOG.find((p) => p.plan === key)!;
+    const defaultKhrMonthly = Math.round((row.priceUsdMonthly * 4100) / 100) * 100;
+    const defaultKhrYearly = Math.round((row.priceUsdYearly * 4100) / 100) * 100;
     out[key] = {
       priceUsdMonthly: row.priceUsdMonthly,
       priceUsdYearly: row.priceUsdYearly,
+      priceKhrMonthly: defaultKhrMonthly,
+      priceKhrYearly: defaultKhrYearly,
       listingsLimit: row.listingsLimit,
       featuredLimit: row.featuredLimit,
       seats: row.seats,
@@ -73,9 +84,13 @@ export async function getPlanPricing(): Promise<PlanPricingConfig> {
       const p = parsed[key];
       if (!p) continue;
       const d = defaults[key];
+      const fallbackKhrM = Math.round((p.priceUsdMonthly ?? d.priceUsdMonthly) * 4100 / 100) * 100;
+      const fallbackKhrY = Math.round((p.priceUsdYearly ?? d.priceUsdYearly) * 4100 / 100) * 100;
       defaults[key] = {
         priceUsdMonthly: clampPrice(p.priceUsdMonthly, d.priceUsdMonthly),
         priceUsdYearly: clampPrice(p.priceUsdYearly, d.priceUsdYearly),
+        priceKhrMonthly: clampKhrPrice(p.priceKhrMonthly, fallbackKhrM),
+        priceKhrYearly: clampKhrPrice(p.priceKhrYearly, fallbackKhrY),
         listingsLimit: clampLimit(p.listingsLimit, d.listingsLimit),
         featuredLimit: clampLimit(p.featuredLimit, d.featuredLimit),
         seats: clampLimit(p.seats, d.seats, 1),
@@ -116,7 +131,14 @@ export async function savePlanPricing(cfg: PlanPricingConfig, actorId: string): 
       entityId: PRICING_KEY,
       metaJson: JSON.stringify(
         Object.fromEntries(
-          PAID_PLAN_KEYS.map((k) => [k, { ...cfg[k], priceUsdMonthly: cfg[k].priceUsdMonthly }]),
+          PAID_PLAN_KEYS.map((k) => [
+            k,
+            {
+              ...cfg[k],
+              priceUsdMonthly: cfg[k].priceUsdMonthly,
+              priceKhrMonthly: cfg[k].priceKhrMonthly,
+            },
+          ]),
         ),
       ),
     },
@@ -138,17 +160,21 @@ export async function getPlanCatalog(opts?: {
       return opts?.freePlan
         ? {
             ...p,
+            priceKhrMonthly: 0,
+            priceKhrYearly: 0,
             listingsLimit: opts.freePlan.listingsLimit,
             featuredLimit: opts.freePlan.featuredLimit,
             seats: opts.freePlan.seats,
           }
-        : p;
+        : { ...p, priceKhrMonthly: 0, priceKhrYearly: 0 };
     }
     const cfg = pricing[p.plan as PaidPlanKey];
     return {
       ...p,
       priceUsdMonthly: cfg.priceUsdMonthly,
       priceUsdYearly: cfg.priceUsdYearly,
+      priceKhrMonthly: cfg.priceKhrMonthly || Math.round((cfg.priceUsdMonthly * 4100) / 100) * 100,
+      priceKhrYearly: cfg.priceKhrYearly || Math.round((cfg.priceUsdYearly * 4100) / 100) * 100,
       listingsLimit: cfg.listingsLimit,
       featuredLimit: cfg.featuredLimit,
       seats: cfg.seats,
@@ -158,7 +184,22 @@ export async function getPlanCatalog(opts?: {
   return rows.filter((p) => p.plan === "FREE" || pricing[p.plan as PaidPlanKey].enabled);
 }
 
-/** Monthly-equivalent price for a configured plan/cycle. */
-export function priceForCfg(cfg: PlanPriceCfg, cycle: "MONTHLY" | "YEARLY"): number {
+/** Price for a configured plan/cycle and currency (USD or KHR). */
+export function priceForCfg(
+  cfg: PlanPriceCfg,
+  cycle: "MONTHLY" | "YEARLY",
+  currency: "USD" | "KHR" = "USD",
+  khrRate = 4100,
+): number {
+  if (currency === "KHR") {
+    if (cycle === "YEARLY") {
+      return cfg.priceKhrYearly && cfg.priceKhrYearly > 0
+        ? cfg.priceKhrYearly
+        : Math.round((cfg.priceUsdYearly * khrRate) / 100) * 100;
+    }
+    return cfg.priceKhrMonthly && cfg.priceKhrMonthly > 0
+      ? cfg.priceKhrMonthly
+      : Math.round((cfg.priceUsdMonthly * khrRate) / 100) * 100;
+  }
   return cycle === "YEARLY" ? cfg.priceUsdYearly : cfg.priceUsdMonthly;
 }

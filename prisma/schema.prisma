@@ -25,6 +25,9 @@ model User {
   passwordHash  String? // scrypt salt:hash — null => OTP/Telegram-only account
   telegramId    String?  @unique // Telegram user id when linked
   telegramUsername String?
+  isBlacklisted Boolean  @default(false)
+  blacklistReason String?
+  blacklistedAt DateTime?
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 
@@ -211,6 +214,12 @@ model SubscriptionPayment {
   plan            String // BASIC | PRO | ENTERPRISE
   billingCycle    String // MONTHLY | YEARLY
   amountUsd       Float
+  /** Currency the seller chose at checkout (USD or KHR). */
+  currency        String   @default("USD")
+  /** Exact amount expected in `currency` at submit time (KHR snapshot included). */
+  amountExpected  Float?
+  /** USD→KHR rate snapshot used to compute amountExpected. */
+  exchangeRate    Float?
   months          Int // 1 (monthly) | 12 (yearly)
   method          String // BAKONG | MANUAL
   // PENDING (bakong QR issued, awaiting transfer)
@@ -222,8 +231,31 @@ model SubscriptionPayment {
   bakongHash      String?   // transaction hash found by check-by-md5
   qrPayload       String?   // EMVCo KHQR payload string (Bakong-issued or admin-configured)
   manualRef       String?   // seller-entered bank transaction reference (manual flow)
+  /** Normalized, globally-unique proof key (TRX:..., APV:<code>:<date>). */
+  manualRefKey    String?   @unique
+  /** TRX (bank transaction id) or APV (approval code). */
+  manualRefKind   String?
+  /** Idempotency key from the checkout modal — prevents double submits. */
+  idempotencyKey  String?   @unique
+  /** SHA-256 of the uploaded receipt bytes (exact reuse detection). */
+  evidenceHash    String?
+  /** 64-bit perceptual hash — catches resized/re-encoded screenshot reuse. */
+  evidencePhash   String?
   evidenceUrl     String?   // optional payment evidence link (manual flow)
   evidenceImage   String?   // uploaded payment screenshot as a data URL (manual flow)
+  /** OCR result — the screenshot is evidence, never a source of auto-approval. */
+  ocrStatus       String?   // PASS | WARN | MISMATCH | UNREADABLE | NOT_RUN
+  ocrConfidence   Float?
+  ocrRef          String?
+  ocrAmount       Float?
+  ocrCurrency     String?
+  ocrPaidAt       DateTime?
+  ocrRawText      String?
+  ocrJson         String?
+  /** JSON array of risk flag codes shown to the admin. */
+  riskFlagsJson   String?
+  /** ABA_AUTO | ADMIN | ADMIN_OVERRIDE | OCR_ASSISTED */
+  verifiedSource  String?
   telegramSentAt  DateTime? // when the proof was delivered to the admin's Telegram bot
   telegramError   String?   // last Telegram delivery error, when delivery failed
   // Telegram inline-button workflow — tracks the message so the webhook can
@@ -244,6 +276,8 @@ model SubscriptionPayment {
 
   @@index([tenantId])
   @@index([status])
+  @@index([evidenceHash])
+  @@index([evidencePhash])
 }
 
 // ---------- ABA PayWay / Bank Group Transactions ----------
@@ -472,3 +506,28 @@ model AuditLog {
   metaJson  String?
   createdAt DateTime @default(now())
 }
+
+model FraudAlert {
+  id              String    @id @default(cuid())
+  userId          String
+  tenantId        String
+  reason          String
+  detectedPayee   String?
+  expectedPayee   String?
+  amount          Float?
+  currency        String?
+  slipRef         String?
+  slipDateRaw     String?
+  evidenceImage   String?
+  status          String    @default("PENDING") // PENDING | DISMISSED | BLACKLISTED
+  telegramMsgId   Int?
+  telegramChatId  String?
+  resolvedBy      String?
+  resolvedAt      DateTime?
+  createdAt       DateTime  @default(now())
+
+  @@index([userId])
+  @@index([tenantId])
+  @@index([status])
+}
+

@@ -37,6 +37,10 @@ yarn-error.log*
 # vercel
 .vercel
 
+# OCR & temp files
+*.traineddata
+*.bak*
+
 
 # typescript
 *.tsbuildinfo

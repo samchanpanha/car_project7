@@ -452,13 +452,23 @@ function RegistrationSubscriptionStep({
 
   const currentPlan = plans.find((p) => p.key === selectedPlan) || plans[0] || DEFAULT_PLANS[1];
   const priceUsd = billingCycle === "YEARLY" ? currentPlan.priceYearly : currentPlan.priceMonthly;
-  const priceKhr = priceUsd * 4100;
-
   const manual = paymentConfig.data?.manual;
-  const qrSrc =
-    billingCycle === "YEARLY"
-      ? manual?.khqrImageYearly || "/khqr/khqr-yearly.jpg"
-      : manual?.khqrImageMonthly || "/khqr/khqr-monthly.jpg";
+  const khrRate = manual?.khrExchangeRate || 4100;
+  const priceKhr = Math.round((priceUsd * khrRate) / 100) * 100;
+
+  const qrSrcUsd =
+    manual?.khqrImageUsd ??
+    (billingCycle === "YEARLY" ? manual?.khqrImageYearly : manual?.khqrImageMonthly) ??
+    manual?.khqrImage ??
+    (billingCycle === "YEARLY" ? "/khqr/khqr-yearly.jpg" : "/khqr/khqr-monthly.jpg");
+
+  const qrSrcKhr =
+    manual?.khqrImageKhr ??
+    (billingCycle === "YEARLY" ? manual?.khqrImageYearly : manual?.khqrImageMonthly) ??
+    manual?.khqrImage ??
+    (billingCycle === "YEARLY" ? "/khqr/khqr-yearly.jpg" : "/khqr/khqr-monthly.jpg");
+
+  const qrSrc = currency === "KHR" ? qrSrcKhr : qrSrcUsd;
 
   const pickImage = async (file: File | undefined) => {
     if (!file) return;
@@ -986,10 +996,15 @@ function RegistrationSubscriptionStep({
         open={zoomQrOpen}
         onOpenChange={setZoomQrOpen}
         qrSrc={qrSrc}
+        qrSrcUsd={qrSrcUsd}
+        qrSrcKhr={qrSrcKhr}
         accountName={manual?.accountName || "SAM CHAN PANHA"}
         amountText={currency === "USD" ? `$${priceUsd}.00 USD` : `៛${priceKhr.toLocaleString()} KHR`}
+        amountTextUsd={`$${priceUsd}.00 USD`}
+        amountTextKhr={`៛${priceKhr.toLocaleString()} KHR`}
         planTitle={currentPlan.title}
         currency={currency}
+        onCurrencyChange={(c) => setCurrency(c)}
       />
 
       <TrxIdGuideDialog

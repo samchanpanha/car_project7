@@ -60,6 +60,8 @@ export interface PlanDTO {
   name: string;
   priceUsdMonthly: number;
   priceUsdYearly: number;
+  priceKhrMonthly?: number;
+  priceKhrYearly?: number;
   listingsLimit: number;
   featuredLimit: number;
   seats: number;

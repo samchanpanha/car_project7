@@ -1055,10 +1055,17 @@ function DealerSubscription() {
                 <p className="text-sm font-bold text-slate-900">{p.plan}</p>
                 {isCurrent && <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-bold text-amber-800">{t("subCurrentBadge")}</span>}
               </div>
-              <p className="mt-2 text-2xl font-bold tracking-tight text-slate-900">
-                {p.plan === "FREE" ? "$0" : formatUsd(price)}
-                {p.plan !== "FREE" && <span className="text-xs font-medium text-slate-400"> / {cycle === "MONTHLY" ? t("billingMonthly").toLowerCase() : t("billingYearly").toLowerCase()}</span>}
-              </p>
+              <div className="mt-2">
+                <p className="text-2xl font-bold tracking-tight text-slate-900">
+                  {p.plan === "FREE" ? "$0" : formatUsd(price)}
+                  {p.plan !== "FREE" && <span className="text-xs font-medium text-slate-400"> / {cycle === "MONTHLY" ? t("billingMonthly").toLowerCase() : t("billingYearly").toLowerCase()}</span>}
+                </p>
+                {p.plan !== "FREE" && (
+                  <p className="text-xs font-bold text-emerald-700 mt-0.5">
+                    ៛{((cycle === "MONTHLY" ? p.priceKhrMonthly : p.priceKhrYearly) || Math.round((price * 4100) / 100 * 100)).toLocaleString()} KHR
+                  </p>
+                )}
+              </div>
               <ul className="mt-3 space-y-1 text-xs text-slate-500">
                 <li>· {t("kpiListings")}: {p.listingsLimit}</li>
                 <li>· {t("actFeature")}: {p.featuredLimit}</li>
