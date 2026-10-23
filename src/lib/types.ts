@@ -140,6 +140,15 @@ export interface ConversationDetailDTO {
   messages: MessageDTO[];
 }
 
+export interface SellerOptionDTO {
+  id: string;
+  name: string;
+  shopName?: string | null;
+  type: SellerType;
+  verified: boolean;
+  count: number;
+}
+
 export interface MetaDTO {
   makes: string[];
   cities: string[];
@@ -150,6 +159,7 @@ export interface MetaDTO {
   priceMax: number;
   yearMin: number;
   yearMax: number;
+  sellers?: SellerOptionDTO[];
 }
 
 export interface VehiclesResponseDTO {
@@ -181,6 +191,8 @@ export interface VehicleQuery {
   city?: string;
   sellerType?: SellerType | "";
   sellerVerified?: "true" | "";
+  sellerId?: string;
+  dealerId?: string;
   priceMin?: number;
   priceMax?: number;
   yearMin?: number;
@@ -189,4 +201,6 @@ export interface VehicleQuery {
   sort?: SortOption;
   cursor?: string;
   limit?: number;
+  page?: number;
 }
+

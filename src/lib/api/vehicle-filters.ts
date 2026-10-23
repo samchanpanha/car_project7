@@ -89,6 +89,15 @@ export function buildVehicleWhere(sp: URLSearchParams): Prisma.VehicleWhereInput
 
   const sellerType = sp.get("sellerType") || undefined;
   const sellerVerified = sp.get("sellerVerified") === "true";
+  const sellerId = sp.get("sellerId") || undefined;
+  const dealerId = sp.get("dealerId") || undefined;
+
+  if (sellerId) {
+    where.sellerId = sellerId;
+  } else if (dealerId) {
+    where.OR = [{ tenantId: dealerId }, { sellerId: dealerId }];
+  }
+
   if (sellerType === "PRIVATE" || sellerType === "DEALER" || sellerVerified) {
     const profile: Prisma.SellerProfileWhereInput = {};
     if (sellerType === "PRIVATE" || sellerType === "DEALER") profile.type = sellerType;
@@ -126,9 +135,10 @@ export async function listVehicles(sp: URLSearchParams): Promise<PagedVehiclesRe
 
   // q needs case-insensitive matching, which SQLite + Prisma does not support.
   const filtered = q
-    ? matches.filter((v) =>
-        `${v.make} ${v.model} ${v.variant ?? ""}`.toLowerCase().includes(q),
-      )
+    ? matches.filter((v) => {
+        const text = `${v.make} ${v.model} ${v.variant ?? ""} ${v.city ?? ""} ${v.year} ${v.seller?.name ?? ""} ${v.seller?.sellerProfile?.shopName ?? ""}`.toLowerCase();
+        return text.includes(q);
+      })
     : matches;
 
   switch (sort) {

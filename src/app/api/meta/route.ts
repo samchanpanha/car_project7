@@ -8,7 +8,7 @@ export async function GET() {
   try {
     const publishedWhere = { status: "PUBLISHED" };
 
-    const [makeRows, cityRows, priceAgg, yearAgg] = await Promise.all([
+    const [makeRows, cityRows, priceAgg, yearAgg, sellerRows] = await Promise.all([
       db.vehicle.findMany({
         where: publishedWhere,
         select: { make: true },
@@ -31,7 +31,44 @@ export async function GET() {
         _min: { year: true },
         _max: { year: true },
       }),
+      db.user.findMany({
+        where: {
+          vehiclesSold: {
+            some: publishedWhere,
+          },
+        },
+        select: {
+          id: true,
+          name: true,
+          sellerProfile: {
+            select: {
+              type: true,
+              shopName: true,
+              verified: true,
+            },
+          },
+          _count: {
+            select: {
+              vehiclesSold: {
+                where: publishedWhere,
+              },
+            },
+          },
+        },
+        orderBy: { name: "asc" },
+      }),
     ]);
+
+    const sellers = sellerRows
+      .map((s) => ({
+        id: s.id,
+        name: s.name,
+        shopName: s.sellerProfile?.shopName || null,
+        type: (s.sellerProfile?.type === "DEALER" ? "DEALER" : "PRIVATE") as "DEALER" | "PRIVATE",
+        verified: Boolean(s.sellerProfile?.verified),
+        count: s._count.vehiclesSold,
+      }))
+      .sort((a, b) => b.count - a.count);
 
     const meta: MetaDTO = {
       makes: makeRows.map((r) => r.make),
@@ -43,6 +80,7 @@ export async function GET() {
       priceMax: priceAgg._max.priceUsd ?? 100000,
       yearMin: yearAgg._min.year ?? 2000,
       yearMax: yearAgg._max.year ?? 2025,
+      sellers,
     };
 
     return NextResponse.json(meta);
@@ -51,3 +89,4 @@ export async function GET() {
     return NextResponse.json({ error: "Failed to load metadata" }, { status: 500 });
   }
 }
+
