@@ -129,6 +129,8 @@ export interface ConversationListItemDTO {
   id: string;
   vehicle: { id: string; make: string; model: string; year: number; priceUsd: number; thumbnail?: string | null };
   sellerName: string;
+  contactName?: string;
+  role?: "BUYER" | "SELLER";
   lastMessage: { body: string; createdAt: string; isMine: boolean } | null;
   updatedAt: string;
 }
@@ -137,6 +139,9 @@ export interface ConversationDetailDTO {
   id: string;
   vehicle: { id: string; make: string; model: string; year: number; priceUsd: number; thumbnail?: string | null };
   seller: SellerSummaryDTO;
+  buyer?: { id: string; name: string; avatarUrl?: string | null };
+  myRole?: "BUYER" | "SELLER";
+  contactName?: string;
   messages: MessageDTO[];
 }
 

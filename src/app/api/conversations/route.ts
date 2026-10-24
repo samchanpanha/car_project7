@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { db } from "@/lib/db";
 import { getCurrentUser, isGuestRequest } from "@/lib/session";
-import { SAFETY_TIP_MESSAGE, SELLER_AUTO_REPLY } from "@/lib/api/messages";
+import { SAFETY_TIP_MESSAGE } from "@/lib/api/messages";
 import type { ConversationListItemDTO } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
@@ -14,11 +14,23 @@ function firstImage(urls: { sortOrder: number; url: string }[]): string | null {
 
 export async function GET() {
   try {
+    if (await isGuestRequest()) {
+      return NextResponse.json({ error: "Login required to access messages" }, { status: 401 });
+    }
     const user = await getCurrentUser();
+
+    // Strict 2-party chat ownership: only conversations where user is the buyer or vehicle seller/creator
     const conversations = await db.conversation.findMany({
-      where: { buyerId: user.id },
+      where: {
+        OR: [
+          { buyerId: user.id },
+          { vehicle: { sellerId: user.id } },
+          { vehicle: { createdById: user.id } },
+        ],
+      },
       orderBy: { updatedAt: "desc" },
       include: {
+        buyer: { select: { id: true, name: true, avatarUrl: true } },
         vehicle: { include: { images: true, seller: { include: { sellerProfile: true } } } },
         messages: { orderBy: { createdAt: "desc" }, take: 1 },
       },
@@ -26,7 +38,12 @@ export async function GET() {
 
     const list: ConversationListItemDTO[] = conversations.map((c) => {
       const last = c.messages[0];
-      const seller = c.vehicle.seller;
+      const isSeller = c.vehicle.sellerId === user.id || c.vehicle.createdById === user.id;
+      const role: "SELLER" | "BUYER" = isSeller ? "SELLER" : "BUYER";
+      const otherName = isSeller
+        ? (c.buyer?.name || "Buyer")
+        : (c.vehicle.seller.sellerProfile?.shopName || c.vehicle.seller.name || "Seller");
+
       return {
         id: c.id,
         vehicle: {
@@ -37,7 +54,9 @@ export async function GET() {
           priceUsd: c.vehicle.priceUsd,
           thumbnail: firstImage(c.vehicle.images),
         },
-        sellerName: seller.sellerProfile?.shopName || seller.name,
+        sellerName: otherName,
+        contactName: otherName,
+        role,
         lastMessage: last
           ? {
               body: last.body,
@@ -88,6 +107,13 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Vehicle not found" }, { status: 404 });
     }
 
+    if (vehicle.sellerId === user.id || vehicle.createdById === user.id) {
+      return NextResponse.json(
+        { error: "You cannot message yourself about your own vehicle listing" },
+        { status: 400 },
+      );
+    }
+
     let conversation = await db.conversation.findFirst({
       where: { buyerId: user.id, vehicleId },
     });
@@ -103,11 +129,6 @@ export async function POST(req: Request) {
 
     await db.message.create({
       data: { conversationId: conversation.id, senderId: user.id, body: message },
-    });
-
-    // One canned seller auto-reply from the vehicle's seller user.
-    await db.message.create({
-      data: { conversationId: conversation.id, senderId: vehicle.sellerId, body: SELLER_AUTO_REPLY },
     });
 
     return NextResponse.json({ conversationId: conversation.id }, { status: 201 });

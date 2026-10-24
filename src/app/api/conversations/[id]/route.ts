@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { getCurrentUser } from "@/lib/session";
+import { getCurrentUser, isGuestRequest } from "@/lib/session";
 import { toSellerSummary } from "@/lib/api/mappers";
 import type { ConversationDetailDTO, MessageDTO } from "@/lib/types";
 
@@ -8,6 +8,9 @@ export const dynamic = "force-dynamic";
 
 export async function GET(_req: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
+    if (await isGuestRequest()) {
+      return NextResponse.json({ error: "Login required to access messages" }, { status: 401 });
+    }
     const { id } = await params;
     const user = await getCurrentUser();
 
@@ -15,7 +18,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
       where: { id },
       include: {
         vehicle: {
-          select: { tenantId: true },
+          select: { sellerId: true, createdById: true },
         },
       },
     });
@@ -24,27 +27,21 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
       return NextResponse.json({ error: "Conversation not found" }, { status: 404 });
     }
 
-    // Access: the conversation's buyer OR an ACTIVE member of the tenant that
-    // owns the listed vehicle (dealer staff inbox). 404 otherwise.
-    let allowed = conversation.buyerId === user.id;
-    if (!allowed && conversation.vehicle.tenantId) {
-      const membership = await db.tenantMember.findFirst({
-        where: {
-          userId: user.id,
-          tenantId: conversation.vehicle.tenantId,
-          status: "ACTIVE",
-        },
-        select: { id: true },
-      });
-      allowed = !!membership;
-    }
-    if (!allowed) {
+    // Strict 2-party chat ownership: ONLY the buyer who initiated the chat or the vehicle listing seller/owner
+    const isOwner =
+      conversation.buyerId === user.id ||
+      conversation.vehicle.sellerId === user.id ||
+      conversation.vehicle.createdById === user.id;
+
+    if (!isOwner) {
+      // 404 Not Found to prevent leaking the existence of conversations between other users
       return NextResponse.json({ error: "Conversation not found" }, { status: 404 });
     }
 
     const full = await db.conversation.findUnique({
       where: { id },
       include: {
+        buyer: { select: { id: true, name: true, avatarUrl: true } },
         vehicle: { include: { images: true, seller: { include: { sellerProfile: true } } } },
         messages: { orderBy: { createdAt: "asc" } },
       },
@@ -52,6 +49,12 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
     if (!full) {
       return NextResponse.json({ error: "Conversation not found" }, { status: 404 });
     }
+
+    const isSeller =
+      full.vehicle.sellerId === user.id || full.vehicle.createdById === user.id;
+    const contactName = isSeller
+      ? (full.buyer?.name || "Buyer")
+      : (full.vehicle.seller.sellerProfile?.shopName || full.vehicle.seller.name || "Seller");
 
     const messages: MessageDTO[] = full.messages.map((m) => ({
       id: m.id,
@@ -73,6 +76,9 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
         thumbnail: images[0]?.url ?? null,
       },
       seller: toSellerSummary(full.vehicle.seller),
+      buyer: full.buyer ? { id: full.buyer.id, name: full.buyer.name, avatarUrl: full.buyer.avatarUrl } : undefined,
+      myRole: isSeller ? "SELLER" : "BUYER",
+      contactName,
       messages,
     };
 

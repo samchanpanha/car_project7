@@ -1,8 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { db } from "@/lib/db";
-import { getCurrentUser } from "@/lib/session";
-import { SELLER_AUTO_REPLY } from "@/lib/api/messages";
+import { getCurrentUser, isGuestRequest } from "@/lib/session";
 import type { MessageDTO } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
@@ -13,6 +12,10 @@ const postMessageSchema = z.object({
 
 export async function POST(req: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
+    if (await isGuestRequest()) {
+      return NextResponse.json({ error: "Login required to send messages" }, { status: 401 });
+    }
+
     const { id } = await params;
 
     let json: unknown;
@@ -32,8 +35,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     const conversation = await db.conversation.findUnique({
       where: { id },
       include: {
-        vehicle: { select: { sellerId: true, tenantId: true } },
-        messages: { where: { isSystem: false }, select: { senderId: true } },
+        vehicle: { select: { sellerId: true, createdById: true } },
       },
     });
 
@@ -41,43 +43,19 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
       return NextResponse.json({ error: "Conversation not found" }, { status: 404 });
     }
 
-    // Access: the conversation's buyer OR an ACTIVE member of the tenant that
-    // owns the listed vehicle (dealer staff inbox). 404 otherwise.
-    let allowed = conversation.buyerId === user.id;
-    if (!allowed && conversation.vehicle.tenantId) {
-      const membership = await db.tenantMember.findFirst({
-        where: {
-          userId: user.id,
-          tenantId: conversation.vehicle.tenantId,
-          status: "ACTIVE",
-        },
-        select: { id: true },
-      });
-      allowed = !!membership;
-    }
-    if (!allowed) {
+    // Strict 2-party chat ownership: ONLY the buyer who initiated the chat or the vehicle listing seller/owner
+    const isOwner =
+      conversation.buyerId === user.id ||
+      conversation.vehicle.sellerId === user.id ||
+      conversation.vehicle.createdById === user.id;
+
+    if (!isOwner) {
       return NextResponse.json({ error: "Conversation not found" }, { status: 404 });
     }
 
     const created = await db.message.create({
       data: { conversationId: conversation.id, senderId: user.id, body: parsed.data.body },
     });
-
-    // Canned seller auto-reply fires only when the message sender is the buyer
-    // (staff replies must not trigger it), and only while the seller has
-    // replied fewer than 2 times (keeps the demo chat from looping).
-    const sellerMessages = conversation.messages.filter(
-      (m) => m.senderId === conversation.vehicle.sellerId,
-    ).length;
-    if (conversation.buyerId === user.id && sellerMessages < 2) {
-      await db.message.create({
-        data: {
-          conversationId: conversation.id,
-          senderId: conversation.vehicle.sellerId,
-          body: SELLER_AUTO_REPLY,
-        },
-      });
-    }
 
     await db.conversation.update({ where: { id: conversation.id }, data: { updatedAt: new Date() } });
 

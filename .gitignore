@@ -51,9 +51,20 @@ local-*
 *.log
 dev.log
 dev.out.log
-test
-prompt
+/test
+/prompt
 
 server.log
 # Skills directory
 /skills/
+
+# Docker persistent data volumes
+/data/
+
+# Java / Maven build artifacts
+target/
+**/target/
+*.jar
+*.war
+*.class
+.flattened-pom.xml

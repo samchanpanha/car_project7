@@ -81,10 +81,76 @@ export async function requireTenantMember(): Promise<{
     // If column query fails for any unexpected reason, continue safely
   }
 
-  const member = await db.tenantMember.findFirst({
+  let member = await db.tenantMember.findFirst({
     where: { userId: user.id, status: "ACTIVE" },
     include: { tenant: true },
   });
+
+  if (!member) {
+    // If user has an existing membership that is not active, activate it
+    const anyMember = await db.tenantMember.findFirst({
+      where: { userId: user.id },
+      include: { tenant: true },
+    });
+    if (anyMember && anyMember.tenant.status !== "BLACKLISTED") {
+      await db.tenantMember.update({
+        where: { id: anyMember.id },
+        data: { status: "ACTIVE", role: anyMember.role === "SALES_STAFF" ? "OWNER" : anyMember.role },
+      });
+      member = await db.tenantMember.findFirst({
+        where: { id: anyMember.id },
+        include: { tenant: true },
+      });
+    } else {
+      // Auto-provision a store/dealership tenant for this user so they can access marketplace seller/dealer features and subscriptions
+      const randomSuffix = Math.random().toString(36).slice(2, 7);
+      const cleanSlug = `${user.name ? user.name.toLowerCase().replace(/[^a-z0-9]/g, "-").replace(/-+/g, "-").replace(/^-|-$/g, "") : "store"}-${randomSuffix}`;
+      const newTenant = await db.tenant.create({
+        data: {
+          name: user.role === "DEALER" ? `${user.name}'s Dealership` : `${user.name} (Store)`,
+          slug: cleanSlug,
+          phone: user.phone || "+85512000000",
+          status: "ACTIVE",
+          members: {
+            create: {
+              userId: user.id,
+              role: "OWNER",
+              status: "ACTIVE",
+            },
+          },
+          subscription: {
+            create: {
+              plan: "FREE",
+              status: "PAST_DUE",
+              billingCycle: "MONTHLY",
+              priceUsd: 0,
+              listingsLimit: 0,
+              featuredLimit: 0,
+              seats: 1,
+              startedAt: new Date(),
+              currentPeriodEnd: new Date(),
+            },
+          },
+        },
+        include: {
+          members: true,
+        },
+      });
+
+      if (user.role === "BUYER") {
+        await db.user.update({
+          where: { id: user.id },
+          data: { role: "DEALER" },
+        }).catch(() => {});
+      }
+
+      member = await db.tenantMember.findFirst({
+        where: { userId: user.id, tenantId: newTenant.id },
+        include: { tenant: true },
+      });
+    }
+  }
+
   if (!member) throw new HttpError(403, "Forbidden");
 
   if (member.tenant.status === "BLACKLISTED") {

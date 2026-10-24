@@ -1,0 +1,11 @@
+spring:
+  cloud:
+    nacos:
+      server-addr: ${NACOS_SERVER_ADDR:localhost:8848}
+      discovery:
+        enabled: ${NACOS_DISCOVERY_ENABLED:true}
+        service: ${spring.application.name}
+      config:
+        enabled: ${NACOS_CONFIG_ENABLED:false} # Enabled once Nacos configs are published
+        file-extension: yaml
+        group: DEFAULT_GROUP

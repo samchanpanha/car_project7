@@ -105,6 +105,8 @@ export async function sendPaymentProofToTelegram(
     ocrStatus?: string | null;
     riskFlags?: string[] | null;
     payee?: string | null;
+    paymentDate?: string | null;
+    submitForReview?: boolean;
   },
 ): Promise<TelegramDelivery> {
   if (!telegramConfigured(cfg)) return { sent: false, error: "not_configured" };
@@ -121,6 +123,8 @@ export async function sendPaymentProofToTelegram(
     `💰 Amount: $${payment.amountUsd.toFixed(2)}`,
     `🔖 System Ref: ${payment.reference}`,
   ];
+  if (payment.paymentDate) lines.push(`📅 Payment Date: ${payment.paymentDate}`);
+  if (payment.submitForReview) lines.push(`⚠️ Review Notice: Submitted for Admin Date/Manual Verification`);
   if (payment.originatingBank) lines.push(`🏛️ Originating Bank: ${payment.originatingBank}`);
   if (payment.manualRef) lines.push(`🧾 Customer Ref: ${payment.manualRef}`);
 

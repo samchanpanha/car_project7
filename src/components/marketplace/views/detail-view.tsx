@@ -95,6 +95,12 @@ export function DetailView({ vehicleId }: { vehicleId: string }) {
   const title = `${v.make} ${v.model} ${v.variant ?? ""} ${v.year}`.trim();
   const sellerName = v.sellerFull.shopName || v.sellerFull.name;
   const desc = locale === "km" && v.descriptionKm ? v.descriptionKm : v.description;
+  const isOwner = Boolean(
+    me?.user?.id &&
+      (me.user.id === v.sellerFull.id ||
+        me.user.id === (v as any).createdById ||
+        ((v as any).tenantId && me.tenant?.id === (v as any).tenantId))
+  );
 
   const toggleFavorite = async () => {
     if (isGuest(me)) {
@@ -410,13 +416,23 @@ export function DetailView({ vehicleId }: { vehicleId: string }) {
 
             {/* CTAs */}
             <div className="mt-4 grid grid-cols-2 gap-2">
-              <Button
-                onClick={openAuthedDialog(() => setContactOpen(true))}
-                className="bg-amber-500 hover:bg-amber-400 text-slate-950 font-semibold h-11"
-              >
-                <MessageSquare className="h-4 w-4 mr-2" aria-hidden />
-                {t("contactSeller")}
-              </Button>
+              {isOwner ? (
+                <Button
+                  onClick={() => navigate({ name: "dashboard", tab: "inventory" })}
+                  className="bg-amber-500 hover:bg-amber-400 text-slate-950 font-semibold h-11"
+                >
+                  <CarFront className="h-4 w-4 mr-2" aria-hidden />
+                  {locale === "km" ? "គ្រប់គ្រងឡានរបស់អ្នក" : "Your Listing (Manage)"}
+                </Button>
+              ) : (
+                <Button
+                  onClick={openAuthedDialog(() => setContactOpen(true))}
+                  className="bg-amber-500 hover:bg-amber-400 text-slate-950 font-semibold h-11"
+                >
+                  <MessageSquare className="h-4 w-4 mr-2" aria-hidden />
+                  {t("contactSeller")}
+                </Button>
+              )}
               <Button onClick={toggleFavorite} variant="outline" className="h-11" aria-pressed={isFav}>
                 <Heart className={cn("h-4 w-4 mr-2", isFav && "fill-rose-500 text-rose-500")} aria-hidden />
                 {isFav ? (locale === "km" ? "រក្សាទុករួច" : "Saved") : t("navFavorites")}
@@ -658,13 +674,23 @@ export function DetailView({ vehicleId }: { vehicleId: string }) {
       {/* Sticky mobile CTA bar */}
       <div className="fixed bottom-[52px] inset-x-0 z-30 border-t border-slate-200 bg-white/95 backdrop-blur p-2.5 md:hidden">
         <div className="flex gap-2 max-w-md mx-auto">
-          <Button
-            onClick={openAuthedDialog(() => setContactOpen(true))}
-            className="flex-1 bg-amber-500 hover:bg-amber-400 text-slate-950 font-semibold h-11"
-          >
-            <Send className="h-4 w-4 mr-2" aria-hidden />
-            {t("contactSeller")}
-          </Button>
+          {isOwner ? (
+            <Button
+              onClick={() => navigate({ name: "dashboard", tab: "inventory" })}
+              className="flex-1 bg-amber-500 hover:bg-amber-400 text-slate-950 font-semibold h-11"
+            >
+              <CarFront className="h-4 w-4 mr-2" aria-hidden />
+              {locale === "km" ? "គ្រប់គ្រងឡានរបស់អ្នក" : "Your Listing (Manage)"}
+            </Button>
+          ) : (
+            <Button
+              onClick={openAuthedDialog(() => setContactOpen(true))}
+              className="flex-1 bg-amber-500 hover:bg-amber-400 text-slate-950 font-semibold h-11"
+            >
+              <Send className="h-4 w-4 mr-2" aria-hidden />
+              {t("contactSeller")}
+            </Button>
+          )}
           <Button onClick={toggleFavorite} variant="outline" size="icon" className="h-11 w-11" aria-label={t("navFavorites")}>
             <Heart className={cn("h-5 w-5", isFav && "fill-rose-500 text-rose-500")} aria-hidden />
           </Button>

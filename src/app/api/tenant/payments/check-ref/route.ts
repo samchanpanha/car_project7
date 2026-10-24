@@ -21,6 +21,8 @@ export async function GET(req: Request) {
     const payerAccount = url.searchParams.get("payerAccount")?.trim() || null;
     const payerName = url.searchParams.get("payerName")?.trim() || null;
     const bankHint = url.searchParams.get("bank")?.trim() || "";
+    const paymentDateParam = url.searchParams.get("paymentDate") || url.searchParams.get("paidAt") || "";
+    const paidAtHint = paymentDateParam ? new Date(paymentDateParam) : null;
 
     if (!rawRef || rawRef.length < 4) {
       return NextResponse.json({
@@ -107,6 +109,7 @@ export async function GET(req: Request) {
       bankCodeHint: detectedBank?.code,
       payerNameHint: payerName,
       payerAccountHint: payerAccount,
+      paidAtHint: paidAtHint || undefined,
     });
 
     if (!interbank.matched && userCurrency === "USD") {
@@ -118,6 +121,7 @@ export async function GET(req: Request) {
         bankCodeHint: detectedBank?.code,
         payerNameHint: payerName,
         payerAccountHint: payerAccount,
+        paidAtHint: paidAtHint || undefined,
       });
     }
 
@@ -160,6 +164,7 @@ export async function GET(req: Request) {
         return NextResponse.json({
           valid: false,
           canSubmit: false,
+          canSubmitForReview: true,
           isNotCurrentDate: true,
           isInterbank,
           originatingBank: originatingBankName,
@@ -169,7 +174,7 @@ export async function GET(req: Request) {
           transactionDateRaw: existingAba.transactionDateRaw,
           telegramAdmin: tgAdmin,
           telegramAdminLink: tgAdminLink,
-          message: `⚠️ Transaction ${existingAba.trxId} was found in Telegram bank group${originatingBankName ? ` (from ${originatingBankName})` : ""}, but its date (${displayDate}) is not today's date. Past-date transactions cannot be submitted. Please contact Admin on Telegram (${tgAdmin}).`,
+          message: `⚠️ Transaction ${existingAba.trxId} was found in Telegram bank group${originatingBankName ? ` (from ${originatingBankName})` : ""}, but its date (${displayDate}) is not today's date. You can choose your payment date and submit for Telegram Admin Review.`,
         });
       }
 

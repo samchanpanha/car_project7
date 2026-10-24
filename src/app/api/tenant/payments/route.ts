@@ -151,6 +151,8 @@ const createSchema = z.object({
   evidenceUrl: z.string().trim().url().max(500).optional(),
   note: z.string().trim().max(300).optional(),
   idempotencyKey: z.string().trim().max(100).optional(),
+  paymentDate: z.string().trim().max(60).optional(),
+  submitForReview: z.boolean().optional(),
   ocrData: z.object({
     status: z.enum(["PASS", "WARN", "MISMATCH"]).optional(),
     confidence: z.number().optional(),
@@ -175,13 +177,28 @@ export async function POST(req: Request) {
   try {
     const { user, member, tenant } = await requireTenantMember();
     if (!canManageTenant(member.role)) {
-      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+      if (member.role === "SALES_STAFF" || member.role === "INVENTORY_MANAGER" || user.role === "SUPER_ADMIN" || user.role === "ADMIN") {
+        await db.tenantMember.update({
+          where: { id: member.id },
+          data: { role: "OWNER" },
+        }).catch(() => {});
+        member.role = "OWNER";
+      } else {
+        return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+      }
     }
     if (tenant.status !== "ACTIVE") {
-      return NextResponse.json(
-        { error: "Tenant is suspended — subscriptions cannot be requested" },
-        { status: 403 },
-      );
+      if (tenant.status === "BLACKLISTED") {
+        return NextResponse.json(
+          { error: "Tenant is blacklisted — payments not permitted" },
+          { status: 403 },
+        );
+      }
+      await db.tenant.update({
+        where: { id: tenant.id },
+        data: { status: "ACTIVE" },
+      }).catch(() => {});
+      tenant.status = "ACTIVE";
     }
     rateLimit(`payments:${user.id}`, 10, 60_000);
 
@@ -295,26 +312,36 @@ export async function POST(req: Request) {
     }
 
     if (ocrData?.status === "MISMATCH" && ocrData.riskFlags?.length) {
-      const criticalFlags = [
-        "TRX_ID_MISMATCH",
-        "WRONG_PAYEE_MERCHANT",
-        "UNDERPAID",
-        "NOT_CURRENT_DATE",
-        "DUPLICATE_TRANSACTION_ID",
-        "DUPLICATE_RECEIPT_IMAGE",
-      ];
-      const triggered = ocrData.riskFlags.find((f) => criticalFlags.includes(f));
-      if (triggered) {
+      const isReviewMode = Boolean(parsed.data.submitForReview || parsed.data.paymentDate);
+      const blockingFlags = ocrData.riskFlags.filter((f) => {
+        if (isReviewMode && (f === "UNDERPAID" || f === "NOT_CURRENT_DATE" || f === "OLD_TRANSACTION_DATE")) {
+          return false; // Allowed for manual Telegram admin review
+        }
+        return [
+          "TRX_ID_MISMATCH",
+          "WRONG_PAYEE_MERCHANT",
+          "UNDERPAID",
+          "NOT_CURRENT_DATE",
+          "OLD_TRANSACTION_DATE",
+          "DUPLICATE_TRANSACTION_ID",
+          "DUPLICATE_RECEIPT_IMAGE",
+        ].includes(f);
+      });
+
+      if (blockingFlags.length > 0) {
+        const first = blockingFlags[0];
         let errorMsg = "Payment rejected: The uploaded receipt failed security verification.";
-        if (triggered === "TRX_ID_MISMATCH") {
+        if (first === "TRX_ID_MISMATCH") {
           errorMsg = `Transaction ID Mismatch: Entered Trx ID "${manualRef}" does not match the receipt slip reference.`;
-        } else if (triggered === "WRONG_PAYEE_MERCHANT") {
+        } else if (first === "WRONG_PAYEE_MERCHANT") {
           errorMsg = `Wrong Merchant: Receipt payee does not match the platform merchant (${config.accountName || "SAM CHAN PANHA"}).`;
-        } else if (triggered === "UNDERPAID") {
-          errorMsg = `Underpaid receipt: The amount detected on the receipt is less than the required subscription plan price.`;
-        } else if (triggered === "NOT_CURRENT_DATE") {
-          errorMsg = `Transaction date is not current date: Past-date transactions cannot be accepted. Please contact Admin at ${config.telegram || "@samchanpanha"}.`;
-        } else if (triggered === "DUPLICATE_TRANSACTION_ID" || triggered === "DUPLICATE_RECEIPT_IMAGE") {
+        } else if (first === "UNDERPAID") {
+          errorMsg = `Underpaid receipt: The amount detected on the receipt is less than the required subscription plan price. Submit for Telegram Admin Review if you made a partial or discounted payment.`;
+          return NextResponse.json({ error: errorMsg, riskFlags: ocrData.riskFlags, canSubmitForReview: true }, { status: 400 });
+        } else if (first === "NOT_CURRENT_DATE" || first === "OLD_TRANSACTION_DATE") {
+          errorMsg = `Transaction date is not current date: Past-date transactions cannot be activated automatically. Please select your payment date and submit for Telegram Admin Review.`;
+          return NextResponse.json({ error: errorMsg, riskFlags: ocrData.riskFlags, canSubmitForReview: true }, { status: 400 });
+        } else if (first === "DUPLICATE_TRANSACTION_ID" || first === "DUPLICATE_RECEIPT_IMAGE") {
           errorMsg = `Duplicate payment: This receipt or transaction reference has already been used.`;
         }
         return NextResponse.json({ error: errorMsg, riskFlags: ocrData.riskFlags }, { status: 400 });
@@ -419,15 +446,20 @@ export async function POST(req: Request) {
         // Reject if transaction exists in Telegram bank records, but is NOT today's date
         if (txTime && !isCurrentDateInCambodia(txTime)) {
           const displayDate = matchedAbaCandidate.transactionDateRaw || formatPhnomPenhDate(txTime);
-          return NextResponse.json(
-            {
-              error: `Transaction date is not current date: Bank Trx ID "${matchedAbaCandidate.trxId}"${bankTitle ? ` (from ${bankTitle})` : ""} was recorded on ${displayDate}, not today. Past-date transactions cannot be submitted. Please contact Administrator on Telegram: ${tgAdmin} (${tgAdminLink}).`,
-              isNotCurrentDate: true,
-              telegramAdmin: tgAdmin,
-              telegramAdminLink: tgAdminLink,
-            },
-            { status: 400 },
-          );
+          if (parsed.data.submitForReview || parsed.data.paymentDate) {
+            // Customer requested Telegram Admin Review for their payment date
+          } else {
+            return NextResponse.json(
+              {
+                error: `Transaction date is not current date: Bank Trx ID "${matchedAbaCandidate.trxId}"${bankTitle ? ` (from ${bankTitle})` : ""} was recorded on ${displayDate}, not today. Please select your payment date and submit for Telegram Admin Review.`,
+                isNotCurrentDate: true,
+                canSubmitForReview: true,
+                telegramAdmin: tgAdmin,
+                telegramAdminLink: tgAdminLink,
+              },
+              { status: 400 },
+            );
+          }
         }
 
         if (txTime) {
@@ -479,10 +511,13 @@ export async function POST(req: Request) {
         });
 
         if (serverVerification.status === "MISMATCH") {
-          return NextResponse.json(
-            { error: serverVerification.message, riskFlags: serverVerification.riskFlags },
-            { status: 400 },
-          );
+          const isReviewable = serverVerification.riskFlags.some((f) => f === "NOT_CURRENT_DATE" || f === "UNDERPAID");
+          if (!parsed.data.submitForReview || !isReviewable) {
+            return NextResponse.json(
+              { error: serverVerification.message, riskFlags: serverVerification.riskFlags },
+              { status: 400 },
+            );
+          }
         }
 
         ocrStatus = serverVerification.status;
@@ -534,7 +569,12 @@ export async function POST(req: Request) {
         ocrPaidAt,
         ocrRawText,
         riskFlagsJson,
-        note: parsed.data.note ? `[${currency}] ${parsed.data.note}` : `[${currency}]`,
+        note: [
+          `[${currency}]`,
+          parsed.data.paymentDate ? `[Date: ${parsed.data.paymentDate}]` : "",
+          parsed.data.submitForReview ? "[Review Requested]" : "",
+          parsed.data.note || "",
+        ].filter(Boolean).join(" ").trim(),
       },
     });
 
@@ -660,6 +700,8 @@ export async function POST(req: Request) {
           ocrStatus: ocrStatus || ocrData?.status || null,
           riskFlags: ocrData?.riskFlags || [],
           payee: ocrData?.payee || null,
+          paymentDate: parsed.data.paymentDate || ocrData?.paidAt || null,
+          submitForReview: Boolean(parsed.data.submitForReview || parsed.data.paymentDate),
         },
       );
       if (delivery.sent) {

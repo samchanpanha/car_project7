@@ -1,5 +1,7 @@
 [![Architecture diagram](https://gitdiagram.com/diagram-badge.svg)](https://gitdiagram.com/samchanpanha/car_project7?utm_source=readme&utm_medium=badge)
 
+> 🚀 **Architecture Migration**: Full plan to split SQLite to PostgreSQL, Spring Boot 3.4 (Java 21), Nacos, MinIO, Redis, Nginx, and Grafana/Loki/Prometheus monitoring is documented in [ARCHITECTURE_MIGRATION_PLAN.md](file:///Users/samchanpanha/Desktop/projects/projects/cars_project7/ARCHITECTURE_MIGRATION_PLAN.md).
+
 ## Local development
 
 Install dependencies, generate the Prisma client, then start Next.js:

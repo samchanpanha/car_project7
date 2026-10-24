@@ -13,6 +13,7 @@
 // (e.g. *849), payer names, and amounts to find the exact matching ABA transaction.
 
 import { db } from "@/lib/db";
+import { phnomPenhDateKey, isCurrentDateInCambodia } from "./reference";
 
 export {
   type BankMetadata,
@@ -119,6 +120,20 @@ export async function matchInterbankTransaction(
   for (const c of candidates) {
     let score = 0;
     const reasons: string[] = [];
+
+    // Date Guard: Automatic interbank correlation MUST match the calendar date in Cambodia!
+    // Never correlate a today payment to a transaction from days ago.
+    if (c.transactionDate) {
+      if (params.paidAtHint) {
+        if (phnomPenhDateKey(c.transactionDate) !== phnomPenhDateKey(params.paidAtHint)) {
+          continue; // Discard candidate from a different date
+        }
+      } else {
+        if (!isCurrentDateInCambodia(c.transactionDate)) {
+          continue; // Discard candidate if not today
+        }
+      }
+    }
 
     // A. Sending Bank Code match (e.g. ACLBKHPPXXX in ABA alert for ACLEDA)
     if (detectedBank && c.bankCode) {

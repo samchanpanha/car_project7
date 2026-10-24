@@ -20,9 +20,12 @@ export function MessagesView({ conversationId }: { conversationId?: string }) {
   const navigate = useAppStore((s) => s.navigate);
   const me = useAppStore((s) => s.me);
 
-  const list = useFetch<{ conversations: ConversationListItemDTO[] }>("/api/conversations");
+  const list = useFetch<{ conversations: ConversationListItemDTO[] }>(
+    isGuest(me) ? null : "/api/conversations"
+  );
   // parent remounts this component with a new key when navigation changes conversationId
   const [activeId, setActiveId] = useState<string | undefined>(conversationId);
+  const [filter, setFilter] = useState<"ALL" | "SELLER" | "BUYER">("ALL");
 
   // Messaging requires an account — guests get the register prompt.
   if (isGuest(me)) {
@@ -30,6 +33,9 @@ export function MessagesView({ conversationId }: { conversationId?: string }) {
   }
 
   const conversations = list.data?.conversations ?? [];
+  const sellerCount = conversations.filter((c) => c.role === "SELLER").length;
+  const buyerCount = conversations.filter((c) => c.role === "BUYER").length;
+  const filtered = conversations.filter((c) => filter === "ALL" || c.role === filter);
 
   return (
     <div className="mx-auto max-w-6xl px-4 py-6 pb-28 md:pb-10">
@@ -42,9 +48,36 @@ export function MessagesView({ conversationId }: { conversationId?: string }) {
             activeId && "hidden md:block"
           )}
         >
-          <div className="p-3 border-b border-slate-100 flex items-center gap-2 text-xs text-slate-400">
+          {/* Role Filter Tabs */}
+          <div className="flex border-b border-slate-100 bg-slate-50/80 p-1.5 gap-1 text-xs font-semibold">
+            <button
+              type="button"
+              onClick={() => setFilter("ALL")}
+              className={cn("flex-1 py-1 rounded-lg transition-colors cursor-pointer text-center", filter === "ALL" ? "bg-white text-slate-900 shadow-xs" : "text-slate-500 hover:text-slate-800")}
+            >
+              All ({conversations.length})
+            </button>
+            <button
+              type="button"
+              onClick={() => setFilter("SELLER")}
+              className={cn("flex-1 py-1 rounded-lg transition-colors cursor-pointer text-center flex items-center justify-center gap-1", filter === "SELLER" ? "bg-white text-amber-900 shadow-xs" : "text-slate-500 hover:text-slate-800")}
+            >
+              <span>Selling</span>
+              <span className="rounded-full bg-amber-100 text-amber-800 text-[10px] px-1.5 font-bold">{sellerCount}</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setFilter("BUYER")}
+              className={cn("flex-1 py-1 rounded-lg transition-colors cursor-pointer text-center flex items-center justify-center gap-1", filter === "BUYER" ? "bg-white text-sky-900 shadow-xs" : "text-slate-500 hover:text-slate-800")}
+            >
+              <span>Buying</span>
+              <span className="rounded-full bg-sky-100 text-sky-800 text-[10px] px-1.5 font-bold">{buyerCount}</span>
+            </button>
+          </div>
+
+          <div className="p-2.5 border-b border-slate-100 flex items-center gap-2 text-xs text-slate-400">
             <Search className="h-3.5 w-3.5" aria-hidden />
-            {conversations.length} {locale === "km" ? "ការសន្ទនា" : "conversations"}
+            {filtered.length} {locale === "km" ? "ការសន្ទនា" : "conversations"}
           </div>
           {list.loading && !list.data ? (
             <div className="p-3 space-y-3">
@@ -58,7 +91,7 @@ export function MessagesView({ conversationId }: { conversationId?: string }) {
                 </div>
               ))}
             </div>
-          ) : conversations.length === 0 ? (
+          ) : filtered.length === 0 ? (
             <div className="p-8 text-center">
               <MessageSquarePlus className="mx-auto h-8 w-8 text-slate-300" aria-hidden />
               <p className="mt-3 text-sm font-medium text-slate-700">{t("noConversations")}</p>
@@ -69,7 +102,7 @@ export function MessagesView({ conversationId }: { conversationId?: string }) {
             </div>
           ) : (
             <ul className="divide-y divide-slate-100 max-h-[60vh] overflow-y-auto kl-scroll">
-              {conversations.map((c) => (
+              {filtered.map((c) => (
                 <li key={c.id}>
                   <button
                     onClick={() => setActiveId(c.id)}
@@ -80,21 +113,23 @@ export function MessagesView({ conversationId }: { conversationId?: string }) {
                   >
                     <span className="h-12 w-12 shrink-0 overflow-hidden rounded-lg bg-slate-100">
                       {c.vehicle.thumbnail ? (
-                         
                         <img src={c.vehicle.thumbnail} alt="" className="h-full w-full object-cover" loading="lazy" />
                       ) : null}
                     </span>
                     <span className="min-w-0 flex-1">
-                      <span className="flex items-center justify-between gap-2">
-                        <span className="truncate text-sm font-semibold text-slate-800">{c.sellerName}</span>
-                        {c.lastMessage && (
-                          <span className="shrink-0 text-[10px] text-slate-400">{timeAgo(c.lastMessage.createdAt, locale)}</span>
-                        )}
+                      <span className="flex items-center justify-between gap-1.5">
+                        <span className="truncate text-sm font-semibold text-slate-800">{c.contactName || c.sellerName}</span>
+                        <span className={cn(
+                          "text-[9px] font-extrabold uppercase px-1.5 py-0.5 rounded shrink-0",
+                          c.role === "SELLER" ? "bg-amber-100 text-amber-800 border border-amber-200" : "bg-sky-100 text-sky-800 border border-sky-200"
+                        )}>
+                          {c.role === "SELLER" ? "Selling" : "Buying"}
+                        </span>
                       </span>
-                      <span className="block truncate text-[11px] text-slate-500">
+                      <span className="block truncate text-[11px] text-slate-500 mt-0.5">
                         {c.vehicle.make} {c.vehicle.model} · {c.vehicle.year}
                       </span>
-                      <span className={cn("block truncate text-xs", c.lastMessage?.isMine ? "text-slate-400" : "text-slate-600 font-medium")}>
+                      <span className={cn("block truncate text-xs mt-0.5", c.lastMessage?.isMine ? "text-slate-400" : "text-slate-600 font-medium")}>
                         {c.lastMessage ? c.lastMessage.body : "—"}
                       </span>
                     </span>
@@ -134,6 +169,12 @@ function Thread({ conversationId, onBack }: { conversationId: string; onBack: ()
   const [draft, setDraft] = useState("");
   const [sending, setSending] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
+
+  // Auto-poll every 3 seconds for fresh incoming messages
+  useEffect(() => {
+    const id = setInterval(refetch, 3000);
+    return () => clearInterval(id);
+  }, [refetch]);
 
   const messages: MessageDTO[] = data?.conversation.messages ?? [];
 
@@ -177,20 +218,27 @@ function Thread({ conversationId, onBack }: { conversationId: string; onBack: ()
         </Button>
         <span className="h-10 w-10 shrink-0 overflow-hidden rounded-lg bg-slate-100">
           {conv.vehicle.thumbnail ? (
-             
             <img src={conv.vehicle.thumbnail} alt="" className="h-full w-full object-cover" loading="lazy" />
           ) : null}
         </span>
         <div className="min-w-0 flex-1">
-          <p className="truncate text-sm font-semibold text-slate-900">
-            {conv.seller.shopName || conv.seller.name}
-            {conv.seller.verified && <span className="ml-1 text-emerald-600">✓</span>}
-          </p>
+          <div className="flex items-center gap-2 flex-wrap">
+            <p className="truncate text-sm font-semibold text-slate-900">
+              {conv.contactName || (conv.myRole === "SELLER" ? conv.buyer?.name || "Buyer" : conv.seller.shopName || conv.seller.name)}
+              {conv.myRole !== "SELLER" && conv.seller.verified && <span className="ml-1 text-emerald-600">✓</span>}
+            </p>
+            <span className={cn(
+              "text-[9px] font-extrabold uppercase px-1.5 py-0.5 rounded",
+              conv.myRole === "SELLER" ? "bg-amber-100 text-amber-800 border border-amber-200" : "bg-sky-100 text-sky-800 border border-sky-200"
+            )}>
+              {conv.myRole === "SELLER" ? "Inquiry on Your Vehicle" : "Vehicle Inquiry"}
+            </span>
+          </div>
           <button
             onClick={() => navigate({ name: "detail", vehicleId: conv.vehicle.id })}
-            className="truncate text-xs text-amber-600 hover:underline cursor-pointer"
+            className="truncate text-xs text-amber-600 hover:underline cursor-pointer block mt-0.5"
           >
-            {conv.vehicle.make} {conv.vehicle.model} {conv.vehicle.year}
+            {conv.vehicle.make} {conv.vehicle.model} {conv.vehicle.year} · ${conv.vehicle.priceUsd.toLocaleString()}
           </button>
         </div>
       </div>

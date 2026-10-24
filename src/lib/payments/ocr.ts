@@ -98,41 +98,46 @@ function resolveWorkerPath(): string | undefined {
 
 /** Run Tesseract OCR on receipt image buffer. */
 export async function runOcrOnBuffer(buffer: Buffer): Promise<string> {
-  const processed = await preprocessReceiptImage(buffer);
-  const workerPath = resolveWorkerPath();
-  const worker = await createWorker("eng", 1, workerPath ? { workerPath } : undefined);
   try {
-    const res = await worker.recognize(processed);
-    let text = res.data.text || "";
-
-    // Multi-bank footer enhancement: check footer banner for bank name / logo text (e.g. UCB, ACLEDA, Sathapana)
+    const processed = await preprocessReceiptImage(buffer);
+    const workerPath = resolveWorkerPath();
+    const worker = await createWorker("eng", 1, workerPath ? { workerPath } : undefined);
     try {
-      const meta = await sharp(buffer).metadata();
-      if (meta.width && meta.height && meta.height > 300) {
-        const bottomBuffer = await sharp(buffer)
-          .extract({
-            left: 0,
-            top: Math.floor(meta.height * 0.78),
-            width: meta.width,
-            height: Math.floor(meta.height * 0.22),
-          })
-          .resize(meta.width * 2)
-          .grayscale()
-          .threshold(135)
-          .png()
-          .toBuffer();
-        const footerRes = await worker.recognize(bottomBuffer);
-        if (footerRes.data.text?.trim()) {
-          text += "\n" + footerRes.data.text.trim();
-        }
-      }
-    } catch {
-      // non-fatal
-    }
+      const res = await worker.recognize(processed);
+      let text = res.data.text || "";
 
-    return text;
-  } finally {
-    await worker.terminate();
+      // Multi-bank footer enhancement: check footer banner for bank name / logo text (e.g. UCB, ACLEDA, Sathapana)
+      try {
+        const meta = await sharp(buffer).metadata();
+        if (meta.width && meta.height && meta.height > 300) {
+          const bottomBuffer = await sharp(buffer)
+            .extract({
+              left: 0,
+              top: Math.floor(meta.height * 0.78),
+              width: meta.width,
+              height: Math.floor(meta.height * 0.22),
+            })
+            .resize(meta.width * 2)
+            .grayscale()
+            .threshold(135)
+            .png()
+            .toBuffer();
+          const footerRes = await worker.recognize(bottomBuffer);
+          if (footerRes.data.text?.trim()) {
+            text += "\n" + footerRes.data.text.trim();
+          }
+        }
+      } catch {
+        // non-fatal
+      }
+
+      return text;
+    } finally {
+      await worker.terminate().catch(() => {});
+    }
+  } catch (err) {
+    console.error("[OCR Node Engine] Tesseract error, fallback empty:", err);
+    return "";
   }
 }
 
@@ -246,8 +251,9 @@ export function parseReceiptText(rawText: string): ParsedReceiptData {
 
   // USD regexes: require explicit $ or USD symbol/word
   const usdRegexes = [
-    /(?:Debit\s*Amount|Amount|Total)[:\s]*-?\s*\$\s*([0-9]+(?:\.[0-9]{2})?)/i,
-    /(?:Debit\s*Amount|Amount|Total)[:\s]*-?\s*([0-9]+(?:\.[0-9]{2})?)\s*USD\b/i,
+    /(?:Debit\s*Amount|Amount|Total)?[:\s]*-?\s*\$\s*([0-9]+(?:\.[0-9]{2})?)/i,
+    /(?:Debit\s*Amount|Amount|Total)?[:\s]*-?\s*([0-9]+(?:\.[0-9]{2})?)\s*USD\b/i,
+    /(?:Debit\s*Amount|Amount|Total)?[:\s]*-?\s*USD\s*([0-9]+(?:\.[0-9]{2})?)/i,
     /\$\s*([0-9]+(?:\.[0-9]{2})?)/i,
     /([0-9]+(?:\.[0-9]{2})?)\s*USD\b/i,
   ];
@@ -304,21 +310,30 @@ export function parseReceiptText(rawText: string): ParsedReceiptData {
   let paidAtRaw: string | null = null;
 
   const datePatterns = [
+    // Date: 24 Oct-2026 3:20 PM or Date: 24 Oct 2026
+    /(?:date|paid\s*on|time)[:\s]*([0-9]{1,2}[^\S\r\n]+[A-Za-z]+[-/,\s]+\d{4}(?:,?[^\S\r\n]*\d{1,2}:\d{2}(?::\d{2})?(?:[^\S\r\n]*(?:AM|PM)\b)?)?)/i,
     // Oct 22, 2026 | 11:26 PM or Oct 22, 2026 11:26 PM
-    /([A-Za-z]{3}\s+\d{1,2}(?:,\s+\d{4})?\s*[|,]?\s*\d{1,2}:\d{2}(?::\d{2})?\s*(?:AM|PM)?)/i,
-    // 22 Oct 2026, 01:05 PM
-    /(\d{1,2}\s+(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\s+\d{4}(?:,?\s*\d{1,2}:\d{2}(?::\d{2})?\s*(?:AM|PM)?)?)/i,
+    /([A-Za-z]{3}[^\S\r\n]+\d{1,2}(?:,[^\S\r\n]+\d{4})?[^\S\r\n]*[|,]?[^\S\r\n]*\d{1,2}:\d{2}(?::\d{2})?(?:[^\S\r\n]*(?:AM|PM)\b)?)/i,
+    // 22 Oct 2026, 01:05 PM or 24 Oct-2026 3:20 PM
+    /(\d{1,2}[^\S\r\n]+(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*[-/,\s]+\d{4}(?:,?[^\S\r\n]*\d{1,2}:\d{2}(?::\d{2})?(?:[^\S\r\n]*(?:AM|PM)\b)?)?)/i,
     // 2026-10-22 13:05:00
-    /(\d{4}[-/]\d{2}[-/]\d{2}(?:\s+\d{1,2}:\d{2}(?::\d{2})?(?:\s*[AP]M)?)?)/i,
+    /(\d{4}[-/]\d{2}[-/]\d{2}(?:[^\S\r\n]+\d{1,2}:\d{2}(?::\d{2})?(?:[^\S\r\n]*[AP]M\b)?)?)/i,
     // 22/10/2026 13:05
-    /(\d{1,2}[-/]\d{2}[-/]\d{4}(?:\s+\d{1,2}:\d{2}(?::\d{2})?(?:\s*[AP]M)?)?)/i,
+    /(\d{1,2}[-/]\d{2}[-/]\d{4}(?:[^\S\r\n]+\d{1,2}:\d{2}(?::\d{2})?(?:[^\S\r\n]*[AP]M\b)?)?)/i,
   ];
 
   for (const rx of datePatterns) {
     const m = text.match(rx);
     if (m) {
       paidAtRaw = m[1].trim();
-      const sanitized = paidAtRaw.replace("|", "").trim();
+      let sanitized = paidAtRaw
+        .replace("|", " ")
+        .replace(/-(?=\d{4})/, " ")
+        .replace(/\s+/g, " ")
+        .trim();
+      if (/^\d{4}-\d{2}-\d{2}\s+\d{1,2}:\d{2}(:\d{2})?$/.test(sanitized)) {
+        sanitized = sanitized.replace(" ", "T");
+      }
       const parsedTs = Date.parse(sanitized);
       if (!Number.isNaN(parsedTs)) {
         paidAt = new Date(parsedTs);
@@ -689,4 +704,18 @@ export async function verifyReceiptAgainstPlan({
     riskFlags,
     message,
   };
+}
+
+/** Helper to identify bank code from receipt text */
+export function detectBankFromReceipt(rawText: string): string | null {
+  const bank = detectBankFromContext({ rawText });
+  if (bank) {
+    if (bank.code === "ACLB") return "ACLEDA";
+    if (bank.code === "CAND") return "CANADIA";
+    return bank.code;
+  }
+  if (/ABA\s*Mobile|PayWay\s*by\s*ABA|ABA\s*Bank|Advanced\s*Bank\s*of\s*Asia/i.test(rawText)) {
+    return "ABA";
+  }
+  return null;
 }

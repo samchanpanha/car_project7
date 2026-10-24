@@ -34,7 +34,7 @@ import {
   Loader2, Send, ExternalLink, QrCode, ClipboardList, ShieldOff,
   Camera, Check, CheckCircle2, Clock, Image as ImageIcon, FileText,
   RefreshCw, TriangleAlert, Zap, Copy, Download, Sparkles, Scan,
-  ShieldCheck, ShieldAlert, CreditCard, Lock,
+  ShieldCheck, ShieldAlert, CreditCard, Lock, Calendar, Trash2,
 } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
@@ -95,7 +95,7 @@ export function RequestSubscriptionDialog({
   const [refCheck, setRefCheck] = useState<{
     checking: boolean;
     valid?: boolean;
-    canSubmit?: boolean;
+    canSubmitForReview?: boolean;
     duplicate?: boolean;
     isOld?: boolean;
     isNotCurrentDate?: boolean;
@@ -111,6 +111,7 @@ export function RequestSubscriptionDialog({
     matchedAba?: boolean;
     message?: string;
   } | null>(null);
+  const [paymentDate, setPaymentDate] = useState<string>(() => new Date().toISOString().split("T")[0]);
   const [submittedRef, setSubmittedRef] = useState<string | null>(null);
   const [submittedPaymentId, setSubmittedPaymentId] = useState<string | null>(null);
   const [verifiedPayment, setVerifiedPayment] = useState<SubscriptionPaymentDTO | null>(null);
@@ -135,6 +136,7 @@ export function RequestSubscriptionDialog({
       setOcrModalOpen(false);
       setOcrData(null);
       setRefCheck(null);
+      setPaymentDate(new Date().toISOString().split("T")[0]);
       setSubmittedRef(null);
       setSubmittedPaymentId(null);
       setVerifiedPayment(null);
@@ -157,9 +159,11 @@ export function RequestSubscriptionDialog({
         const bankParam = ocrData?.originatingBank ? `&bank=${encodeURIComponent(ocrData.originatingBank)}` : "";
         const payerAccParam = ocrData?.payerAccount ? `&payerAccount=${encodeURIComponent(ocrData.payerAccount)}` : "";
         const payerNameParam = ocrData?.payerName ? `&payerName=${encodeURIComponent(ocrData.payerName)}` : "";
+        const dateParam = paymentDate ? `&paymentDate=${encodeURIComponent(paymentDate)}` : "";
         const res = await apiSend<{
           valid: boolean;
           canSubmit?: boolean;
+          canSubmitForReview?: boolean;
           duplicate?: boolean;
           isOld?: boolean;
           isNotCurrentDate?: boolean;
@@ -174,14 +178,14 @@ export function RequestSubscriptionDialog({
           telegramAdminLink?: string;
           matchedAba?: boolean;
           message?: string;
-        }>(`/api/tenant/payments/check-ref?ref=${encodeURIComponent(trimmed)}&plan=${plan?.plan || "PRO"}&cycle=${cycle}&currency=${currency}${ocrParam}${bankParam}${payerAccParam}${payerNameParam}`, "GET");
+        }>(`/api/tenant/payments/check-ref?ref=${encodeURIComponent(trimmed)}&plan=${plan?.plan || "PRO"}&cycle=${cycle}&currency=${currency}${ocrParam}${bankParam}${payerAccParam}${payerNameParam}${dateParam}`, "GET");
         setRefCheck({ checking: false, ...res });
       } catch {
         setRefCheck(null);
       }
     }, 400);
     return () => clearTimeout(timer);
-  }, [manualRef, ocrData?.trxId, ocrData?.originatingBank, ocrData?.payerAccount, ocrData?.payerName, plan?.plan, cycle, currency]);
+  }, [manualRef, ocrData?.trxId, ocrData?.originatingBank, ocrData?.payerAccount, ocrData?.payerName, plan?.plan, cycle, currency, paymentDate]);
 
   // Live polling for verification when submitted
   useEffect(() => {
@@ -319,6 +323,18 @@ export function RequestSubscriptionDialog({
             setManualRef("");
             toast.error("Could not detect a valid Transaction ID from this receipt. Please upload a clear photo or screenshot of your bank transfer slip.");
           }
+
+          if (ocrRes.data.paidAt) {
+            try {
+              const d = new Date(ocrRes.data.paidAt);
+              if (!Number.isNaN(d.getTime())) {
+                const yyyy = d.getFullYear();
+                const mm = String(d.getMonth() + 1).padStart(2, "0");
+                const dd = String(d.getDate()).padStart(2, "0");
+                setPaymentDate(`${yyyy}-${mm}-${dd}`);
+              }
+            } catch {}
+          }
         }
 
         setOcrData({
@@ -387,14 +403,25 @@ export function RequestSubscriptionDialog({
     ))
   );
 
+  const isNeedsAdminReview = Boolean(
+    refCheck?.isNotCurrentDate ||
+    ocrData?.isUnderpaid ||
+    ocrData?.riskFlags?.includes("UNDERPAID") ||
+    ocrData?.riskFlags?.includes("NOT_CURRENT_DATE") ||
+    ocrData?.riskFlags?.includes("OLD_TRANSACTION_DATE") ||
+    Boolean(paymentDate)
+  );
+
   const canSubmit =
     Boolean(evidenceImage) &&
     Boolean(manualRef.trim()) &&
-    !isBlockedByRef &&
-    !isBlockedByOcr &&
+    (!isBlockedByRef || refCheck?.isNotCurrentDate) &&
+    (!isBlockedByOcr || isNeedsAdminReview) &&
+    !refCheck?.duplicate &&
     !readingImage;
 
-  const submitManual = async () => {
+  const submitManual = async (forReview?: boolean | unknown) => {
+    const isReview = typeof forReview === "boolean" ? forReview : isNeedsAdminReview;
     if (!evidenceImage) {
       toast.error("Payment receipt image is required to verify the transaction.");
       return;
@@ -407,7 +434,15 @@ export function RequestSubscriptionDialog({
       toast.error(`Transaction ID Mismatch! Detected "${manualRef}" differs from receipt "${ocrData.trxId}".`);
       return;
     }
-    if (isBlockedByOcr) {
+    if (refCheck?.duplicate) {
+      toast.error(refCheck.message || "Duplicate transaction cannot be submitted.");
+      return;
+    }
+    if (isBlockedByRef && !isReview && !refCheck?.isNotCurrentDate) {
+      toast.error(refCheck?.message || "Transaction reference is blocked.");
+      return;
+    }
+    if (isBlockedByOcr && !isReview && !isNeedsAdminReview) {
       toast.error(ocrData?.refMismatchDetails || "Cannot submit payment: The receipt failed security verification.");
       return;
     }
@@ -422,18 +457,22 @@ export function RequestSubscriptionDialog({
           evidenceImage: evidenceImage ?? undefined,
           evidenceUrl: evidenceUrl.trim() || undefined,
           note: note.trim() || undefined,
+          paymentDate: paymentDate || undefined,
+          submitForReview: isReview || isNeedsAdminReview || false,
           ocrData: ocrData ?? undefined,
         },
       );
-      if (res.payment?.status === "VERIFIED") {
-        setVerifiedPayment(res.payment);
+      const payment = res?.payment || (res as any);
+      if (payment?.status === "VERIFIED") {
+        setVerifiedPayment(payment);
         sessionStorage.setItem("subscription_verified_alert", plan?.plan || "PRO");
         toast.success("🎉 Payment auto-approved via ABA PayWay! Subscription active.");
         onDone();
         return;
       }
-      setSubmittedPaymentId(res.payment?.id || null);
-      setSubmittedRef(manualRef.trim() || res.payment?.reference || null);
+      setSubmittedPaymentId(payment?.id || null);
+      setSubmittedRef(manualRef.trim() || payment?.reference || null);
+      toast.info("Payment submitted! Telegram notification sent to admin for verification.");
     } catch (e) {
       toast.error(e instanceof Error ? e.message : t("errorGeneric"));
     } finally {
@@ -1025,6 +1064,7 @@ export function RequestSubscriptionDialog({
                           setEvidenceImage(null);
                           setOcrData(null);
                           setManualRef("");
+                          setPaymentDate("");
                           setRefCheck(null);
                         }}
                       >
@@ -1275,39 +1315,81 @@ export function RequestSubscriptionDialog({
                   <span>Verifying transaction reference against bank records...</span>
                 </div>
               )}
-              {refCheck && !refCheck.checking && refCheck.isNotCurrentDate && (
+              {Boolean(
+                (refCheck && !refCheck.checking && refCheck.isNotCurrentDate) ||
+                ocrData?.isUnderpaid ||
+                ocrData?.riskFlags?.includes("NOT_CURRENT_DATE") ||
+                ocrData?.riskFlags?.includes("OLD_TRANSACTION_DATE") ||
+                ocrData?.riskFlags?.includes("UNDERPAID")
+              ) && (
                 <div className="flex flex-col gap-2.5 text-xs bg-rose-50 dark:bg-rose-950/40 border-2 border-rose-400 dark:border-rose-700 p-3 rounded-xl shadow-xs animate-in fade-in">
                   <div className="flex items-start gap-2.5">
                     <ShieldAlert className="h-5 w-5 shrink-0 text-rose-600 mt-0.5" />
                     <div className="flex-1 min-w-0">
                       <div className="font-extrabold text-sm text-rose-900 dark:text-rose-100 flex items-center gap-2">
-                        <span>Transaction Found, But Date is Not Today</span>
+                        <span>
+                          {refCheck?.isNotCurrentDate || ocrData?.riskFlags?.includes("NOT_CURRENT_DATE") || ocrData?.riskFlags?.includes("OLD_TRANSACTION_DATE")
+                            ? "Transaction Found, But Date is Not Today"
+                            : "Partial / Discrepant Amount Detected"}
+                        </span>
                         <Badge variant="destructive" className="text-[10px] uppercase font-black px-1.5 py-0">
-                          Blocked
+                          Review Required
                         </Badge>
                       </div>
                       <p className="text-xs text-rose-800 dark:text-rose-200 mt-1 leading-relaxed">
-                        Bank record for Trx ID <strong className="font-mono text-slate-900 dark:text-white bg-white/80 dark:bg-slate-900 px-1 py-0.5 rounded border border-rose-300">{refCheck.trxId || manualRef}</strong> was verified in the Telegram bank group, but its date is <strong className="text-rose-950 dark:text-white">{refCheck.transactionDateRaw || refCheck.transactionDateFormatted || "not today"}</strong>.
+                        {refCheck?.isNotCurrentDate ? (
+                          <>
+                            Bank record for Trx ID <strong className="font-mono text-slate-900 dark:text-white bg-white/80 dark:bg-slate-900 px-1 py-0.5 rounded border border-rose-300">{refCheck.trxId || manualRef}</strong> was verified in the Telegram bank group, but its date is <strong className="text-rose-950 dark:text-white">{refCheck.transactionDateRaw || refCheck.transactionDateFormatted || "not today"}</strong>.
+                          </>
+                        ) : ocrData?.isUnderpaid ? (
+                          <>
+                            Detected receipt amount (<strong className="font-mono text-rose-950 dark:text-white">{ocrData.currency || currency} {ocrData.amount?.toLocaleString()}</strong>) is less than the required plan price. Submit for Telegram admin review to manually verify and approve.
+                          </>
+                        ) : (
+                          <>
+                            The transaction date (<strong className="text-rose-950 dark:text-white">{ocrData?.paidAt || "past date"}</strong>) differs from today. Choose or confirm your payment date below to submit for manual Telegram admin approval.
+                          </>
+                        )}
                       </p>
                       <p className="text-[11px] text-rose-700 dark:text-rose-300 mt-1">
-                        ⚠️ Automatic activation only accepts payments completed today. Submitting requests for old bank transactions is not allowed.
+                        ⚠️ Automatic activation only accepts payments completed today. Choose or confirm your payment date below to submit for manual Telegram admin approval.
                       </p>
                     </div>
                   </div>
                   <div className="pt-2 border-t border-rose-200 dark:border-rose-800 flex flex-wrap items-center justify-between gap-2">
-                    <span className="text-[11px] font-semibold text-rose-900 dark:text-rose-200">
-                      Please contact Admin for manual review:
-                    </span>
-                    <a
-                      href={refCheck.telegramAdminLink || "https://t.me/samchanpanha"}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-sky-600 hover:bg-sky-500 text-white font-bold text-xs shadow-sm transition cursor-pointer"
-                    >
-                      <Send className="h-3.5 w-3.5" />
-                      <span>Contact Telegram Admin ({refCheck.telegramAdmin || "@samchanpanha"})</span>
-                      <ExternalLink className="h-3 w-3" />
-                    </a>
+                    <div className="flex items-center gap-2">
+                      <Label htmlFor="date-override" className="text-[11px] font-semibold text-rose-900 dark:text-rose-200 whitespace-nowrap">
+                        Payment Date:
+                      </Label>
+                      <Input
+                        id="date-override"
+                        type="date"
+                        value={paymentDate}
+                        onChange={(e) => setPaymentDate(e.target.value)}
+                        className="h-8 text-xs w-36 bg-white dark:bg-slate-900 border-rose-300 font-medium"
+                      />
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Button
+                        type="button"
+                        size="sm"
+                        disabled={creating}
+                        onClick={() => submitManual(true)}
+                        className="h-8 px-3 rounded-lg bg-rose-600 hover:bg-rose-500 text-white font-bold text-xs shadow-sm transition cursor-pointer flex items-center gap-1.5"
+                      >
+                        {creating ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Send className="h-3.5 w-3.5" />}
+                        <span>Submit for Telegram Admin Review</span>
+                      </Button>
+                      <a
+                        href={refCheck?.telegramAdminLink || "https://t.me/samchanpanha"}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-sky-600 hover:bg-sky-500 text-white font-semibold text-xs shadow-sm transition cursor-pointer"
+                      >
+                        <span>Chat Admin</span>
+                        <ExternalLink className="h-3 w-3" />
+                      </a>
+                    </div>
                   </div>
                 </div>
               )}
@@ -1370,8 +1452,23 @@ export function RequestSubscriptionDialog({
               <p className="text-[11px] text-slate-400">{t("payScreenshotRequired")}</p>
             </div>
 
-            {/* OPTIONAL EVIDENCE URL & NOTE */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            {/* PAYMENT DATE, EVIDENCE URL & NOTE */}
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <div>
+                <Label htmlFor="pay-date" className="text-xs font-semibold text-slate-700 dark:text-slate-300 flex items-center justify-between">
+                  <span>Payment Date</span>
+                  <Badge variant="outline" className="text-[9px] font-semibold text-slate-500 py-0 px-1">
+                    {paymentDate ? "Chosen" : "Today"}
+                  </Badge>
+                </Label>
+                <Input
+                  id="pay-date"
+                  type="date"
+                  value={paymentDate}
+                  onChange={(e) => setPaymentDate(e.target.value)}
+                  className="mt-1 h-8 text-xs font-medium"
+                />
+              </div>
               <div>
                 <Label htmlFor="pay-evidence" className="text-xs text-slate-500">{t("payEvidenceLabel")}</Label>
                 <Input
@@ -1418,19 +1515,25 @@ export function RequestSubscriptionDialog({
                 <span className="truncate">Could not detect Trx ID on receipt. Please upload clearer slip.</span>
               </span>
             )}
-            {isBlockedByRef && (
+            {isBlockedByRef && !isNeedsAdminReview && (
               <span className="text-rose-600 dark:text-rose-400 font-bold flex items-center gap-1.5">
                 <ShieldAlert className="h-4 w-4 shrink-0 text-rose-600" />
                 <span className="truncate">{refCheck?.message || "Invalid or blocked transaction reference."}</span>
               </span>
             )}
-            {!isBlockedByRef && isBlockedByOcr && (
+            {!isBlockedByRef && isBlockedByOcr && !isNeedsAdminReview && (
               <span className="text-rose-600 dark:text-rose-400 font-bold flex items-center gap-1.5">
                 <ShieldAlert className="h-4 w-4 shrink-0 text-rose-600" />
                 <span className="truncate">{ocrData?.refMismatchDetails || "Receipt failed anti-fraud verification."}</span>
               </span>
             )}
-            {!isBlockedByRef && !isBlockedByOcr && canSubmit && (
+            {isNeedsAdminReview && canSubmit && (
+              <span className="text-rose-600 dark:text-rose-400 font-semibold flex items-center gap-1.5">
+                <Send className="h-4 w-4 shrink-0 text-rose-600" />
+                <span className="truncate">Admin review requested. Ready to submit to Telegram.</span>
+              </span>
+            )}
+            {!isNeedsAdminReview && !isBlockedByRef && !isBlockedByOcr && canSubmit && (
               <span className="text-emerald-700 dark:text-emerald-400 font-semibold flex items-center gap-1.5">
                 <ShieldCheck className="h-4 w-4 shrink-0 text-emerald-600" />
                 <span className="truncate">Receipt verified. Ready for submission!</span>
@@ -1449,12 +1552,21 @@ export function RequestSubscriptionDialog({
             </Button>
             <Button
               size="sm"
-              onClick={submitManual}
+              onClick={() => submitManual(isNeedsAdminReview)}
               disabled={creating || !canSubmit}
-              className="bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold px-5 cursor-pointer shadow-sm disabled:opacity-50"
+              className={cn(
+                "font-bold px-5 cursor-pointer shadow-sm disabled:opacity-50",
+                isNeedsAdminReview
+                  ? "bg-rose-600 hover:bg-rose-500 text-white"
+                  : "bg-amber-500 hover:bg-amber-400 text-slate-950"
+              )}
             >
               {creating && <Loader2 className="h-4 w-4 mr-1.5 animate-spin" aria-hidden />}
-              {!evidenceImage ? "Upload Receipt to Submit" : t("paySubmitManual")}
+              {!evidenceImage
+                ? "Upload Receipt to Submit"
+                : isNeedsAdminReview
+                ? "Submit for Telegram Review"
+                : t("paySubmitManual")}
             </Button>
           </div>
         </DialogFooter>
@@ -1926,17 +2038,21 @@ export function SubscriptionPaywallCard({
       enabled?: boolean;
     }>;
   }>("/api/platform-settings");
+  const paymentsQuery = useFetch<SubscriptionPaymentDTO[]>("/api/tenant/payments");
 
   const [cycle, setCycle] = useState<"MONTHLY" | "YEARLY">("MONTHLY");
   const [currency, setCurrency] = useState<"USD" | "KHR">("USD");
   const [selectedPlan, setSelectedPlan] = useState<string>("PRO");
   const [manualRef, setManualRef] = useState("");
+  const [paymentDate, setPaymentDate] = useState<string>("");
   const [evidenceImage, setEvidenceImage] = useState<string | null>(null);
   const [readingImage, setReadingImage] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [cancelling, setCancelling] = useState(false);
   const [verified, setVerified] = useState(false);
   const [checking, setChecking] = useState(false);
   const [submittedPayment, setSubmittedPayment] = useState<SubscriptionPaymentDTO | null>(null);
+  const hadPending = useRef(false);
   const [error, setError] = useState<string | null>(null);
   const [zoomQrOpen, setZoomQrOpen] = useState(false);
   const [guideOpen, setGuideOpen] = useState(false);
@@ -1956,6 +2072,7 @@ export function SubscriptionPaywallCard({
     payee?: string;
     abaTrxId?: string;
     isWrongMerchant?: boolean;
+    isUnderpaid?: boolean;
     detectedPayee?: string;
     riskFlags: string[];
   } | null>(null);
@@ -2022,6 +2139,7 @@ export function SubscriptionPaywallCard({
         const bankParam = ocrData?.originatingBank ? `&bank=${encodeURIComponent(ocrData.originatingBank)}` : "";
         const payerAccParam = ocrData?.payerAccount ? `&payerAccount=${encodeURIComponent(ocrData.payerAccount)}` : "";
         const payerNameParam = ocrData?.payerName ? `&payerName=${encodeURIComponent(ocrData.payerName)}` : "";
+        const dateParam = paymentDate ? `&paymentDate=${encodeURIComponent(paymentDate)}` : "";
         const res = await apiSend<{
           valid: boolean;
           canSubmit?: boolean;
@@ -2039,14 +2157,14 @@ export function SubscriptionPaywallCard({
           telegramAdminLink?: string;
           matchedAba?: boolean;
           message?: string;
-        }>(`/api/tenant/payments/check-ref?ref=${encodeURIComponent(trimmed)}&plan=${selectedPlan}&cycle=${cycle}&currency=${currency}${ocrParam}${bankParam}${payerAccParam}${payerNameParam}`, "GET");
+        }>(`/api/tenant/payments/check-ref?ref=${encodeURIComponent(trimmed)}&plan=${selectedPlan}&cycle=${cycle}&currency=${currency}${ocrParam}${bankParam}${payerAccParam}${payerNameParam}${dateParam}`, "GET");
         setRefCheck({ checking: false, ...res });
       } catch {
         setRefCheck(null);
       }
     }, 400);
     return () => clearTimeout(timer);
-  }, [manualRef, ocrData?.trxId, ocrData?.originatingBank, ocrData?.payerAccount, ocrData?.payerName, selectedPlan, cycle, currency]);
+  }, [manualRef, paymentDate, ocrData?.trxId, ocrData?.originatingBank, ocrData?.payerAccount, ocrData?.payerName, selectedPlan, cycle, currency]);
 
   const currentPlan = activePlans.find((p) => p.key === selectedPlan) || activePlans[0] || {
     key: "PRO",
@@ -2086,10 +2204,62 @@ export function SubscriptionPaywallCard({
     refCheck?.isOld === true ||
     refCheck?.isNotCurrentDate === true;
 
+  const isNeedsAdminReview = Boolean(
+    refCheck?.isNotCurrentDate ||
+    ocrData?.isUnderpaid ||
+    ocrData?.riskFlags?.includes("UNDERPAID") ||
+    ocrData?.riskFlags?.includes("NOT_CURRENT_DATE") ||
+    ocrData?.riskFlags?.includes("OLD_TRANSACTION_DATE") ||
+    Boolean(paymentDate)
+  );
+
+  const pendingPayment = paymentsQuery.data?.find((p) => p.status === "AWAITING_VERIFICATION");
+  const activePending = (submittedPayment && submittedPayment.status === "AWAITING_VERIFICATION")
+    ? submittedPayment
+    : pendingPayment;
+  const latestRejected = !activePending ? paymentsQuery.data?.find((p) => p.status === "REJECTED") : null;
+
+  // Poll while activePending exists so Telegram approvals take effect promptly
+  useEffect(() => {
+    if (!activePending) return;
+    const interval = setInterval(() => {
+      paymentsQuery.refetch();
+    }, 3500);
+    return () => clearInterval(interval);
+  }, [activePending, paymentsQuery.refetch]);
+
+  // Reactive unlock when payment status transitions to VERIFIED
+  useEffect(() => {
+    if (!paymentsQuery.data) return;
+    if (activePending) {
+      hadPending.current = true;
+    } else if (hadPending.current) {
+      const latestVerified = paymentsQuery.data.find((p) => p.status === "VERIFIED");
+      if (latestVerified) {
+        hadPending.current = false;
+        setVerified(true);
+        sessionStorage.setItem("subscription_verified_alert", latestVerified.plan || "PRO");
+        toast.success(`🎉 Subscription Activated! Your ${latestVerified.plan || "PRO"} plan is now active.`);
+        setTimeout(() => {
+          onActivated?.();
+        }, 1200);
+      }
+    }
+  }, [paymentsQuery.data, activePending, onActivated]);
+
+  const canSubmitPaywall =
+    !activePending &&
+    Boolean(evidenceImage) &&
+    Boolean(manualRef.trim()) &&
+    (!isBlockedByRef || refCheck?.isNotCurrentDate) &&
+    !refCheck?.duplicate &&
+    (config.data?.manual?.skipMerchantCheck || !ocrData?.isWrongMerchant);
+
   const pickImage = async (file: File | undefined) => {
     if (!file) return;
     // Clear previous inputs & state when re-uploading or changing image
     setManualRef("");
+    setPaymentDate("");
     setOcrData(null);
     setRefCheck(null);
     setReadingImage(true);
@@ -2145,6 +2315,18 @@ export function SubscriptionPaywallCard({
             setManualRef("");
             toast.error("Could not detect a valid Transaction ID from this receipt. Please upload a clear photo or screenshot of your bank transfer slip.");
           }
+
+          if (ocrRes.data.paidAt) {
+            try {
+              const d = new Date(ocrRes.data.paidAt);
+              if (!Number.isNaN(d.getTime())) {
+                const yyyy = d.getFullYear();
+                const mm = String(d.getMonth() + 1).padStart(2, "0");
+                const dd = String(d.getDate()).padStart(2, "0");
+                setPaymentDate(`${yyyy}-${mm}-${dd}`);
+              }
+            } catch {}
+          }
         }
 
         setOcrData({
@@ -2162,6 +2344,7 @@ export function SubscriptionPaywallCard({
           payee: ocrRes.data.payee || undefined,
           abaTrxId: (ocrRes.verification as any).abaTrxId || undefined,
           isWrongMerchant: shouldBlockWrongMerchant,
+          isUnderpaid: (ocrRes.verification as any)?.isUnderpaid,
           detectedPayee: ocrRes.verification?.detectedPayee || ocrRes.data.payee || undefined,
           riskFlags: ocrRes.verification.riskFlags,
         });
@@ -2174,7 +2357,8 @@ export function SubscriptionPaywallCard({
     }
   };
 
-  const submitPayment = async () => {
+  const submitPayment = async (forReview?: boolean | unknown) => {
+    const isReview = typeof forReview === "boolean" ? forReview : isNeedsAdminReview;
     if (!evidenceImage) {
       setError("Please attach your payment receipt screenshot to verify the transaction.");
       return;
@@ -2183,7 +2367,11 @@ export function SubscriptionPaywallCard({
       setError("Could not detect a valid Transaction ID on your receipt. Please upload a clear receipt slip.");
       return;
     }
-    if (isBlockedByRef) {
+    if (refCheck?.duplicate) {
+      setError(refCheck.message || "Duplicate transaction cannot be submitted.");
+      return;
+    }
+    if (isBlockedByRef && !isReview && !refCheck?.isNotCurrentDate) {
       setError(refCheck?.message || "Invalid or duplicate transaction reference");
       return;
     }
@@ -2199,19 +2387,24 @@ export function SubscriptionPaywallCard({
           currency,
           manualRef: manualRef.trim() || undefined,
           evidenceImage: evidenceImage ?? undefined,
+          paymentDate: paymentDate || undefined,
+          submitForReview: isReview || isNeedsAdminReview || false,
           ocrData: ocrData ?? undefined,
         },
       );
 
-      if (res.payment.status === "VERIFIED") {
+      const payment = res?.payment || (res as any);
+      if (payment?.status === "VERIFIED") {
         setVerified(true);
+        sessionStorage.setItem("subscription_verified_alert", payment.plan || selectedPlan);
         toast.success("🎉 Payment verified! Your subscription is active.");
         setTimeout(() => {
           onActivated?.();
         }, 1000);
       } else {
-        setSubmittedPayment(res.payment);
-        toast.info("Payment submitted! Awaiting instant ABA verification.");
+        setSubmittedPayment(payment);
+        await paymentsQuery.refetch();
+        toast.info("Payment submitted! Telegram notification sent to admin for verification.");
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to submit payment");
@@ -2223,21 +2416,46 @@ export function SubscriptionPaywallCard({
   const checkStatus = async () => {
     setChecking(true);
     try {
-      const payments = await apiSend<SubscriptionPaymentDTO[]>("/api/tenant/payments", "GET");
+      const payments = await apiSend<SubscriptionPaymentDTO[]>("/api/tenant/payments?sync=true", "GET");
+      await paymentsQuery.refetch();
       const matched = payments.find((p) => p.status === "VERIFIED");
       if (matched) {
         setVerified(true);
+        sessionStorage.setItem("subscription_verified_alert", matched.plan || "PRO");
         toast.success("🎉 Payment verified! Your subscription is active.");
         setTimeout(() => {
           onActivated?.();
         }, 1000);
       } else {
-        toast.info("Still awaiting bank confirmation. If you just sent money, please wait a few seconds and try again.");
+        const rejected = payments.find((p) => p.status === "REJECTED" && (activePending ? p.id === activePending.id : true));
+        if (rejected) {
+          setSubmittedPayment(null);
+          toast.error(`Payment request was rejected: ${rejected.rejectionReason || "Please verify your receipt and re-submit."}`);
+        } else {
+          toast.info("Still awaiting bank confirmation or Telegram admin review. Status checked!");
+        }
       }
     } catch {
       toast.error("Could not check payment status");
     } finally {
       setChecking(false);
+    }
+  };
+
+  const cancelPayment = async (id: string, ref: string) => {
+    if (!confirm(`Cancel payment request #${ref}? You will be able to submit a fresh payment receipt immediately.`)) {
+      return;
+    }
+    setCancelling(true);
+    try {
+      await apiSend(`/api/tenant/payments/${id}`, "DELETE");
+      setSubmittedPayment(null);
+      toast.success("Payment request cancelled. You can now submit a fresh payment receipt.");
+      await paymentsQuery.refetch();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Failed to cancel payment request");
+    } finally {
+      setCancelling(false);
     }
   };
 
@@ -2275,31 +2493,70 @@ export function SubscriptionPaywallCard({
         </Alert>
       )}
 
-      {submittedPayment && !verified && (
-        <div className="rounded-xl border border-sky-200 bg-sky-50 p-3.5 space-y-2.5">
-          <div className="flex items-start gap-2.5">
-            <Clock className="h-5 w-5 text-sky-600 shrink-0 mt-0.5" />
-            <div>
-              <p className="text-xs font-bold text-sky-950">
-                Payment Submitted (Ref: #{submittedPayment.reference}) · Awaiting Bank Alert
-              </p>
-              <p className="mt-0.5 text-xs text-sky-800 leading-relaxed">
-                Trx ID: <code className="font-mono font-bold bg-sky-100 px-1 py-0.5 rounded">{manualRef}</code>.
-                Our Telegram banking integration is listening for the ABA bank payment alert.
-              </p>
+      {activePending && !verified && (
+        <div className="rounded-xl border border-sky-300 bg-sky-50/90 p-4 space-y-3 shadow-xs">
+          <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-3">
+            <div className="flex items-start gap-3">
+              <Clock className="h-5 w-5 text-sky-600 shrink-0 mt-0.5 animate-pulse" />
+              <div>
+                <div className="flex items-center gap-2 flex-wrap">
+                  <p className="text-xs font-bold text-sky-950">
+                    Payment Submitted (Ref: #{activePending.reference})
+                  </p>
+                  <Badge className="bg-sky-200 text-sky-900 border-sky-300 text-[10px] font-extrabold uppercase px-1.5 py-0">
+                    Awaiting Verification
+                  </Badge>
+                </div>
+                <p className="mt-1 text-xs text-sky-800 leading-relaxed">
+                  Plan: <strong className="text-sky-950">{activePending.plan}</strong> ({activePending.billingCycle}) · Amount: <strong className="text-sky-950">${activePending.amountUsd.toFixed(2)} USD</strong>
+                  {(activePending.manualRef || manualRef) && (
+                    <> · Trx ID: <code className="font-mono font-bold bg-white px-1.5 py-0.5 rounded border border-sky-200 text-sky-950">{activePending.manualRef || manualRef}</code></>
+                  )}
+                </p>
+                <p className="text-[11px] text-sky-700 mt-1">
+                  {activePending.telegramSentAt
+                    ? "Notification sent to administrator Telegram group with 1-tap approval."
+                    : "Awaiting bank transaction confirmation or administrator review."}
+                </p>
+              </div>
+            </div>
+            <div className="flex items-center gap-2 shrink-0">
+              <Button
+                size="sm"
+                onClick={checkStatus}
+                disabled={checking}
+                className="h-8 bg-sky-600 hover:bg-sky-500 text-white font-semibold text-xs shadow-xs"
+              >
+                {checking ? <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5 mr-1.5" />}
+                Check Status
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => cancelPayment(activePending.id, activePending.reference)}
+                disabled={cancelling}
+                className="h-8 border-rose-300 text-rose-700 hover:bg-rose-50 font-semibold text-xs bg-white"
+              >
+                {cancelling ? <Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" /> : <Trash2 className="h-3.5 w-3.5 mr-1" />}
+                Cancel Request
+              </Button>
             </div>
           </div>
-          <Button
-            size="sm"
-            onClick={checkStatus}
-            disabled={checking}
-            className="h-8 bg-sky-600 hover:bg-sky-500 text-white font-semibold text-xs"
-          >
-            {checking && <Loader2 className="h-3 w-3 mr-1 animate-spin" />}
-            <RefreshCw className={cn("h-3 w-3 mr-1", checking && "hidden")} />
-            Check Verification Status
-          </Button>
         </div>
+      )}
+
+      {latestRejected && !activePending && !verified && (
+        <Alert className="border-rose-300 bg-rose-50/90 text-rose-950">
+          <TriangleAlert className="h-5 w-5 text-rose-600" />
+          <AlertTitle className="text-sm font-bold text-rose-900 flex items-center justify-between">
+            <span>Previous Payment Request Rejected</span>
+            <span className="text-xs font-mono font-normal text-rose-700">Ref: #{latestRejected.reference}</span>
+          </AlertTitle>
+          <AlertDescription className="text-xs text-rose-800 mt-1">
+            <p className="font-semibold">Reason: {latestRejected.rejectionReason || "Receipt could not be verified."}</p>
+            <p className="mt-1 text-slate-600">Please review your transfer details, choose a plan, and upload a valid receipt below.</p>
+          </AlertDescription>
+        </Alert>
       )}
 
       {/* Cycle & Currency Selectors */}
@@ -2662,6 +2919,26 @@ export function SubscriptionPaywallCard({
               </div>
             </div>
 
+            {/* PAYMENT DATE SELECTION */}
+            <div className="space-y-1.5 pt-1">
+              <div className="flex items-center justify-between">
+                <Label htmlFor="dealer-pay-date" className="text-xs font-bold text-slate-700">
+                  Payment Date
+                </Label>
+                <Badge variant="outline" className="text-[10px] font-semibold text-slate-600 bg-slate-100 border-slate-300 flex items-center gap-1">
+                  <Calendar className="h-2.5 w-2.5 text-slate-500" />
+                  {paymentDate ? "Chosen Date" : "Today"}
+                </Badge>
+              </div>
+              <Input
+                id="dealer-pay-date"
+                type="date"
+                value={paymentDate}
+                onChange={(e) => setPaymentDate(e.target.value)}
+                className="h-9 text-xs font-semibold bg-slate-50"
+              />
+            </div>
+
             {/* Status Helper Guidance */}
             {ocrData?.isWrongMerchant ? (
               <div className="p-3 rounded-xl border-2 border-red-500 bg-red-50 text-red-900 text-xs space-y-1.5 animate-in fade-in shadow-sm">
@@ -2713,39 +2990,81 @@ export function SubscriptionPaywallCard({
                 <span>Verifying reference against bank payment records...</span>
               </div>
             )}
-            {refCheck && !refCheck.checking && refCheck.isNotCurrentDate && (
+            {Boolean(
+              (refCheck && !refCheck.checking && refCheck.isNotCurrentDate) ||
+              ocrData?.isUnderpaid ||
+              ocrData?.riskFlags?.includes("NOT_CURRENT_DATE") ||
+              ocrData?.riskFlags?.includes("OLD_TRANSACTION_DATE") ||
+              ocrData?.riskFlags?.includes("UNDERPAID")
+            ) && (
               <div className="flex flex-col gap-2.5 text-xs bg-rose-50 border-2 border-rose-400 p-3 rounded-xl shadow-xs animate-in fade-in">
                 <div className="flex items-start gap-2.5">
                   <ShieldAlert className="h-5 w-5 shrink-0 text-rose-600 mt-0.5" />
                   <div className="flex-1 min-w-0">
                     <div className="font-extrabold text-sm text-rose-900 flex items-center gap-2">
-                      <span>Transaction Found, But Date is Not Today</span>
+                      <span>
+                        {refCheck?.isNotCurrentDate || ocrData?.riskFlags?.includes("NOT_CURRENT_DATE") || ocrData?.riskFlags?.includes("OLD_TRANSACTION_DATE")
+                          ? "Transaction Found, But Date is Not Today"
+                          : "Partial / Discrepant Amount Detected"}
+                      </span>
                       <Badge variant="destructive" className="text-[10px] uppercase font-black px-1.5 py-0">
-                        Blocked
+                        Review Required
                       </Badge>
                     </div>
                     <p className="text-xs text-rose-800 mt-1 leading-relaxed">
-                      Bank record for Trx ID <strong className="font-mono text-slate-900 bg-white px-1 py-0.5 rounded border border-rose-300">{refCheck.trxId || manualRef}</strong> was verified in the Telegram bank group, but its date is <strong className="text-rose-950">{refCheck.transactionDateRaw || refCheck.transactionDateFormatted || "not today"}</strong>.
+                      {refCheck?.isNotCurrentDate ? (
+                        <>
+                          Bank record for Trx ID <strong className="font-mono text-slate-900 bg-white px-1 py-0.5 rounded border border-rose-300">{refCheck.trxId || manualRef}</strong> was verified in the Telegram bank group, but its date is <strong className="text-rose-950">{refCheck.transactionDateRaw || refCheck.transactionDateFormatted || "not today"}</strong>.
+                        </>
+                      ) : ocrData?.isUnderpaid ? (
+                        <>
+                          Detected receipt amount (<strong className="font-mono text-rose-950">{ocrData.currency || currency} {ocrData.amount?.toLocaleString()}</strong>) is less than the required plan price. Submit for Telegram admin review to manually verify and approve.
+                        </>
+                      ) : (
+                        <>
+                          The transaction date (<strong className="text-rose-950">{ocrData?.paidAt || "past date"}</strong>) differs from today. Choose or confirm your payment date below to submit for manual Telegram admin approval.
+                        </>
+                      )}
                     </p>
                     <p className="text-[11px] text-rose-700 mt-1">
-                      ⚠️ Automatic activation only accepts payments completed today. Submitting requests for old bank transactions is not allowed.
+                      ⚠️ Automatic activation only accepts payments completed today. Choose or confirm your payment date below to submit for manual Telegram admin approval.
                     </p>
                   </div>
                 </div>
                 <div className="pt-2 border-t border-rose-200 flex flex-wrap items-center justify-between gap-2">
-                  <span className="text-[11px] font-semibold text-rose-900">
-                    Please contact Admin for manual review:
-                  </span>
-                  <a
-                    href={refCheck.telegramAdminLink || "https://t.me/samchanpanha"}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-sky-600 hover:bg-sky-500 text-white font-bold text-xs shadow-sm transition cursor-pointer"
-                  >
-                    <Send className="h-3.5 w-3.5" />
-                    <span>Contact Telegram Admin ({refCheck.telegramAdmin || "@samchanpanha"})</span>
-                    <ExternalLink className="h-3 w-3" />
-                  </a>
+                  <div className="flex items-center gap-2">
+                    <Label htmlFor="dealer-date-override" className="text-[11px] font-semibold text-rose-900 whitespace-nowrap">
+                      Payment Date:
+                    </Label>
+                    <Input
+                      id="dealer-date-override"
+                      type="date"
+                      value={paymentDate}
+                      onChange={(e) => setPaymentDate(e.target.value)}
+                      className="h-8 text-xs w-36 bg-white border-rose-300 font-medium"
+                    />
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Button
+                      type="button"
+                      size="sm"
+                      disabled={submitting}
+                      onClick={() => submitPayment(true)}
+                      className="h-8 px-3 rounded-lg bg-rose-600 hover:bg-rose-500 text-white font-bold text-xs shadow-sm transition cursor-pointer flex items-center gap-1.5"
+                    >
+                      {submitting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Send className="h-3.5 w-3.5" />}
+                      <span>Submit for Telegram Admin Review</span>
+                    </Button>
+                    <a
+                      href={refCheck?.telegramAdminLink || "https://t.me/samchanpanha"}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-sky-600 hover:bg-sky-500 text-white font-semibold text-xs shadow-sm transition cursor-pointer"
+                    >
+                      <span>Chat Admin</span>
+                      <ExternalLink className="h-3 w-3" />
+                    </a>
+                  </div>
                 </div>
               </div>
             )}
@@ -2812,12 +3131,25 @@ export function SubscriptionPaywallCard({
 
           <Button
             type="button"
-            onClick={submitPayment}
-            disabled={submitting || !evidenceImage || !manualRef.trim() || isBlockedByRef || (!config.data?.manual?.skipMerchantCheck && ocrData?.isWrongMerchant)}
-            className="w-full h-11 bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-sm shadow-xs disabled:opacity-50"
+            onClick={() => submitPayment(isNeedsAdminReview)}
+            disabled={submitting || !canSubmitPaywall}
+            className={cn(
+              "w-full h-11 font-bold text-sm shadow-xs disabled:opacity-50",
+              activePending
+                ? "bg-slate-200 text-slate-600 cursor-not-allowed"
+                : isNeedsAdminReview
+                ? "bg-rose-600 hover:bg-rose-500 text-white"
+                : "bg-amber-500 hover:bg-amber-400 text-slate-950"
+            )}
           >
             {submitting && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
-            {!evidenceImage ? "Upload Payment Receipt to Verify" : "Verify Payment & Unlock Dashboard"}
+            {activePending
+              ? "Payment Awaiting Verification (See Status Above)"
+              : !evidenceImage
+              ? "Upload Payment Receipt to Verify"
+              : isNeedsAdminReview
+              ? "Submit for Telegram Admin Review"
+              : "Verify Payment & Unlock Dashboard"}
           </Button>
         </div>
       </div>
