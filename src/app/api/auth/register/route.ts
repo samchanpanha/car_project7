@@ -53,6 +53,15 @@ export async function POST(req: Request) {
       );
     }
 
+    const { readPlatformSettings } = await import("@/lib/platform-settings");
+    const settings = await readPlatformSettings();
+    if (settings.adminOnlyLogin) {
+      return NextResponse.json(
+        { error: "Public registration is currently disabled while platform is in administrator-only mode" },
+        { status: 403 },
+      );
+    }
+
     const existing = await db.user.findUnique({ where: { phone }, select: { id: true } });
     if (existing) {
       return NextResponse.json(

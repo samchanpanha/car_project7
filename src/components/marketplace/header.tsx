@@ -207,8 +207,8 @@ function AccountMenu() {
     );
   }
 
-  // ---------- guest (fresh visitor) ----------
-  if (isGuest(me)) {
+  // ---------- guest (fresh visitor) or demo mode disabled ----------
+  if (isGuest(me) || (!me.authed && me.demoModeEnabled === false) || (!me.authed && me.personas.length === 0)) {
     return (
       <div className="flex items-center gap-1.5">
         <Button
@@ -223,13 +223,15 @@ function AccountMenu() {
           <LogIn className="h-4 w-4" aria-hidden />
           <span className="hidden sm:inline sm:ml-1.5">{t("authLoginTab")}</span>
         </Button>
-        <Button
-          size="sm"
-          onClick={() => useAppStore.getState().navigate({ name: "auth", tab: "signup" })}
-          className="h-9 bg-amber-500 font-semibold text-slate-950 hover:bg-amber-400"
-        >
-          {t("authSignupTab")}
-        </Button>
+        {me.adminOnlyLogin !== true && (
+          <Button
+            size="sm"
+            onClick={() => useAppStore.getState().navigate({ name: "auth", tab: "signup" })}
+            className="h-9 bg-amber-500 font-semibold text-slate-950 hover:bg-amber-400"
+          >
+            {t("authSignupTab")}
+          </Button>
+        )}
       </div>
     );
   }

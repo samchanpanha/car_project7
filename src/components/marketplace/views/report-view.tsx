@@ -9,7 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Progress } from "@/components/ui/progress";
 import {
-  ArrowLeft, CircleSlash, FileCheck2, Loader2, MessageSquare, RefreshCw, ShieldAlert, TriangleAlert,
+  ArrowLeft, Bike, CircleSlash, FileCheck2, Loader2, MessageSquare, RefreshCw, ShieldAlert, TriangleAlert, Wrench,
 } from "lucide-react";
 import { useState } from "react";
 import { formatUsd, timeAgo } from "@/lib/format";
@@ -80,6 +80,11 @@ export function ReportView({ vehicleId }: { vehicleId: string }) {
     );
   }
 
+  const isMotor = vehicle.listingCategory === "MOTOR";
+  const isPart = vehicle.listingCategory === "SPARE_PART";
+  const reportTitle = isPart ? t("aiReportPartTitle") : isMotor ? t("aiReportMotorTitle") : t("aiReportTitle");
+  const reportBody = isPart ? t("aiReportPartBody") : isMotor ? t("aiReportMotorBody") : t("aiReportBody");
+
   if (!report) {
     // No report yet — offer to generate one
     return (
@@ -88,14 +93,36 @@ export function ReportView({ vehicleId }: { vehicleId: string }) {
           <ArrowLeft className="h-4 w-4 mr-1.5" aria-hidden />
           {t("backToResults")}
         </Button>
-        <div className="mt-6 rounded-2xl border border-teal-200 bg-teal-50/60 p-8 text-center">
-          <FileCheck2 className="mx-auto h-10 w-10 text-teal-600" aria-hidden />
-          <h1 className="mt-3 text-xl font-bold text-slate-900">{t("aiReportTitle")}</h1>
-          <p className="mt-2 text-sm text-slate-600 max-w-md mx-auto">{t("aiReportBody")}</p>
+        <div
+          className={cn(
+            "mt-6 rounded-2xl border p-8 text-center",
+            isPart
+              ? "border-amber-200 bg-amber-50/60"
+              : isMotor
+              ? "border-sky-200 bg-sky-50/60"
+              : "border-teal-200 bg-teal-50/60"
+          )}
+        >
+          {isPart ? (
+            <Wrench className="mx-auto h-10 w-10 text-amber-600" aria-hidden />
+          ) : isMotor ? (
+            <Bike className="mx-auto h-10 w-10 text-sky-600" aria-hidden />
+          ) : (
+            <FileCheck2 className="mx-auto h-10 w-10 text-teal-600" aria-hidden />
+          )}
+          <h1 className="mt-3 text-xl font-bold text-slate-900">{reportTitle}</h1>
+          <p className="mt-2 text-sm text-slate-600 max-w-md mx-auto">{reportBody}</p>
           <Button
             onClick={regenerate}
             disabled={regenerating}
-            className="mt-5 bg-teal-600 hover:bg-teal-700 text-white font-semibold"
+            className={cn(
+              "mt-5 text-white font-semibold",
+              isPart
+                ? "bg-amber-600 hover:bg-amber-700"
+                : isMotor
+                ? "bg-sky-600 hover:bg-sky-700"
+                : "bg-teal-600 hover:bg-teal-700"
+            )}
           >
             {regenerating ? (
               <>
@@ -115,11 +142,19 @@ export function ReportView({ vehicleId }: { vehicleId: string }) {
   }
 
   const summary = locale === "km" ? report.summaryKm : report.summaryEn;
-  const title = `${vehicle.make} ${vehicle.model} ${vehicle.year}`.trim();
+  const title = isPart
+    ? `${vehicle.make} ${vehicle.model}${vehicle.partNumber ? ` (${vehicle.partNumber})` : ""}`
+    : `${vehicle.make} ${vehicle.model} ${vehicle.year}`.trim();
   const counts = report.checks.reduce<Record<string, number>>((acc, c) => {
     acc[c.status] = (acc[c.status] ?? 0) + 1;
     return acc;
   }, {});
+
+  const subtitleMeta = isPart
+    ? `${vehicle.partCategory ? `${vehicle.partCategory} · ` : ""}${formatUsd(vehicle.priceUsd)} · ${t("reportGenerated", { t: timeAgo(report.createdAt, locale) })}`
+    : isMotor
+    ? `${vehicle.engineCc ? `${vehicle.engineCc}cc · ` : ""}${formatUsd(vehicle.priceUsd)} · ${t("reportGenerated", { t: timeAgo(report.createdAt, locale) })}`
+    : `${formatUsd(vehicle.priceUsd)} · ${t("reportGenerated", { t: timeAgo(report.createdAt, locale) })}`;
 
   return (
     <div className="mx-auto max-w-4xl px-4 py-5 pb-24 md:pb-10">
@@ -134,7 +169,14 @@ export function ReportView({ vehicleId }: { vehicleId: string }) {
           size="sm"
           onClick={regenerate}
           disabled={regenerating}
-          className="border-teal-300 text-teal-700 hover:bg-teal-50"
+          className={cn(
+            "border",
+            isPart
+              ? "border-amber-300 text-amber-800 hover:bg-amber-50"
+              : isMotor
+              ? "border-sky-300 text-sky-700 hover:bg-sky-50"
+              : "border-teal-300 text-teal-700 hover:bg-teal-50"
+          )}
         >
           {regenerating ? <Loader2 className="h-4 w-4 mr-1.5 animate-spin" aria-hidden /> : <RefreshCw className="h-4 w-4 mr-1.5" aria-hidden />}
           {t("regenerate")}
@@ -162,9 +204,21 @@ export function ReportView({ vehicleId }: { vehicleId: string }) {
             </div>
           </div>
           <div className="min-w-0">
-            <h1 id="report-summary" className="text-lg font-bold text-slate-900">{t("aiReportTitle")}</h1>
-            <p className="text-sm text-slate-500">
-              {title} · {formatUsd(vehicle.priceUsd)} · {t("reportGenerated", { t: timeAgo(report.createdAt, locale) })}
+            <div className="flex flex-wrap items-center gap-2">
+              <h1 id="report-summary" className="text-lg font-bold text-slate-900">{reportTitle}</h1>
+              {isPart && (
+                <span className="rounded-full bg-amber-100 text-amber-800 text-[11px] font-semibold px-2 py-0.5">
+                  OEM / Part
+                </span>
+              )}
+              {isMotor && (
+                <span className="rounded-full bg-sky-100 text-sky-800 text-[11px] font-semibold px-2 py-0.5">
+                  Motorcycle
+                </span>
+              )}
+            </div>
+            <p className="text-sm text-slate-500 mt-0.5">
+              {title} · {subtitleMeta}
             </p>
             <p className="mt-2 text-[11px] text-slate-400 flex flex-wrap gap-x-2">
               {Object.entries(counts).map(([status, n]) => (

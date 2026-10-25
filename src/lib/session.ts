@@ -132,6 +132,11 @@ export async function isGuestRequest(): Promise<boolean> {
   if (authCookie && verifySessionToken(authCookie)) return false;
   const authHeader = await readHeader(SESSION_HEADER);
   if (authHeader && verifySessionToken(authHeader)) return false;
+
+  const { readPlatformSettings } = await import("@/lib/platform-settings");
+  const settings = await readPlatformSettings();
+  if (!settings.demoModeEnabled) return true;
+
   const persona = await getActivePersonaId();
   return !persona;
 }
@@ -139,7 +144,7 @@ export async function isGuestRequest(): Promise<boolean> {
 /**
  * Resolve the current user with this priority:
  * 1. real auth session (`khlan_auth` cookie — login/register/Telegram)
- * 2. demo persona (`khlan_persona` cookie — sandbox impersonation)
+ * 2. demo persona (`khlan_persona` cookie — sandbox impersonation, only if demoModeEnabled)
  * 3. demo buyer fallback
  * The sellerProfile may be null for staff personas — no auto-create, to keep
  * the seeded DB clean.
@@ -152,14 +157,18 @@ export async function getCurrentUser(): Promise<DemoUser> {
     return { ...authUser, sellerProfile: profile };
   }
 
-  // 2. Demo persona (cookie, then header fallback).
-  const personaId = await getActivePersonaId();
-  if (personaId) {
-    const user = await db.user.findUnique({
-      where: { id: personaId },
-      include: { sellerProfile: true },
-    });
-    if (user) return user;
+  // 2. Demo persona (cookie, then header fallback, only when demo mode is enabled).
+  const { readPlatformSettings } = await import("@/lib/platform-settings");
+  const settings = await readPlatformSettings();
+  if (settings.demoModeEnabled) {
+    const personaId = await getActivePersonaId();
+    if (personaId) {
+      const user = await db.user.findUnique({
+        where: { id: personaId },
+        include: { sellerProfile: true },
+      });
+      if (user) return user;
+    }
   }
 
   // 3. Demo buyer fallback.

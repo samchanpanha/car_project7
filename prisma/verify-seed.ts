@@ -87,7 +87,29 @@ async function main() {
     const checks = JSON.parse(pradoReport.checksJson) as unknown[];
     const limits = JSON.parse(pradoReport.limitationsJson ?? "[]") as unknown[];
     console.log(
-      `veh_prado_2018 report: status=${pradoReport.status}, checks=${checks.length} (expected 10), limitations=${limits.length}, confidence=${pradoReport.overallConfidence}`
+      `veh_prado_2018 (CAR) report: status=${pradoReport.status}, checks=${checks.length} (expected 10), limitations=${limits.length}, confidence=${pradoReport.overallConfidence}`
+    );
+  }
+
+  const motorReport = await prisma.vehicleHistoryReport.findFirst({
+    where: { vehicleId: "veh_honda_dream_2023" },
+  });
+  if (motorReport) {
+    const checks = JSON.parse(motorReport.checksJson) as unknown[];
+    const limits = JSON.parse(motorReport.limitationsJson ?? "[]") as unknown[];
+    console.log(
+      `veh_honda_dream_2023 (MOTOR) report: status=${motorReport.status}, checks=${checks.length} (expected 10), limitations=${limits.length}, confidence=${motorReport.overallConfidence}`
+    );
+  }
+
+  const partReport = await prisma.vehicleHistoryReport.findFirst({
+    where: { vehicleId: "part_toyota_brake_pads" },
+  });
+  if (partReport) {
+    const checks = JSON.parse(partReport.checksJson) as unknown[];
+    const limits = JSON.parse(partReport.limitationsJson ?? "[]") as unknown[];
+    console.log(
+      `part_toyota_brake_pads (SPARE_PART) report: status=${partReport.status}, checks=${checks.length} (expected 10), limitations=${limits.length}, confidence=${partReport.overallConfidence}`
     );
   }
 }

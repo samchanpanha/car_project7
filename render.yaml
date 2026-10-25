@@ -1,22 +1,44 @@
 services:
-  # Next.js Web Service on Render
+  # -------------------------------------------------------------
+  # Next.js All-in-One Web Service on Render
+  # Runs Next.js standalone web server, embedded SQLite DB,
+  # and optional Telegram sync daemon in a single Docker container.
+  # -------------------------------------------------------------
   - type: web
     name: khlan-marketplace
     runtime: docker
     plan: free
     region: singapore
+    autoDeploy: true
     envVars:
+      # Application & Database Configuration
+      - key: NODE_ENV
+        value: production
       - key: DATABASE_URL
         value: file:/app/db/custom.db
+      - key: NEXTAUTH_SECRET
+        generateValue: true
+      - key: NEXTAUTH_URL
+        value: https://khlan-marketplace.onrender.com
+
+      # Cloudflare R2 Persistent Storage (Free tier, zero egress cost)
+      - key: CLOUDFLARE_R2_ENDPOINT
+        sync: false
+      - key: CLOUDFLARE_R2_ACCESS_KEY_ID
+        sync: false
+      - key: CLOUDFLARE_R2_SECRET_ACCESS_KEY
+        sync: false
+      - key: CLOUDFLARE_R2_BUCKET
+        value: cars-storage
+      - key: CLOUDFLARE_R2_PUBLIC_URL
+        sync: false
+
+      # Telegram Integration (Optional)
+      - key: ENABLE_TELEGRAM_DAEMON
+        value: "true"
       - key: TELEGRAM_BOT_TOKEN
         sync: false
       - key: TELEGRAM_GROUP_CHAT_ID
         sync: false
       - key: TELEGRAM_WEBHOOK_SECRET
         sync: false
-      - key: NEXTAUTH_SECRET
-        generateValue: true
-      - key: NEXTAUTH_URL
-        value: https://khlan-marketplace.onrender.com
-      - key: ENABLE_TELEGRAM_DAEMON
-        value: "true"

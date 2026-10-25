@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { getDemoUser } from "@/lib/session";
-import { runChecks, REPORT_LIMITATIONS, type ComparableVehicle } from "@/lib/report/engine";
+import { runChecks, REPORT_LIMITATIONS, getReportLimitations, type ComparableVehicle } from "@/lib/report/engine";
 import { summarizeReport } from "@/lib/report/summarizer";
 import type { ReportCheck, ReportDTO } from "@/lib/types";
 import type { VehicleHistoryReport } from "@prisma/client";
@@ -90,12 +90,65 @@ export async function POST(_req: Request, { params }: { params: Promise<{ id: st
 
     const user = await getDemoUser();
 
-    // Market comparables: PUBLISHED, same bodyType, not self, price > 0.
-    // The engine additionally filters to |year diff| <= 2.
-    const comparables: ComparableVehicle[] = await db.vehicle.findMany({
-      where: { status: "PUBLISHED", bodyType: vehicle.bodyType, id: { not: id }, priceUsd: { gt: 0 } },
-      select: { id: true, bodyType: true, year: true, priceUsd: true },
-    });
+    // Market comparables scoped to listing category
+    let comparables: ComparableVehicle[] = [];
+    if (vehicle.listingCategory === "SPARE_PART") {
+      comparables = await db.vehicle.findMany({
+        where: {
+          status: "PUBLISHED",
+          listingCategory: "SPARE_PART",
+          id: { not: id },
+          priceUsd: { gt: 0 },
+          ...(vehicle.partCategory ? { partCategory: vehicle.partCategory } : {}),
+        },
+        select: {
+          id: true,
+          listingCategory: true,
+          bodyType: true,
+          year: true,
+          priceUsd: true,
+          partCategory: true,
+          partTarget: true,
+        },
+      });
+    } else if (vehicle.listingCategory === "MOTOR") {
+      comparables = await db.vehicle.findMany({
+        where: {
+          status: "PUBLISHED",
+          listingCategory: "MOTOR",
+          id: { not: id },
+          priceUsd: { gt: 0 },
+        },
+        select: {
+          id: true,
+          listingCategory: true,
+          bodyType: true,
+          year: true,
+          priceUsd: true,
+          partCategory: true,
+          partTarget: true,
+        },
+      });
+    } else {
+      comparables = await db.vehicle.findMany({
+        where: {
+          status: "PUBLISHED",
+          listingCategory: "CAR",
+          bodyType: vehicle.bodyType,
+          id: { not: id },
+          priceUsd: { gt: 0 },
+        },
+        select: {
+          id: true,
+          listingCategory: true,
+          bodyType: true,
+          year: true,
+          priceUsd: true,
+          partCategory: true,
+          partTarget: true,
+        },
+      });
+    }
 
     // (b) deterministic rules engine
     const { checks, overallConfidence } = await runChecks(
@@ -107,9 +160,10 @@ export async function POST(_req: Request, { params }: { params: Promise<{ id: st
 
     // (c) bilingual LLM summary (with deterministic fallback)
     const vehicleTitle = `${vehicle.year} ${vehicle.make} ${vehicle.model}`;
-    const { summaryEn, summaryKm } = await summarizeReport(vehicleTitle, checks);
+    const { summaryEn, summaryKm } = await summarizeReport(vehicleTitle, checks, vehicle.listingCategory);
 
     // (d) replace previous reports, save fresh one
+    const limitations = getReportLimitations(vehicle.listingCategory);
     await db.vehicleHistoryReport.deleteMany({ where: { vehicleId: id } });
     const saved = await db.vehicleHistoryReport.create({
       data: {
@@ -118,7 +172,7 @@ export async function POST(_req: Request, { params }: { params: Promise<{ id: st
         overallConfidence,
         summaryEn,
         summaryKm,
-        limitationsJson: JSON.stringify(REPORT_LIMITATIONS),
+        limitationsJson: JSON.stringify(limitations),
         status: "COMPLETE",
         requestedBy: user.id,
       },

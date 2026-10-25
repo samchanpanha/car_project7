@@ -1103,7 +1103,10 @@ const VEHICLES: SeedVehicle[] = [
     featured: true,
     views: 450,
     daysAgo: 2,
-    docs: [],
+    docs: [
+      { type: "PURCHASE_INVOICE", status: "VERIFIED" },
+      { type: "IMPORT_DECLARATION", status: "VERIFIED" },
+    ],
   },
   {
     id: "part_prius_hybrid_battery",
@@ -1135,7 +1138,10 @@ const VEHICLES: SeedVehicle[] = [
     featured: false,
     views: 620,
     daysAgo: 4,
-    docs: [],
+    docs: [
+      { type: "WARRANTY_CARD", status: "VERIFIED" },
+      { type: "INSPECTION_CERT", status: "VERIFIED" },
+    ],
   },
   {
     id: "part_michelin_pilot_street",
@@ -1167,7 +1173,7 @@ const VEHICLES: SeedVehicle[] = [
     featured: true,
     views: 290,
     daysAgo: 1,
-    docs: [],
+    docs: [{ type: "PURCHASE_INVOICE", status: "PROVIDED" }],
   },
   {
     id: "part_dream_drive_chain",
@@ -1199,7 +1205,7 @@ const VEHICLES: SeedVehicle[] = [
     featured: false,
     views: 140,
     daysAgo: 6,
-    docs: [],
+    docs: [{ type: "PURCHASE_INVOICE", status: "VERIFIED" }],
   },
   {
     id: "part_motul_engine_oil",
@@ -1231,7 +1237,7 @@ const VEHICLES: SeedVehicle[] = [
     featured: false,
     views: 310,
     daysAgo: 3,
-    docs: [],
+    docs: [{ type: "IMPORT_DECLARATION", status: "PROVIDED" }],
   },
 ];
 
@@ -1510,6 +1516,202 @@ const LEXUS_CHECKS: ReportCheck[] = [
   ),
 ];
 
+const MOTOR_LIMITATIONS = [
+  {
+    en: "This report analyzes motorcycle listing details, registration card, and engine checks. It is not a roadside mechanical inspection.",
+    km: "របាយការណ៍នេះវិភាគលើព័ត៌មានលម្អិតនៃម៉ូតូ កាតគ្រី និងទិន្នន័យម៉ាស៊ីន។ វាមិនមែនជាការតេស្តបើកបរលើផ្លូវទេ។",
+  },
+  {
+    en: "'No records found' does not guarantee absence of hidden frame bending or internal engine wear.",
+    km: "'រកមិនឃើញទិន្នន័យ' មិនធានាថាគ្មានបញ្ហាតួវៀច ឬការសឹកខាងក្នុងម៉ាស៊ីននោះទេ។",
+  },
+  {
+    en: "Always verify the motorcycle frame and engine numbers directly against the physical registration card.",
+    km: "សូមផ្ទៀងផ្ទាត់លេខតួ និងលេខម៉ាស៊ីនម៉ូតូផ្ទាល់ជាមួយកាតគ្រីច្បាប់ដើមជានិច្ច។",
+  },
+];
+
+const PART_LIMITATIONS = [
+  {
+    en: "This report evaluates part OEM numbers, compatibility fitment, and market pricing. It is not a bench test or metallurgical inspection.",
+    km: "របាយការណ៍នេះវាយតម្លៃលេខកូដគ្រឿងបន្លាស់ ម៉ូដែលត្រូវគ្នា និងតម្លៃទីផ្សារ។ វាមិនមែនជាការតេស្តមន្ទីរពិសោធន៍ទេ។",
+  },
+  {
+    en: "'Brand new' condition reflects seller declaration; inspect packaging seals, manufacturer labels, and serial barcodes upon delivery.",
+    km: "ការប្រកាសជា 'ទំនិញថ្មី' ផ្អែកលើការបញ្ជាក់របស់អ្នកលក់។ សូមពិនិត្យតែមប្រអប់ ស្លាករោងចក្រ និងបាកូដពេលទទួល។",
+  },
+  {
+    en: "Always verify exact part number fitment with your professional mechanic before unboxing or installation.",
+    km: "សូមបញ្ជាក់លេខកូដគ្រឿងបន្លាស់ និងភាពត្រូវគ្នាជាមួយជាងជំនាញរបស់អ្នក មុនពេលធ្វើការតម្លើង។",
+  },
+];
+
+const HONDA_DREAM_CHECKS: ReportCheck[] = [
+  check(
+    "identity",
+    "VERIFIED",
+    "Plate 1KB-8899 and 125cc engine identifiers match the verified Honda registration card.",
+    "ស្លាកលេខ 1KB-8899 និងកម្លាំងម៉ាស៊ីន 125cc ត្រូវគ្នានឹងកាតគ្រីម៉ូតូដែលបានផ្ទៀងផ្ទាត់។",
+    "Motorcycle registration card (platform-verified)",
+    0.95
+  ),
+  check(
+    "registration",
+    "VERIFIED",
+    "Motorcycle registration card (កាតគ្រី) platform-verified. Owner and plate numbers match.",
+    "កាតគ្រីម៉ូតូត្រូវបានផ្ទៀងផ្ទាត់ដោយវេទិកា។ ស្លាកលេខ និងឈ្មោះម្ចាស់ត្រូវគ្នា។",
+    "Motorcycle card (platform-verified)",
+    0.95
+  ),
+  check(
+    "import",
+    "EVIDENCE_FOUND",
+    "Official NCX Cambodia distribution assembly with genuine tax stamp.",
+    "ម៉ូតូដំឡើងនិងចែកចាយផ្លូវការដោយ NCX កម្ពុជា មានតែមពន្ធត្រឹមត្រូវ។",
+    "NCX distribution records",
+    0.85
+  ),
+  check(
+    "mileage",
+    "EVIDENCE_FOUND",
+    "3,200 km over 2 years (~1,600 km/year) is consistent with light local commuter use and pristine condition.",
+    "ចម្ងាយ ៣,២០០ គ.ម ក្នុងរយៈពេល ២ ឆ្នាំ (~១,៦០០ គ.ម/ឆ្នាំ) សមរម្យសម្រាប់ការជិះក្បែរៗផ្ទះ និងត្រូវនឹងសភាពថ្មី។",
+    "Listing data + age analysis",
+    0.75
+  ),
+  check(
+    "price",
+    "EVIDENCE_FOUND",
+    "$2,650 is within typical market range for 2023 Honda Dream 125 NCX in Phnom Penh ($2,500-$2,800).",
+    "២,៦៥០ ដុល្លាស្ថិតក្នុងកម្រិតតម្លៃទីផ្សារធម្មតាសម្រាប់ Honda Dream 125 ឆ្នាំ២០២៣ នៅភ្នំពេញ (២,៥០០–២,៨០០ ដុល្លា)។",
+    "Market comparables",
+    0.8
+  ),
+  check(
+    "service",
+    "EVIDENCE_FOUND",
+    "Initial 1,000 km authorized NCX warranty service recorded.",
+    "មានកំណត់ត្រាថែទាំដំបូង ១,០០០ គ.ម តាមការធានារបស់ NCX។",
+    "Service records",
+    0.75
+  ),
+  check(
+    "photos",
+    "EVIDENCE_FOUND",
+    "Photos show original gold stripes, unscratched fairings, and undamaged exhaust cover.",
+    "រូបភាពបង្ហាញឆ្នូតមាសហ្ស៊ីន គ្មានស្នាមឆ្កូត និងគម្របស៊ីមាំងស្អាតល្អ។",
+    "Listing photo analysis",
+    0.75
+  ),
+  check(
+    "ownership",
+    "EVIDENCE_FOUND",
+    "First-hand registered owner declared, consistent with registration card.",
+    "ម្ចាស់ដើមផ្ទាល់ដៃទី១ ត្រូវនឹងព័ត៌មានលើកាតគ្រី។",
+    "Registration card",
+    0.85
+  ),
+  check(
+    "accident",
+    "NOT_VERIFIED",
+    "Seller declares no fall or collision history. Handlebar and mirrors appear straight in photos.",
+    "ម្ចាស់លក់ប្រកាសថាមិនដែលដួល ឬបុក។ ចង្កូត និងកញ្ចក់មើលក្រោយត្រង់ស្អាតក្នុងរូបភាព។",
+    "Seller declaration",
+    0.5
+  ),
+  check(
+    "listing",
+    "EVIDENCE_FOUND",
+    "Listing text is clear with authentic local details. No scam patterns detected.",
+    "ខ្លឹមសារផ្សព្វផ្សាយច្បាស់លាស់ គ្មានគំរូបញ្ឆោតទេ។",
+    "Listing text scan",
+    0.75
+  ),
+];
+
+const BRAKE_PADS_CHECKS: ReportCheck[] = [
+  check(
+    "identity",
+    "EVIDENCE_FOUND",
+    "OEM Part Number 04465-47060 verified with Toyota Prius and Corolla compatibility catalog.",
+    "លេខកូដ OEM 04465-47060 បានផ្ទៀងផ្ទាត់ជាមួយកាតាឡុកត្រូវគ្នានៃ Toyota Prius និង Corolla។",
+    "OEM manufacturer catalog",
+    0.9
+  ),
+  check(
+    "registration",
+    "VERIFIED",
+    "Authorized distributor purchase invoice provided and verified by the platform.",
+    "វិក្កយបត្រទិញពីតំណាងចែកចាយផ្លូវការត្រូវបានផ្ដល់ជូន និងបានផ្ទៀងផ្ទាត់ដោយវេទិកា។",
+    "Purchase invoice (platform-verified)",
+    0.95
+  ),
+  check(
+    "import",
+    "VERIFIED",
+    "Import declaration and customs tax clearance verified from Japan.",
+    "លិខិតប្រកាសនាំចូល និងពន្ធគយពីប្រទេសជប៉ុនត្រូវបានផ្ទៀងផ្ទាត់។",
+    "Customs declaration (platform-verified)",
+    0.9
+  ),
+  check(
+    "mileage",
+    "EVIDENCE_FOUND",
+    "Declared BRAND NEW in original factory box with unbroken seal clips.",
+    "ប្រកាសជាទំនិញថ្មីសុទ្ធ ១០០% ក្នុងប្រអប់ដើម មានតែមបិទជិត។",
+    "Packaging verification",
+    0.85
+  ),
+  check(
+    "price",
+    "EVIDENCE_FOUND",
+    "$38 asking price is within the standard range for authentic Toyota ceramic brake pads ($35-$45).",
+    "តម្លៃ ៣៨ ដុល្លាស្ថិតក្នុងកម្រិតទីផ្សារស្តង់ដារសម្រាប់ស្បែកហ្វ្រាំងសេរ៉ាមិច Toyota សុទ្ធ (៣៥–៤៥ ដុល្លា)។",
+    "Market comparables",
+    0.85
+  ),
+  check(
+    "service",
+    "EVIDENCE_FOUND",
+    "Manufacturer quality test cert and warranty against squeal included.",
+    "មានវិញ្ញាបនបត្រតេស្តគុណភាពរោងចក្រ និងការធានាមិនស៊ីឌីស។",
+    "Warranty documentation",
+    0.8
+  ),
+  check(
+    "photos",
+    "EVIDENCE_FOUND",
+    "Clear photos of Toyota holographic security label and barcode serial number.",
+    "រូបភាពច្បាស់នៃតែមសន្តិសុខ 7 ពណ៌ Toyota និងលេខបាកូដសម្គាល់។",
+    "Listing photo analysis",
+    0.8
+  ),
+  check(
+    "ownership",
+    "EVIDENCE_FOUND",
+    "Sold by verified auto parts dealership (Sokha Chea Auto Parts).",
+    "លក់ដោយហាងគ្រឿងបន្លាស់ដែលបានផ្ទៀងផ្ទាត់ដោយវេទិកា (Sokha Chea Auto Parts)។",
+    "Merchant verification",
+    0.85
+  ),
+  check(
+    "accident",
+    "NOT_VERIFIED",
+    "Seller declares brand-new zero-defect item with intact ceramic friction material.",
+    "ម្ចាស់លក់ប្រកាសជាទំនិញថ្មីគ្មានការខូចខាត ឬប្រេះស្រាំ។",
+    "Seller declaration",
+    0.5
+  ),
+  check(
+    "listing",
+    "EVIDENCE_FOUND",
+    "Authentic OEM specifications declared. No counterfeit or scam phrasing detected.",
+    "លក្ខណៈបច្ចេកទេស OEM សុទ្ធ គ្មានពាក្យសម្គាល់ទំនិញក្លែងក្លាយទេ។",
+    "Listing text scan",
+    0.8
+  ),
+];
+
 async function seedReports() {
   const pradoReport = await prisma.vehicleHistoryReport.create({
     data: {
@@ -1541,7 +1743,37 @@ async function seedReports() {
     },
   });
 
-  return { pradoReport, lexusReport };
+  const hondaDreamReport = await prisma.vehicleHistoryReport.create({
+    data: {
+      vehicleId: "veh_honda_dream_2023",
+      checksJson: JSON.stringify(HONDA_DREAM_CHECKS),
+      overallConfidence: 84,
+      summaryEn:
+        "This 2023 Honda Dream 125 NCX is in excellent standing: registration card verified, 3,200 km odometer is highly consistent with light city use, and dealer origin is platform-supported. Unverified seller fall declaration, but overall very high confidence.",
+      summaryKm:
+        "ម៉ូតូ Honda Dream 125 ឆ្នាំ២០២៣ នេះស្ថិតក្នុងស្ថានភាពល្អបំផុត៖ កាតគ្រីបានផ្ទៀងផ្ទាត់ ចម្ងាយ ៣,២០០ គ.ម សមរម្យសម្រាប់ការជិះក្នុងក្រុង ហើយមានប្រភពចែកចាយច្បាស់លាស់។ ការប្រកាសមិនដែលដួលជាការប្រកាសរបស់ម្ចាស់លក់ ប៉ុន្តែជារួមមានទំនុកចិត្តខ្ពស់។",
+      limitationsJson: JSON.stringify(MOTOR_LIMITATIONS),
+      status: "COMPLETE",
+      createdAt: daysAgo(1),
+    },
+  });
+
+  const brakePadsReport = await prisma.vehicleHistoryReport.create({
+    data: {
+      vehicleId: "part_toyota_brake_pads",
+      checksJson: JSON.stringify(BRAKE_PADS_CHECKS),
+      overallConfidence: 88,
+      summaryEn:
+        "Authentic Toyota genuine brake pads verified by authorized distributor purchase invoice and Japan customs clearance. OEM part number 04465-47060 matches Prius/Corolla catalogs. Asking price $38 aligns with market median.",
+      summaryKm:
+        "ស្បែកហ្វ្រាំង Toyota សុទ្ធត្រូវបានផ្ទៀងផ្ទាត់ដោយវិក្កយបត្រទិញពីតំណាងចែកចាយ និងឯកសារពន្ធគយពីជប៉ុន។ លេខកូដ OEM 04465-47060 ត្រូវនឹងកាតាឡុក Prius/Corolla។ តម្លៃ ៣៨ ដុល្លាស្ថិតក្នុងកម្រិតទីផ្សារធម្មតា។",
+      limitationsJson: JSON.stringify(PART_LIMITATIONS),
+      status: "COMPLETE",
+      createdAt: daysAgo(1),
+    },
+  });
+
+  return { pradoReport, lexusReport, hondaDreamReport, brakePadsReport };
 }
 
 // ---------------------------------------------------------------------------

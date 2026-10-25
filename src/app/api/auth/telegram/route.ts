@@ -43,6 +43,17 @@ export async function POST(req: Request) {
     // later from Profile settings.
     let user = await db.user.findUnique({ where: { telegramId: tgId } });
 
+    const { readPlatformSettings } = await import("@/lib/platform-settings");
+    const settings = await readPlatformSettings();
+    if (settings.adminOnlyLogin) {
+      if (!user || (user.role !== "SUPER_ADMIN" && user.role !== "ADMIN")) {
+        return NextResponse.json(
+          { error: "Platform access is currently restricted to administrators only" },
+          { status: 403 },
+        );
+      }
+    }
+
     if (!user) {
       const syntheticPhone = `+8557000${String(String(tg.id).slice(-5)).padStart(5, "0")}`.slice(0, 14);
       // Collision-safe: if the synthetic phone exists (same tg id recreated), fall back

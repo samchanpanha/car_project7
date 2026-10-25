@@ -102,9 +102,10 @@ async function buildSessionFor(userId: string): Promise<SessionDTO> {
 
   const authed = await isAuthedUser(user.id);
 
+  const settings = await readPlatformSettings();
+
   let subscription: SessionDTO["subscription"] = null;
   if (user.role === "SELLER" || user.role === "DEALER") {
-    const settings = await readPlatformSettings();
     const realSub = membership?.tenant?.subscription;
     if (membership && realSub) {
       // Any staff member or owner of a dealership inherits the parent dealership's subscription.
@@ -161,8 +162,14 @@ async function buildSessionFor(userId: string): Promise<SessionDTO> {
     authed,
     telegramLinked: Boolean(user.telegramId),
     phoneVerified: user.phoneVerified,
-    personas,
+    personas: settings.demoModeEnabled
+      ? personas
+      : authed && (user.role === "SUPER_ADMIN" || user.role === "ADMIN")
+        ? personas
+        : [],
     subscription,
+    demoModeEnabled: settings.demoModeEnabled,
+    adminOnlyLogin: settings.adminOnlyLogin,
   };
   return session;
 }
@@ -170,13 +177,17 @@ async function buildSessionFor(userId: string): Promise<SessionDTO> {
 /** True when the given user id holds a valid `khlan_auth` session (cookie OR
  *  the `x-khlan-session` header used by cookie-blocked browsers). */
 async function isAuthedUser(userId: string): Promise<boolean> {
-  const { cookies } = await import("next/headers");
-  const { verifySessionToken, AUTH_COOKIE, SESSION_HEADER } = await import("@/lib/auth");
-  const { headers } = await import("next/headers");
-  const jar = await cookies();
-  if (verifySessionToken(jar.get(AUTH_COOKIE)?.value) === userId) return true;
-  const h = await headers();
-  return verifySessionToken(h.get(SESSION_HEADER)) === userId;
+  try {
+    const { cookies } = await import("next/headers");
+    const { verifySessionToken, AUTH_COOKIE, SESSION_HEADER } = await import("@/lib/auth");
+    const { headers } = await import("next/headers");
+    const jar = await cookies();
+    if (verifySessionToken(jar.get(AUTH_COOKIE)?.value) === userId) return true;
+    const h = await headers();
+    return verifySessionToken(h.get(SESSION_HEADER)) === userId;
+  } catch {
+    return false;
+  }
 }
 
 export async function GET() {
@@ -187,13 +198,17 @@ export async function GET() {
     const current = await getCurrentUser();
     const session = await buildSessionFor(current.id);
 
+    const settings = await readPlatformSettings();
     // Distinguish a genuine guest (fresh visitor, no session info) from an
     // active demo persona (sandbox impersonation via cookie OR header):
-    // guests get the public experience and are asked to register before
-    // contacting dealers; demo personas keep full sandbox access.
-    const personaActive = await getActivePersonaId();
+    // When demo mode is disabled, public guests cannot activate sandbox personas.
+    const personaActive = settings.demoModeEnabled ? await getActivePersonaId() : null;
     const demoPersona = !session.authed && Boolean(personaActive);
     const res = NextResponse.json({ ...session, demoPersona });
+
+    if (!settings.demoModeEnabled && !session.authed) {
+      res.cookies.set({ name: PERSONA_COOKIE, value: "", path: "/", maxAge: 0 });
+    }
 
     // Stale-session cleanup: when the browser still carries `khlan_auth` but
     // it no longer verifies (database reseeded, token expired, secret rotated),
@@ -201,9 +216,13 @@ export async function GET() {
     // that had no admin tools. Clear the dead cookie so the visitor becomes a
     // real guest and the UI shows Log in / Sign up instead. Header-based
     // sessions (cookie-blocked browsers) have no stale cookie to clear.
-    const jar = await cookies();
-    if (!session.authed && !demoPersona && jar.get(AUTH_COOKIE)?.value) {
-      res.cookies.set({ name: AUTH_COOKIE, value: "", path: "/", maxAge: 0 });
+    try {
+      const jar = await cookies();
+      if (!session.authed && !demoPersona && jar.get(AUTH_COOKIE)?.value) {
+        res.cookies.set({ name: AUTH_COOKIE, value: "", path: "/", maxAge: 0 });
+      }
+    } catch {
+      // Outside RequestAsyncStorage (e.g. tests) — ignore.
     }
     return res;
   } catch (err) {
@@ -216,6 +235,17 @@ const switchSchema = z.object({ userId: z.enum(ALLOWED_PERSONA_IDS) });
 
 export async function POST(req: Request) {
   try {
+    const settings = await readPlatformSettings();
+    if (!settings.demoModeEnabled) {
+      const current = await getCurrentUser();
+      if (current.role !== "SUPER_ADMIN" && current.role !== "ADMIN") {
+        return NextResponse.json(
+          { error: "Demo persona switching is currently disabled" },
+          { status: 403 },
+        );
+      }
+    }
+
     let json: unknown;
     try {
       json = await req.json();

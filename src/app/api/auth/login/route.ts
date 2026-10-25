@@ -54,6 +54,15 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Incorrect phone number or password" }, { status: 401 });
     }
 
+    const { readPlatformSettings } = await import("@/lib/platform-settings");
+    const settings = await readPlatformSettings();
+    if (settings.adminOnlyLogin && user.role !== "SUPER_ADMIN" && user.role !== "ADMIN") {
+      return NextResponse.json(
+        { error: "Platform access is currently restricted to administrators only" },
+        { status: 403 },
+      );
+    }
+
     const token = createSessionToken(user.id);
     const res = NextResponse.json({
       ok: true,

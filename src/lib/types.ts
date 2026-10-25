@@ -84,7 +84,7 @@ export interface VehicleCardDTO {
 }
 
 export interface VehicleDocumentDTO {
-  type: string; // REGISTRATION_BOOK | IMPORT_DECLARATION | SERVICE_RECORD | INSPECTION_CERT | INSURANCE
+  type: string; // REGISTRATION_BOOK | IMPORT_DECLARATION | SERVICE_RECORD | INSPECTION_CERT | INSURANCE | PURCHASE_INVOICE | WARRANTY_CARD
   status: string; // PROVIDED | MISSING | VERIFIED | REJECTED
   notes?: string | null;
 }

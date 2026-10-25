@@ -691,6 +691,8 @@ function AdminSettings() {
         maintenanceMode: form.maintenanceMode,
         freeTrialEnabled: form.freeTrialEnabled ?? true,
         freeTrialDays: Math.max(0, Math.min(365, Math.round(Number(form.freeTrialDays) || 0))),
+        demoModeEnabled: form.demoModeEnabled ?? false,
+        adminOnlyLogin: form.adminOnlyLogin ?? true,
       });
       setForm(saved);
       toast.success(t("toastUpdated"));
@@ -783,6 +785,79 @@ function AdminSettings() {
             </div>
           )}
         </div>
+
+        {/* Demo Mode Display Section */}
+        <div className="rounded-xl border border-slate-200 p-3.5 space-y-2 sm:col-span-2 bg-slate-50/70">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <div className="flex items-center gap-2">
+                <Label htmlFor="adm-demo-status" className="text-xs font-bold text-slate-800 cursor-pointer">
+                  {t("setDemoMode")}
+                </Label>
+                <span className={cn(
+                  "rounded-full px-2 py-0.5 text-[10px] font-bold border",
+                  form.demoModeEnabled
+                    ? "bg-emerald-50 text-emerald-700 border-emerald-300"
+                    : "bg-slate-100 text-slate-700 border-slate-300"
+                )}>
+                  {form.demoModeEnabled ? "ACTIVE" : "INACTIVE"}
+                </span>
+              </div>
+              <p className="mt-1 text-[11px] leading-relaxed text-slate-500">
+                {form.demoModeEnabled
+                  ? t("setDemoModeActiveHint")
+                  : t("setDemoModeInactiveHint")}
+              </p>
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-medium text-slate-600">
+                {form.demoModeEnabled ? "Active" : "Inactive"}
+              </span>
+              <Switch
+                id="adm-demo-status"
+                checked={form.demoModeEnabled ?? false}
+                onCheckedChange={(v) => setForm({ ...form, demoModeEnabled: v })}
+              />
+            </div>
+          </div>
+        </div>
+
+        {/* Admin-Only Login Restriction Section */}
+        <div className="rounded-xl border border-slate-200 p-3.5 space-y-2 sm:col-span-2 bg-slate-50/70">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <div className="flex items-center gap-2">
+                <Label htmlFor="adm-admin-only-status" className="text-xs font-bold text-slate-800 cursor-pointer">
+                  {t("setAdminOnlyLogin")}
+                </Label>
+                <span className={cn(
+                  "rounded-full px-2 py-0.5 text-[10px] font-bold border",
+                  form.adminOnlyLogin
+                    ? "bg-amber-50 text-amber-800 border-amber-300"
+                    : "bg-emerald-50 text-emerald-700 border-emerald-300"
+                )}>
+                  {form.adminOnlyLogin ? "ACTIVE" : "INACTIVE"}
+                </span>
+              </div>
+              <p className="mt-1 text-[11px] leading-relaxed text-slate-500">
+                {form.adminOnlyLogin
+                  ? t("setAdminOnlyLoginActiveHint")
+                  : t("setAdminOnlyLoginInactiveHint")}
+              </p>
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-medium text-slate-600">
+                {form.adminOnlyLogin ? "Active" : "Inactive"}
+              </span>
+              <Switch
+                id="adm-admin-only-status"
+                checked={form.adminOnlyLogin ?? true}
+                onCheckedChange={(v) => setForm({ ...form, adminOnlyLogin: v })}
+              />
+            </div>
+          </div>
+        </div>
+
         <div className="flex items-center justify-between rounded-lg border border-slate-200 p-3">
           <Label htmlFor="adm-auto" className="text-xs font-medium text-slate-600 cursor-pointer">{t("setAutoApprove")}</Label>
           <Switch id="adm-auto" checked={form.autoApproveListings} onCheckedChange={(v) => setForm({ ...form, autoApproveListings: v })} />

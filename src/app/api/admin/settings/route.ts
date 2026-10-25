@@ -23,6 +23,8 @@ const putSchema = z.object({
   maintenanceMode: z.boolean(),
   freeTrialEnabled: z.boolean().default(true),
   freeTrialDays: z.number().int().min(0).max(365),
+  demoModeEnabled: z.boolean().default(false),
+  adminOnlyLogin: z.boolean().default(true),
 });
 
 export async function PUT(req: Request) {

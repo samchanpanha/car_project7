@@ -18,7 +18,17 @@ export async function GET() {
         where: { status: "COMPLETE" },
         orderBy: { createdAt: "desc" },
         take: 6,
-        include: { vehicle: { select: { make: true, model: true, year: true } } },
+        include: {
+          vehicle: {
+            select: {
+              make: true,
+              model: true,
+              year: true,
+              listingCategory: true,
+              partNumber: true,
+            },
+          },
+        },
       }),
     ]);
 
@@ -49,7 +59,10 @@ export async function GET() {
       statusBreakdown,
       recent: recent.map((r) => ({
         id: r.id,
-        vehicleLabel: `${r.vehicle.make} ${r.vehicle.model} ${r.vehicle.year}`,
+        vehicleLabel:
+          r.vehicle.listingCategory === "SPARE_PART"
+            ? `${r.vehicle.make} ${r.vehicle.model}${r.vehicle.partNumber ? ` (${r.vehicle.partNumber})` : ""}`
+            : `${r.vehicle.make} ${r.vehicle.model} ${r.vehicle.year}`,
         confidence: Math.round(r.overallConfidence),
         createdAt: r.createdAt.toISOString(),
       })),

@@ -12,6 +12,8 @@ export const SETTING_KEYS = [
   "maintenanceMode",
   "freeTrialDays",
   "freeTrialEnabled",
+  "demoModeEnabled",
+  "adminOnlyLogin",
 ] as const;
 
 export type SettingKey = (typeof SETTING_KEYS)[number];
@@ -25,6 +27,10 @@ export const DEFAULT_SETTINGS: PlatformSettingsDTO = {
   freeTrialEnabled: true,
   /** free trial for newly registered sellers/dealers — 1 month by default */
   freeTrialDays: 30,
+  /** whether demo persona display and sandbox mode is active (default false) */
+  demoModeEnabled: false,
+  /** whether platform login is restricted to administrators only (default true) */
+  adminOnlyLogin: true,
 };
 
 /** Read all platform settings with defaults for missing/malformed keys. */

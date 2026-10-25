@@ -98,6 +98,8 @@ function localAuthError(t: ReturnType<typeof useT>, msg: string): string {
   if (/already registered/i.test(msg)) return t("authErrPhoneTaken");
   if (/No account with this phone/i.test(msg)) return t("authErrNoAccount");
   if (/Captcha/i.test(msg)) return t("captchaFailed");
+  if (/restricted to administrators/i.test(msg)) return t("authErrAdminOnly");
+  if (/registration is currently disabled/i.test(msg)) return t("authErrRegDisabled");
   return msg;
 }
 
@@ -1339,7 +1341,10 @@ function DemoHint() {
 
 export function AuthView({ initialTab }: { initialTab?: "login" | "signup" }) {
   const t = useT();
-  const [tab, setTab] = useState<string>(initialTab ?? "login");
+  const me = useAppStore((s) => s.me);
+  const adminOnly = Boolean(me?.adminOnlyLogin);
+  const demoActive = Boolean(me?.demoModeEnabled);
+  const [tab, setTab] = useState<string>(adminOnly ? "login" : initialTab ?? "login");
   const [isPaymentStep, setIsPaymentStep] = useState(false);
 
   return (
@@ -1363,15 +1368,30 @@ export function AuthView({ initialTab }: { initialTab?: "login" | "signup" }) {
           </p>
         </div>
 
-        <Tabs value={isPaymentStep ? "signup" : tab} onValueChange={(v) => setTab(v as "login" | "signup")}>
+        {adminOnly && !isPaymentStep && (
+          <Alert className="mb-4 border-amber-300 bg-amber-50 text-amber-950">
+            <ShieldCheck className="h-4 w-4 text-amber-600" aria-hidden />
+            <AlertTitle className="font-semibold text-xs text-amber-900">{t("adminOnlyAlertTitle")}</AlertTitle>
+            <AlertDescription className="text-[11px] leading-relaxed text-amber-800">
+              {t("adminOnlyAlertDesc")}
+            </AlertDescription>
+          </Alert>
+        )}
+
+        <Tabs
+          value={isPaymentStep ? "signup" : (adminOnly ? "login" : tab)}
+          onValueChange={(v) => !adminOnly && setTab(v as "login" | "signup")}
+        >
           {!isPaymentStep && (
-            <TabsList className="grid w-full grid-cols-2">
+            <TabsList className={cn("grid w-full", adminOnly ? "grid-cols-1" : "grid-cols-2")}>
               <TabsTrigger value="login" className="text-xs sm:text-sm">
                 {t("authLoginTab")}
               </TabsTrigger>
-              <TabsTrigger value="signup" className="text-xs sm:text-sm">
-                {t("authSignupTab")}
-              </TabsTrigger>
+              {!adminOnly && (
+                <TabsTrigger value="signup" className="text-xs sm:text-sm">
+                  {t("authSignupTab")}
+                </TabsTrigger>
+              )}
             </TabsList>
           )}
           {!isPaymentStep && (
@@ -1384,7 +1404,7 @@ export function AuthView({ initialTab }: { initialTab?: "login" | "signup" }) {
           </TabsContent>
         </Tabs>
 
-        {!isPaymentStep && (
+        {!isPaymentStep && demoActive && (
           <>
             <Separator className="my-4" />
             <DemoHint />

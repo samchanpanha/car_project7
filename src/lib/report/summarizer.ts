@@ -1,12 +1,17 @@
 import ZAI from "z-ai-web-dev-sdk";
 import type { ReportCheck } from "@/lib/types";
 
-const SYSTEM_PROMPT =
-  "You write vehicle history report summaries for a Cambodian marketplace. " +
-  "You MUST restate only the provided check results. Never upgrade a status, " +
-  "never invent facts, never say a car is accident-free. " +
-  'Respond with STRICT JSON only: {"summaryEn":"...","summaryKm":"..."} — ' +
-  "2-3 sentences each, plain language.";
+function getSystemPrompt(category?: string): string {
+  const itemType =
+    category === "SPARE_PART" ? "spare part" : category === "MOTOR" ? "motorcycle" : "vehicle";
+  return (
+    `You write ${itemType} verification report summaries for a Cambodian marketplace. ` +
+    "You MUST restate only the provided check results. Never upgrade a status, " +
+    `never invent facts, never say an item is completely defect-free or accident-free. ` +
+    'Respond with STRICT JSON only: {"summaryEn":"...","summaryKm":"..."} — ' +
+    "2-3 sentences each, plain language."
+  );
+}
 
 const LLM_TIMEOUT_MS = 30_000;
 
@@ -18,7 +23,6 @@ function withTimeout<T>(p: Promise<T>, ms: number): Promise<T> {
 }
 
 function extractJson(raw: string): unknown {
-  // strip code fences, then slice from first { to last }
   const cleaned = raw.replace(/```(?:json)?/gi, "").trim();
   const start = cleaned.indexOf("{");
   const end = cleaned.lastIndexOf("}");
@@ -27,7 +31,10 @@ function extractJson(raw: string): unknown {
 }
 
 /** Deterministic fallback built from the checks, used whenever the LLM fails. */
-export function fallbackSummary(checks: ReportCheck[]): { summaryEn: string; summaryKm: string } {
+export function fallbackSummary(
+  checks: ReportCheck[],
+  category?: string,
+): { summaryEn: string; summaryKm: string } {
   const count = (s: string) => checks.filter((c) => c.status === s).length;
   const verified = count("VERIFIED");
   const evidence = count("EVIDENCE_FOUND");
@@ -38,20 +45,23 @@ export function fallbackSummary(checks: ReportCheck[]): { summaryEn: string; sum
   const gapAreas = checks
     .filter((c) => c.status === "NO_DATA" || c.status === "INCONSISTENT")
     .slice(0, 3);
-  const areasEn = gapAreas.map((c) => c.title).join(", ") || "none — but always inspect in person";
+  const areasEn = gapAreas.map((c) => c.title).join(", ") || "none — but always inspect before purchasing";
   const areasKm =
     gapAreas.map((c) => c.titleKm).join(", ") || "គ្មាន — ប៉ុន្តែសូមពិនិត្យដោយខ្លួនឯងជានិច្ច";
 
+  const itemNounEn =
+    category === "SPARE_PART" ? "part" : category === "MOTOR" ? "motorcycle" : "vehicle";
+
   const summaryEn =
-    `Based on ${checks.length} checks: ${verified} verified, ${evidence} supported by evidence, ` +
+    `Based on ${checks.length} evidence checks for this ${itemNounEn}: ${verified} verified, ${evidence} supported by evidence, ` +
     `${inconsistent} inconsistencies flagged, ${notVerified} unverified, ${noData} with no data. ` +
-    `Key items to verify in person: ${areasEn}.`;
+    `Key items to verify in person or with seller: ${areasEn}.`;
 
   const summaryKm =
-    `ផ្អែកលើការវិភាគ ${checks.length} ចំណុច៖ ${verified} ចំណុចបានផ្ទៀងផ្ទាត់, ` +
+    `ផ្អែកលើការវិភាគភស្តុតាង ${checks.length} ចំណុច៖ ${verified} ចំណុចបានផ្ទៀងផ្ទាត់, ` +
     `${evidence} ចំណុចមានភស្ដុតាងគាំទ្រ, ${inconsistent} ចំណុចមានភាពមិនសមស្រប, ` +
     `${notVerified} ចំណុចមិនទាន់ផ្ទៀងផ្ទាត់, ${noData} ចំណុចគ្មានទិន្នន័យ។ ` +
-    `ចំណុចសំខាន់ៗដែលត្រូវផ្ទាល់ពិនិត្យដោយខ្លួនឯង៖ ${areasKm}។`;
+    `ចំណុចសំខាន់ៗដែលត្រូវពិនិត្យដោយផ្ទាល់ ឬផ្ទៀងផ្ទាត់ជាមួយអ្នកលក់៖ ${areasKm}។`;
 
   return { summaryEn, summaryKm };
 }
@@ -61,19 +71,21 @@ export function fallbackSummary(checks: ReportCheck[]): { summaryEn: string; sum
  * and falls back to a deterministic template on any failure.
  */
 export async function summarizeReport(
-  vehicleTitle: string,
+  itemTitle: string,
   checks: ReportCheck[],
+  category?: string,
 ): Promise<{ summaryEn: string; summaryKm: string }> {
-  const fallback = fallbackSummary(checks);
+  const fallback = fallbackSummary(checks, category);
   try {
     const zai = await ZAI.create();
+    const systemPrompt = getSystemPrompt(category);
     const completion = await withTimeout(
       zai.chat.completions.create({
         messages: [
-          { role: "assistant", content: SYSTEM_PROMPT },
+          { role: "assistant", content: systemPrompt },
           {
             role: "user",
-            content: `Vehicle: ${vehicleTitle}\nCheck results JSON:\n${JSON.stringify(checks)}`,
+            content: `Item: ${itemTitle} (${category || "CAR"})\nCheck results JSON:\n${JSON.stringify(checks)}`,
           },
         ],
         thinking: { type: "disabled" },

@@ -14,6 +14,8 @@ export const DOCUMENT_TYPES = [
   "SERVICE_RECORD",
   "INSPECTION_CERT",
   "INSURANCE",
+  "PURCHASE_INVOICE",
+  "WARRANTY_CARD",
 ] as const;
 
 export const DOCUMENT_STATUSES = ["PROVIDED", "MISSING", "VERIFIED", "REJECTED"] as const;

@@ -628,21 +628,64 @@ export function DetailView({ vehicleId }: { vehicleId: string }) {
           </div>
 
           {/* AI report card */}
-          <div className="rounded-xl border border-teal-200 bg-teal-50/60 p-5">
+          <div
+            className={cn(
+              "rounded-xl border p-5",
+              v.listingCategory === "SPARE_PART"
+                ? "border-amber-200 bg-amber-50/60"
+                : v.listingCategory === "MOTOR"
+                ? "border-sky-200 bg-sky-50/60"
+                : "border-teal-200 bg-teal-50/60"
+            )}
+          >
             <h2 className="flex items-center gap-2 font-semibold text-slate-900">
-              <FileCheck2 className="h-5 w-5 text-teal-600" aria-hidden />
-              {t("aiReportTitle")}
+              {v.listingCategory === "SPARE_PART" ? (
+                <Wrench className="h-5 w-5 text-amber-600" aria-hidden />
+              ) : v.listingCategory === "MOTOR" ? (
+                <Bike className="h-5 w-5 text-sky-600" aria-hidden />
+              ) : (
+                <FileCheck2 className="h-5 w-5 text-teal-600" aria-hidden />
+              )}
+              {v.listingCategory === "SPARE_PART"
+                ? t("aiReportPartTitle")
+                : v.listingCategory === "MOTOR"
+                ? t("aiReportMotorTitle")
+                : t("aiReportTitle")}
             </h2>
-            <p className="mt-1 text-sm text-slate-600">{t("aiReportBody")}</p>
+            <p className="mt-1 text-sm text-slate-600">
+              {v.listingCategory === "SPARE_PART"
+                ? t("aiReportPartBody")
+                : v.listingCategory === "MOTOR"
+                ? t("aiReportMotorBody")
+                : t("aiReportBody")}
+            </p>
             {v.report ? (
               <div className="mt-3">
                 <div className="flex items-center gap-2">
-                  <span className="text-2xl font-bold text-teal-700">{Math.round(v.report.overallConfidence)}%</span>
+                  <span
+                    className={cn(
+                      "text-2xl font-bold",
+                      v.listingCategory === "SPARE_PART"
+                        ? "text-amber-800"
+                        : v.listingCategory === "MOTOR"
+                        ? "text-sky-800"
+                        : "text-teal-700"
+                    )}
+                  >
+                    {Math.round(v.report.overallConfidence)}%
+                  </span>
                   <span className="text-xs text-slate-500">{t("confidence")}</span>
                 </div>
                 <Button
                   onClick={() => navigate({ name: "report", vehicleId: v.id })}
-                  className="mt-3 w-full bg-teal-600 hover:bg-teal-700 text-white font-semibold"
+                  className={cn(
+                    "mt-3 w-full font-semibold text-white",
+                    v.listingCategory === "SPARE_PART"
+                      ? "bg-amber-600 hover:bg-amber-700"
+                      : v.listingCategory === "MOTOR"
+                      ? "bg-sky-600 hover:bg-sky-700"
+                      : "bg-teal-600 hover:bg-teal-700"
+                  )}
                 >
                   <FileCheck2 className="h-4 w-4 mr-2" aria-hidden />
                   {t("viewFullReport")}
@@ -652,7 +695,14 @@ export function DetailView({ vehicleId }: { vehicleId: string }) {
               <Button
                 onClick={generateReport}
                 disabled={generating}
-                className="mt-3 w-full bg-teal-600 hover:bg-teal-700 text-white font-semibold"
+                className={cn(
+                  "mt-3 w-full font-semibold text-white",
+                  v.listingCategory === "SPARE_PART"
+                    ? "bg-amber-600 hover:bg-amber-700"
+                    : v.listingCategory === "MOTOR"
+                    ? "bg-sky-600 hover:bg-sky-700"
+                    : "bg-teal-600 hover:bg-teal-700"
+                )}
               >
                 {generating ? (
                   <>

@@ -41,6 +41,10 @@ export interface SessionDTO {
     isTrial: boolean;
     currentPeriodEnd?: string;
   } | null;
+  /** whether demo persona display and sandbox mode is active */
+  demoModeEnabled?: boolean;
+  /** whether platform login is restricted to administrators only */
+  adminOnlyLogin?: boolean;
 }
 
 // ---------- Shared bits ----------
@@ -223,6 +227,10 @@ export interface PlatformSettingsDTO {
   freeTrialEnabled: boolean;
   /** free-trial length (days) for non-paying seller/dealer accounts, admin-configurable */
   freeTrialDays: number;
+  /** whether demo persona display and sandbox mode is active */
+  demoModeEnabled: boolean;
+  /** whether platform login is restricted to administrators only */
+  adminOnlyLogin: boolean;
 }
 
 /** Virtual subscription for non-tenant SELLER/DEALER accounts — a free trial
