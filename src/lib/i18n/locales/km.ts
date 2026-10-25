@@ -1,7 +1,7 @@
 import type { en } from "./en";
 
 export const km: Record<keyof typeof en, string> = {
-  appName: "ខ្លាន",
+  appName: "ឡាន",
   tagline: "ផ្សារឡានដែលទំនុកចិត្តបាននៅកម្ពុជា",
   navHome: "ទំព័រដើម",
   navBrowse: "រុករកឡាន",
@@ -200,7 +200,7 @@ export const km: Record<keyof typeof en, string> = {
   selectConversation: "ជ្រើសការសន្ទនា",
   typeMessage: "សរសេរសារ…",
   send: "ផ្ញើ",
-  safetyNote: "ខ្លានមិនសុំបង់ប្រាក់ទេ។ តែងតែបង់ជាមួយផ្ទាល់ បន្ទាប់ពីពិនិត្យឡានរួច។",
+  safetyNote: "ឡានមិនសុំបង់ប្រាក់ទេ។ តែងតែបង់ជាមួយផ្ទាល់ បន្ទាប់ពីពិនិត្យឡានរួច។",
   favoritesTitle: "ចំណូលចិត្តរបស់អ្នក",
   noFavorites: "មិនទាន់មានចំណូលចិត្ត",
   noFavoritesHint: "ចុចបេះដូងលើឡានណាមួយ ដើម្បីរក្សាទុកនៅទីនេះ។",
@@ -213,7 +213,7 @@ export const km: Record<keyof typeof en, string> = {
   pendingBadge: "កំពុងផ្ទៀងផ្ទាត់",
   ratingOf: "{score} ({n} មតិ)",
   listingsFrom: "ឡានពីអ្នកលក់នេះ",
-  footerAbout: "ខ្លាន — ជំនួញឡានផ្អែកលើភស្តុតាងសម្រាប់កម្ពុជា។",
+  footerAbout: "ឡាន — ជំនួញឡានផ្អែកលើភស្តុតាងសម្រាប់កម្ពុជា។",
   footerTrust: "ទំនុកចិត្ត និងសុវត្ថិភាព",
   footerAiNote:
     "របាយការណ៍ AI បង្ហាញស្ថានភាពភស្តុតាង — មិនមែនការធានាទេ។ \"គ្មានទិន្នន័យ\" មិនមែន \"គ្មានគ្រោះថ្នាក់\" ទេ។",
@@ -506,7 +506,7 @@ export const km: Record<keyof typeof en, string> = {
   authSignupBtn: "បង្កើតគណនី",
   authDemoHintTitle: "គណនីសាកល្បង",
   authDemoHintBody: "គណនីសាកល្បងទាំងអស់ប្រើពាក្យសម្ងាត់តែមួយគឺ {pw}។ គណនីអ្នកគ្រប់គ្រងកំពូល (នីតា) មាននៅក្នុងបញ្ជីខាងក្រោម។",
-  authDemoModeNote: "បែបបទសាកល្បងអនុញ្ញាតឱ្យអ្នកស្វែងរកខ្លានដោយមិនចាំបាច់មានគណនី។ ចូលប្រើដើម្បីមានគណនីផ្ទាល់ខ្លួន។",
+  authDemoModeNote: "បែបបទសាកល្បងអនុញ្ញាតឱ្យអ្នកស្វែងរកឡានដោយមិនចាំបាច់មានគណនី។ ចូលប្រើដើម្បីមានគណនីផ្ទាល់ខ្លួន។",
   authShowPw: "បង្ហាញពាក្យសម្ងាត់",
   authHidePw: "លាក់ពាក្យសម្ងាត់",
   authErrName: "សូមបញ្ចូលឈ្មោះរបស់អ្នក",
@@ -517,7 +517,7 @@ export const km: Record<keyof typeof en, string> = {
   authErrPhoneTaken: "លេខទូរស័ព្ទនេះបានចុះឈ្មោះរួចហើយ — សូមចូលប្រើ",
   authErrNoAccount: "គ្មានគណនីជាមួយលេខទូរស័ព្ទនេះ — សូមចុះឈ្មោះជាមុនសិន",
   authWelcomeBack: "សូមស្វាគមន៍ត្រឡប់មកវិញ {name}",
-  authWelcomeNew: "សូមស្វាគមន៍មកកាន់ខ្លាន",
+  authWelcomeNew: "សូមស្វាគមន៍មកកាន់ឡាន",
   authLoginCta: "ចូលប្រើ / ចុះឈ្មោះ",
   authLoginCtaHint: "ប្រើគណនីផ្ទាល់ខ្លួនរបស់អ្នក",
   toastLoggedOut: "អ្នកបានចាកចេញហើយ",

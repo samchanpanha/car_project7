@@ -1,4 +1,4 @@
-// KhLan (ខ្លាន) — Cambodia AI-Powered Car Marketplace
+// KhLan (ឡាន) — Cambodia AI-Powered Car Marketplace
 // Prisma schema — MVP vertical slice (see PLAN.md §10)
 
 generator client {

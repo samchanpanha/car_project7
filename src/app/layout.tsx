@@ -18,7 +18,7 @@ const kantumruyPro = Kantumruy_Pro({
 });
 
 export const metadata: Metadata = {
-  title: "KhLan ខ្លាន — Cambodia's Trusted Car Marketplace",
+  title: "KhLan ឡាន — Cambodia's Trusted Car Marketplace",
   description:
     "Buy and sell cars in Cambodia with confidence: verified listings, evidence-based AI vehicle reports, secure messaging. Khmer & English.",
   keywords: ["Cambodia", "car marketplace", "used cars", "ឡាន", "ខ្មែរ", "AI vehicle report"],

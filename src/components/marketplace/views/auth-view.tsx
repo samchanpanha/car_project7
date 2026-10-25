@@ -427,10 +427,10 @@ function RegistrationSubscriptionStep({
   const plans: PlanOption[] = (
     platformSettings.data?.plans
       ? DEFAULT_PLANS.filter((def) =>
-          platformSettings.data?.plans?.some(
-            (p) => p.plan === def.key && (p as any).enabled !== false,
-          ),
-        )
+        platformSettings.data?.plans?.some(
+          (p) => p.plan === def.key && (p as any).enabled !== false,
+        ),
+      )
       : DEFAULT_PLANS
   ).map((def) => {
     const live = platformSettings.data?.plans?.find((p) => p.plan === def.key);
@@ -1361,7 +1361,7 @@ export function AuthView({ initialTab }: { initialTab?: "login" | "signup" }) {
             <CarFront className="h-7 w-7" aria-hidden />
           </span>
           <h1 className="text-xl font-bold tracking-tight text-slate-900">
-            ខ្លាន <span className="text-amber-600">KhLan</span>
+            ឡាន <span className="text-amber-600">KhLan</span>
           </h1>
           <p className="max-w-xs text-xs leading-relaxed text-slate-500">
             {isPaymentStep ? "Complete subscription payment to activate your dashboard" : t("authSubtitle")}
@@ -1416,7 +1416,7 @@ export function AuthView({ initialTab }: { initialTab?: "login" | "signup" }) {
       </div>
       <div className="mt-3 flex justify-center">
         <Badge variant="outline" className="border-slate-200 text-[10px] font-medium text-slate-400">
-          ខ្លាន KhLan · {t("tagline")}
+          ឡាន KhLan · {t("tagline")}
         </Badge>
       </div>
     </section>

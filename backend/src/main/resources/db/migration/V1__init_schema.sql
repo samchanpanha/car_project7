@@ -1,4 +1,4 @@
--- KhLan (ខ្លាន) PostgreSQL Database Schema Migration V1
+-- KhLan (ឡាន) PostgreSQL Database Schema Migration V1
 -- Converted from Prisma schema with PostgreSQL data types and constraints
 
 -- 1. Users
@@ -43,8 +43,8 @@ CREATE TABLE IF NOT EXISTS tenants (
 -- 3. Tenant Members
 CREATE TABLE IF NOT EXISTS tenant_members (
     id VARCHAR(64) PRIMARY KEY,
-    tenant_id VARCHAR(64) NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
-    user_id VARCHAR(64) NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    tenant_id VARCHAR(64) NOT NULL REFERENCES tenants (id) ON DELETE CASCADE,
+    user_id VARCHAR(64) NOT NULL REFERENCES users (id) ON DELETE CASCADE,
     role VARCHAR(32) NOT NULL DEFAULT 'SALES_STAFF',
     status VARCHAR(32) NOT NULL DEFAULT 'ACTIVE',
     created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -54,7 +54,7 @@ CREATE TABLE IF NOT EXISTS tenant_members (
 -- 4. Tenant Branches
 CREATE TABLE IF NOT EXISTS tenant_branches (
     id VARCHAR(64) PRIMARY KEY,
-    tenant_id VARCHAR(64) NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+    tenant_id VARCHAR(64) NOT NULL REFERENCES tenants (id) ON DELETE CASCADE,
     name VARCHAR(128) NOT NULL,
     name_km VARCHAR(128),
     city VARCHAR(64) NOT NULL DEFAULT 'Phnom Penh',
@@ -69,12 +69,13 @@ CREATE TABLE IF NOT EXISTS tenant_branches (
     created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
-CREATE INDEX IF NOT EXISTS idx_tenant_branch_tenant ON tenant_branches(tenant_id);
+
+CREATE INDEX IF NOT EXISTS idx_tenant_branch_tenant ON tenant_branches (tenant_id);
 
 -- 5. Seller Profiles
 CREATE TABLE IF NOT EXISTS seller_profiles (
     id VARCHAR(64) PRIMARY KEY,
-    user_id VARCHAR(64) NOT NULL UNIQUE REFERENCES users(id) ON DELETE CASCADE,
+    user_id VARCHAR(64) NOT NULL UNIQUE REFERENCES users (id) ON DELETE CASCADE,
     type VARCHAR(32) NOT NULL DEFAULT 'PRIVATE',
     shop_name VARCHAR(128),
     bio TEXT,
@@ -94,7 +95,7 @@ CREATE TABLE IF NOT EXISTS seller_profiles (
     tg_channel_url TEXT,
     tg_group_url TEXT,
     invite_code VARCHAR(64) UNIQUE,
-    tenant_id VARCHAR(64) REFERENCES tenants(id) ON DELETE SET NULL,
+    tenant_id VARCHAR(64) REFERENCES tenants (id) ON DELETE SET NULL,
     created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
@@ -102,18 +103,20 @@ CREATE TABLE IF NOT EXISTS seller_profiles (
 -- 6. Telegram Invite Events
 CREATE TABLE IF NOT EXISTS telegram_invite_events (
     id VARCHAR(64) PRIMARY KEY,
-    profile_id VARCHAR(64) NOT NULL REFERENCES seller_profiles(id) ON DELETE CASCADE,
+    profile_id VARCHAR(64) NOT NULL REFERENCES seller_profiles (id) ON DELETE CASCADE,
     code VARCHAR(64) NOT NULL,
     dest VARCHAR(32) NOT NULL,
     created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
-CREATE INDEX IF NOT EXISTS idx_tg_event_profile_date ON telegram_invite_events(profile_id, created_at);
-CREATE INDEX IF NOT EXISTS idx_tg_event_code ON telegram_invite_events(code);
+
+CREATE INDEX IF NOT EXISTS idx_tg_event_profile_date ON telegram_invite_events (profile_id, created_at);
+
+CREATE INDEX IF NOT EXISTS idx_tg_event_code ON telegram_invite_events (code);
 
 -- 7. Subscriptions
 CREATE TABLE IF NOT EXISTS subscriptions (
     id VARCHAR(64) PRIMARY KEY,
-    tenant_id VARCHAR(64) NOT NULL UNIQUE REFERENCES tenants(id) ON DELETE CASCADE,
+    tenant_id VARCHAR(64) NOT NULL UNIQUE REFERENCES tenants (id) ON DELETE CASCADE,
     plan VARCHAR(32) NOT NULL DEFAULT 'FREE',
     status VARCHAR(32) NOT NULL DEFAULT 'ACTIVE',
     billing_cycle VARCHAR(32) NOT NULL DEFAULT 'MONTHLY',
@@ -128,7 +131,7 @@ CREATE TABLE IF NOT EXISTS subscriptions (
 -- 8. Vehicles
 CREATE TABLE IF NOT EXISTS vehicles (
     id VARCHAR(64) PRIMARY KEY,
-    seller_id VARCHAR(64) NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    seller_id VARCHAR(64) NOT NULL REFERENCES users (id) ON DELETE CASCADE,
     created_by_id VARCHAR(64),
     make VARCHAR(64) NOT NULL,
     model VARCHAR(64) NOT NULL,
@@ -155,41 +158,47 @@ CREATE TABLE IF NOT EXISTS vehicles (
     ownership_count INT,
     accident_declared VARCHAR(32) NOT NULL DEFAULT 'UNKNOWN',
     import_origin VARCHAR(32),
-    tenant_id VARCHAR(64) REFERENCES tenants(id) ON DELETE SET NULL,
-    branch_id VARCHAR(64) REFERENCES tenant_branches(id) ON DELETE SET NULL,
+    tenant_id VARCHAR(64) REFERENCES tenants (id) ON DELETE SET NULL,
+    branch_id VARCHAR(64) REFERENCES tenant_branches (id) ON DELETE SET NULL,
     created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
-CREATE INDEX IF NOT EXISTS idx_vehicle_seller ON vehicles(seller_id);
-CREATE INDEX IF NOT EXISTS idx_vehicle_status ON vehicles(status);
-CREATE INDEX IF NOT EXISTS idx_vehicle_make_model ON vehicles(make, model);
-CREATE INDEX IF NOT EXISTS idx_vehicle_tenant ON vehicles(tenant_id);
+
+CREATE INDEX IF NOT EXISTS idx_vehicle_seller ON vehicles (seller_id);
+
+CREATE INDEX IF NOT EXISTS idx_vehicle_status ON vehicles (status);
+
+CREATE INDEX IF NOT EXISTS idx_vehicle_make_model ON vehicles (make, model);
+
+CREATE INDEX IF NOT EXISTS idx_vehicle_tenant ON vehicles (tenant_id);
 
 -- 9. Vehicle Images
 CREATE TABLE IF NOT EXISTS vehicle_images (
     id VARCHAR(64) PRIMARY KEY,
-    vehicle_id VARCHAR(64) NOT NULL REFERENCES vehicles(id) ON DELETE CASCADE,
+    vehicle_id VARCHAR(64) NOT NULL REFERENCES vehicles (id) ON DELETE CASCADE,
     url TEXT NOT NULL,
     alt TEXT,
     sort_order INT NOT NULL DEFAULT 0
 );
-CREATE INDEX IF NOT EXISTS idx_vehicle_images_vehicle ON vehicle_images(vehicle_id);
+
+CREATE INDEX IF NOT EXISTS idx_vehicle_images_vehicle ON vehicle_images (vehicle_id);
 
 -- 10. Vehicle Documents
 CREATE TABLE IF NOT EXISTS vehicle_documents (
     id VARCHAR(64) PRIMARY KEY,
-    vehicle_id VARCHAR(64) NOT NULL REFERENCES vehicles(id) ON DELETE CASCADE,
+    vehicle_id VARCHAR(64) NOT NULL REFERENCES vehicles (id) ON DELETE CASCADE,
     type VARCHAR(64) NOT NULL,
     status VARCHAR(32) NOT NULL DEFAULT 'PROVIDED',
     notes TEXT,
     file_url TEXT
 );
-CREATE INDEX IF NOT EXISTS idx_vehicle_documents_vehicle ON vehicle_documents(vehicle_id);
+
+CREATE INDEX IF NOT EXISTS idx_vehicle_documents_vehicle ON vehicle_documents (vehicle_id);
 
 -- 11. Vehicle History Reports (AI vehicle analysis)
 CREATE TABLE IF NOT EXISTS vehicle_history_reports (
     id VARCHAR(64) PRIMARY KEY,
-    vehicle_id VARCHAR(64) NOT NULL REFERENCES vehicles(id) ON DELETE CASCADE,
+    vehicle_id VARCHAR(64) NOT NULL REFERENCES vehicles (id) ON DELETE CASCADE,
     checks_json TEXT NOT NULL,
     overall_confidence DOUBLE PRECISION NOT NULL DEFAULT 0,
     summary_en TEXT,
@@ -199,25 +208,27 @@ CREATE TABLE IF NOT EXISTS vehicle_history_reports (
     requested_by VARCHAR(64),
     created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
-CREATE INDEX IF NOT EXISTS idx_vehicle_history_vehicle ON vehicle_history_reports(vehicle_id);
+
+CREATE INDEX IF NOT EXISTS idx_vehicle_history_vehicle ON vehicle_history_reports (vehicle_id);
 
 -- 12. Saved Searches
 CREATE TABLE IF NOT EXISTS saved_searches (
     id VARCHAR(64) PRIMARY KEY,
-    user_id VARCHAR(64) NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    user_id VARCHAR(64) NOT NULL REFERENCES users (id) ON DELETE CASCADE,
     name VARCHAR(128) NOT NULL,
     query_json TEXT NOT NULL,
     alerts_enabled BOOLEAN NOT NULL DEFAULT FALSE,
     created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
-CREATE INDEX IF NOT EXISTS idx_saved_searches_user ON saved_searches(user_id);
+
+CREATE INDEX IF NOT EXISTS idx_saved_searches_user ON saved_searches (user_id);
 
 -- 13. Appointments
 CREATE TABLE IF NOT EXISTS appointments (
     id VARCHAR(64) PRIMARY KEY,
-    vehicle_id VARCHAR(64) NOT NULL REFERENCES vehicles(id) ON DELETE CASCADE,
-    buyer_id VARCHAR(64) NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-    tenant_id VARCHAR(64) REFERENCES tenants(id) ON DELETE SET NULL,
+    vehicle_id VARCHAR(64) NOT NULL REFERENCES vehicles (id) ON DELETE CASCADE,
+    buyer_id VARCHAR(64) NOT NULL REFERENCES users (id) ON DELETE CASCADE,
+    tenant_id VARCHAR(64) REFERENCES tenants (id) ON DELETE SET NULL,
     seller_id VARCHAR(64) NOT NULL,
     scheduled_at TIMESTAMPTZ NOT NULL,
     status VARCHAR(32) NOT NULL DEFAULT 'REQUESTED',
@@ -225,13 +236,15 @@ CREATE TABLE IF NOT EXISTS appointments (
     created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
-CREATE INDEX IF NOT EXISTS idx_appointment_vehicle ON appointments(vehicle_id);
-CREATE INDEX IF NOT EXISTS idx_appointment_buyer ON appointments(buyer_id);
+
+CREATE INDEX IF NOT EXISTS idx_appointment_vehicle ON appointments (vehicle_id);
+
+CREATE INDEX IF NOT EXISTS idx_appointment_buyer ON appointments (buyer_id);
 
 -- 14. Subscription Payments (Bakong KHQR / Manual)
 CREATE TABLE IF NOT EXISTS subscription_payments (
     id VARCHAR(64) PRIMARY KEY,
-    tenant_id VARCHAR(64) NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+    tenant_id VARCHAR(64) NOT NULL REFERENCES tenants (id) ON DELETE CASCADE,
     plan VARCHAR(32) NOT NULL,
     billing_cycle VARCHAR(32) NOT NULL,
     amount_usd DOUBLE PRECISION NOT NULL,
@@ -277,10 +290,14 @@ CREATE TABLE IF NOT EXISTS subscription_payments (
     created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
-CREATE INDEX IF NOT EXISTS idx_sub_payment_tenant ON subscription_payments(tenant_id);
-CREATE INDEX IF NOT EXISTS idx_sub_payment_status ON subscription_payments(status);
-CREATE INDEX IF NOT EXISTS idx_sub_payment_ev_hash ON subscription_payments(evidence_hash);
-CREATE INDEX IF NOT EXISTS idx_sub_payment_ev_phash ON subscription_payments(evidence_phash);
+
+CREATE INDEX IF NOT EXISTS idx_sub_payment_tenant ON subscription_payments (tenant_id);
+
+CREATE INDEX IF NOT EXISTS idx_sub_payment_status ON subscription_payments (status);
+
+CREATE INDEX IF NOT EXISTS idx_sub_payment_ev_hash ON subscription_payments (evidence_hash);
+
+CREATE INDEX IF NOT EXISTS idx_sub_payment_ev_phash ON subscription_payments (evidence_phash);
 
 -- 15. ABA Transactions (Telegram / Group notifications sync)
 CREATE TABLE IF NOT EXISTS aba_transactions (
@@ -301,7 +318,7 @@ CREATE TABLE IF NOT EXISTS aba_transactions (
     transaction_date_raw VARCHAR(64),
     transaction_date TIMESTAMPTZ NOT NULL,
     status VARCHAR(32) NOT NULL DEFAULT 'UNMATCHED',
-    subscription_payment_id VARCHAR(64) REFERENCES subscription_payments(id) ON DELETE SET NULL,
+    subscription_payment_id VARCHAR(64) REFERENCES subscription_payments (id) ON DELETE SET NULL,
     matched_at TIMESTAMPTZ,
     matched_by VARCHAR(64),
     is_duplicate BOOLEAN NOT NULL DEFAULT FALSE,
@@ -312,15 +329,17 @@ CREATE TABLE IF NOT EXISTS aba_transactions (
     created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
-CREATE INDEX IF NOT EXISTS idx_aba_trx_status ON aba_transactions(status);
-CREATE INDEX IF NOT EXISTS idx_aba_trx_date ON aba_transactions(transaction_date);
+
+CREATE INDEX IF NOT EXISTS idx_aba_trx_status ON aba_transactions (status);
+
+CREATE INDEX IF NOT EXISTS idx_aba_trx_date ON aba_transactions (transaction_date);
 
 -- 16. Purchase Requests
 CREATE TABLE IF NOT EXISTS purchase_requests (
     id VARCHAR(64) PRIMARY KEY,
-    vehicle_id VARCHAR(64) NOT NULL REFERENCES vehicles(id) ON DELETE CASCADE,
-    buyer_id VARCHAR(64) NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-    tenant_id VARCHAR(64) REFERENCES tenants(id) ON DELETE SET NULL,
+    vehicle_id VARCHAR(64) NOT NULL REFERENCES vehicles (id) ON DELETE CASCADE,
+    buyer_id VARCHAR(64) NOT NULL REFERENCES users (id) ON DELETE CASCADE,
+    tenant_id VARCHAR(64) REFERENCES tenants (id) ON DELETE SET NULL,
     seller_user_id VARCHAR(64) NOT NULL,
     status VARCHAR(32) NOT NULL DEFAULT 'PENDING',
     message TEXT,
@@ -331,9 +350,12 @@ CREATE TABLE IF NOT EXISTS purchase_requests (
     created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
-CREATE INDEX IF NOT EXISTS idx_purchase_req_vehicle ON purchase_requests(vehicle_id);
-CREATE INDEX IF NOT EXISTS idx_purchase_req_buyer ON purchase_requests(buyer_id);
-CREATE INDEX IF NOT EXISTS idx_purchase_req_tenant ON purchase_requests(tenant_id);
+
+CREATE INDEX IF NOT EXISTS idx_purchase_req_vehicle ON purchase_requests (vehicle_id);
+
+CREATE INDEX IF NOT EXISTS idx_purchase_req_buyer ON purchase_requests (buyer_id);
+
+CREATE INDEX IF NOT EXISTS idx_purchase_req_tenant ON purchase_requests (tenant_id);
 
 -- 17. Platform Settings
 CREATE TABLE IF NOT EXISTS platform_settings (
@@ -345,8 +367,8 @@ CREATE TABLE IF NOT EXISTS platform_settings (
 -- 18. Favorites
 CREATE TABLE IF NOT EXISTS favorites (
     id VARCHAR(64) PRIMARY KEY,
-    user_id VARCHAR(64) NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-    vehicle_id VARCHAR(64) NOT NULL REFERENCES vehicles(id) ON DELETE CASCADE,
+    user_id VARCHAR(64) NOT NULL REFERENCES users (id) ON DELETE CASCADE,
+    vehicle_id VARCHAR(64) NOT NULL REFERENCES vehicles (id) ON DELETE CASCADE,
     created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
     CONSTRAINT uq_user_vehicle_fav UNIQUE (user_id, vehicle_id)
 );
@@ -354,8 +376,8 @@ CREATE TABLE IF NOT EXISTS favorites (
 -- 19. Conversations
 CREATE TABLE IF NOT EXISTS conversations (
     id VARCHAR(64) PRIMARY KEY,
-    vehicle_id VARCHAR(64) NOT NULL REFERENCES vehicles(id) ON DELETE CASCADE,
-    buyer_id VARCHAR(64) NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    vehicle_id VARCHAR(64) NOT NULL REFERENCES vehicles (id) ON DELETE CASCADE,
+    buyer_id VARCHAR(64) NOT NULL REFERENCES users (id) ON DELETE CASCADE,
     created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
@@ -363,18 +385,19 @@ CREATE TABLE IF NOT EXISTS conversations (
 -- 20. Messages
 CREATE TABLE IF NOT EXISTS messages (
     id VARCHAR(64) PRIMARY KEY,
-    conversation_id VARCHAR(64) NOT NULL REFERENCES conversations(id) ON DELETE CASCADE,
-    sender_id VARCHAR(64) REFERENCES users(id) ON DELETE SET NULL,
+    conversation_id VARCHAR(64) NOT NULL REFERENCES conversations (id) ON DELETE CASCADE,
+    sender_id VARCHAR(64) REFERENCES users (id) ON DELETE SET NULL,
     body TEXT NOT NULL,
     is_system BOOLEAN NOT NULL DEFAULT FALSE,
     created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
-CREATE INDEX IF NOT EXISTS idx_messages_conversation ON messages(conversation_id);
+
+CREATE INDEX IF NOT EXISTS idx_messages_conversation ON messages (conversation_id);
 
 -- 21. Reported Content
 CREATE TABLE IF NOT EXISTS reported_contents (
     id VARCHAR(64) PRIMARY KEY,
-    vehicle_id VARCHAR(64) NOT NULL REFERENCES vehicles(id) ON DELETE CASCADE,
+    vehicle_id VARCHAR(64) NOT NULL REFERENCES vehicles (id) ON DELETE CASCADE,
     reason VARCHAR(64) NOT NULL,
     details TEXT,
     status VARCHAR(32) NOT NULL DEFAULT 'OPEN',
@@ -412,6 +435,9 @@ CREATE TABLE IF NOT EXISTS fraud_alerts (
     resolved_at TIMESTAMPTZ,
     created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
-CREATE INDEX IF NOT EXISTS idx_fraud_user ON fraud_alerts(user_id);
-CREATE INDEX IF NOT EXISTS idx_fraud_tenant ON fraud_alerts(tenant_id);
-CREATE INDEX IF NOT EXISTS idx_fraud_status ON fraud_alerts(status);
+
+CREATE INDEX IF NOT EXISTS idx_fraud_user ON fraud_alerts (user_id);
+
+CREATE INDEX IF NOT EXISTS idx_fraud_tenant ON fraud_alerts (tenant_id);
+
+CREATE INDEX IF NOT EXISTS idx_fraud_status ON fraud_alerts (status);

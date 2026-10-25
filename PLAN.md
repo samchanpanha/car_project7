@@ -1,4 +1,4 @@
-# KhLan (ខ្លាន) — AI-Powered Car Marketplace for Cambodia
+# KhLan (ឡាន) — AI-Powered Car Marketplace for Cambodia
 ## Development Plan v1.0
 
 > **Reading guide:** Every market claim in this document is tagged **[FACT — verify]** (widely reported public knowledge that must still be re-verified with current sources before launch), **[ASSUMPTION]** (hypothesis to validate with users), or **[RECOMMENDATION]**. No market size, competitor, or pricing figures are presented as verified data.
@@ -9,7 +9,7 @@
 
 **The problem.** Buying a used car in Cambodia today means navigating fragmented channels — Facebook groups, dealer pages, word of mouth — where buyers cannot reliably verify vehicle identity, ownership documents, mileage, accident history, or seller credibility. Sellers, especially small dealers, struggle to reach serious buyers and to differentiate themselves from scammers.
 
-**The product.** KhLan (ខ្លាន, "Khmer car") is a mobile-first online marketplace for buying and selling cars in Cambodia, launched in Phnom Penh. It combines:
+**The product.** KhLan (ឡាន, "Khmer car") is a mobile-first online marketplace for buying and selling cars in Cambodia, launched in Phnom Penh. It combines:
 
 - A modern listings marketplace (search, filters, comparisons, secure messaging).
 - **Evidence-based AI vehicle reports** that clearly separate *verified records*, *evidence found*, *inconsistencies*, *not verified*, and *no data available* — never presenting "no records found" as "no accidents."

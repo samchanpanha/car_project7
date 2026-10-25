@@ -325,7 +325,7 @@ export function Header() {
             <CarFront className="h-5 w-5" aria-hidden />
           </span>
           <span className="text-lg font-bold tracking-tight">
-            ខ្លាន <span className="hidden sm:inline text-amber-400">KhLan</span>
+            ឡាន <span className="hidden sm:inline text-amber-400">KhLan</span>
           </span>
         </button>
 

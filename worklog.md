@@ -1,4 +1,4 @@
-# KhLan (ខ្លាន) — Worklog
+# KhLan (ឡាន) — Worklog
 
 ---
 Task ID: 1, 2, 2-a

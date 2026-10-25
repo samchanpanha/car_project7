@@ -1,4 +1,4 @@
-# KhLan (ខ្លាន) — Architecture Migration & Implementation Plan
+# KhLan (ឡាន) — Architecture Migration & Implementation Plan
 
 > **Status:** Production Infrastructure & Backend Core Deployed  
 > **Target Stack:** Next.js 15 (Frontend/BFF) + Spring Boot 3.4 (Java 21 LTS) + PostgreSQL 16 + Redis 7 + MinIO S3 + Alibaba Nacos + NGINX + Grafana/Loki/Prometheus (Dockerized)

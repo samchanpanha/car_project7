@@ -14,7 +14,7 @@ export function Footer() {
         <div className="grid gap-8 sm:grid-cols-3">
           <div>
             <p className="text-white font-semibold text-base mb-1">
-              ខ្លាន <span className="text-amber-400">KhLan</span>
+              ឡាន <span className="text-amber-400">KhLan</span>
             </p>
             <p className="text-sm text-slate-400">{t("footerAbout")}</p>
             <p className="mt-3 text-xs text-slate-500">{t("currencyNote")}</p>
@@ -55,7 +55,7 @@ export function Footer() {
         </div>
         <Separator className="my-5 bg-slate-800" />
         <p className="text-xs text-slate-500 text-center">
-          © {new Date().getFullYear()} KhLan ខ្លាន · {t("footerDemo")}
+          © {new Date().getFullYear()} KhLan ឡាន · {t("footerDemo")}
         </p>
       </div>
     </footer>

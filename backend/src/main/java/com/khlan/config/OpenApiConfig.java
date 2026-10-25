@@ -14,9 +14,10 @@ public class OpenApiConfig {
     public OpenAPI customOpenAPI() {
         return new OpenAPI()
                 .info(new Info()
-                        .title("KhLan (ខ្លាន) Car Marketplace API")
+                        .title("KhLan (ឡាន) Car Marketplace API")
                         .version("1.0.0")
-                        .description("High-performance Spring Boot 3.4 REST API for Cambodia's AI-Powered Car Marketplace")
+                        .description(
+                                "High-performance Spring Boot 3.4 REST API for Cambodia's AI-Powered Car Marketplace")
                         .contact(new Contact().name("KhLan Engineering").email("dev@khlan.com"))
                         .license(new License().name("Proprietary")));
     }

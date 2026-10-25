@@ -1,11 +1,11 @@
-# KhLan (ខ្លាន) — System Features & User Operations Manual
+# KhLan (ឡាន) — System Features & User Operations Manual
 *Cambodia's AI-Powered Trusted Vehicle Marketplace & Dealership Management Platform*
 
 ---
 
 ## 1. System Overview & Core Architecture
 
-KhLan (ខ្លាន) is a dual-tier automotive ecosystem engineered specifically for the Cambodian marketplace. It solves the critical challenges of trust, transparency, and payment fraud in used and new car transactions through:
+KhLan (ឡាន) is a dual-tier automotive ecosystem engineered specifically for the Cambodian marketplace. It solves the critical challenges of trust, transparency, and payment fraud in used and new car transactions through:
 - **Evidence-Based AI Vehicle Inspection Reports** (scoring odometer tampering, accident history, title authenticity, and fair market valuation).
 - **Automated NBC Bakong KHQR & Bank Slip OCR Verification** (instant activation for same-day payments and Telegram bot review for interbank/manual payments).
 - **Strict 2-Party Verified Private Messaging** (direct end-to-end communication between vehicle owner and buyer with zero leaks and zero automated bot masquerades).

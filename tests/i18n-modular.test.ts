@@ -74,7 +74,7 @@ describe("Modular i18n System Tests", () => {
 
   it("translates strings and replaces template variables accurately", () => {
     expect(translate("en", "appName")).toBe("KhLan");
-    expect(translate("km", "appName")).toBe("ខ្លាន");
+    expect(translate("km", "appName")).toBe("ឡាន");
 
     const templateResult = translate("en", "subRenews", { d: "2026-12-31" });
     expect(templateResult).toContain("2026-12-31");
