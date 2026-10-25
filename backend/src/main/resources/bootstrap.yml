@@ -1,4 +1,6 @@
 spring:
+  application:
+    name: khlan-backend
   cloud:
     nacos:
       server-addr: ${NACOS_SERVER_ADDR:localhost:8848}
@@ -6,6 +8,14 @@ spring:
         enabled: ${NACOS_DISCOVERY_ENABLED:true}
         service: ${spring.application.name}
       config:
-        enabled: ${NACOS_CONFIG_ENABLED:false} # Enabled once Nacos configs are published
+        enabled: ${NACOS_CONFIG_ENABLED:true}
         file-extension: yaml
         group: DEFAULT_GROUP
+        refresh-enabled: true
+        shared-configs:
+          - data-id: khlan-storage.yaml
+            group: DEFAULT_GROUP
+            refresh: true
+          - data-id: khlan-telegram.yaml
+            group: DEFAULT_GROUP
+            refresh: true

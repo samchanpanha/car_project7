@@ -46,6 +46,7 @@ import {
   LayoutDashboard, Loader2, MessageSquare, MoreHorizontal, ScrollText, Send, Settings, ShieldCheck, Sparkles,
   Star, Store, TriangleAlert, Upload, Users, Wallet, RefreshCw, Link2, Search, Check, CheckCircle2,
   Calendar, Clock, Copy, Repeat, Trash2, Cloud, CloudUpload, HardDrive, Database, ExternalLink, Eye, EyeOff,
+  Server, Layers, FileCode,
 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
@@ -101,7 +102,12 @@ export function AdminDashboard({ me }: { me: SessionDTO }) {
       {active === "ai" && <AdminAi />}
       {active === "telegram" && <AdminTelegramManagement />}
       {active === "settings" && <AdminSettings />}
-      {active === "storage" && <AdminStorageResilience />}
+      {active === "storage" && (
+        <div className="space-y-5">
+          <AdminStorageResilience />
+          <AdminNacosConfigCard />
+        </div>
+      )}
       {active === "audit" && <AdminAudit />}
     </DashboardShell>
   );
@@ -880,6 +886,7 @@ function AdminSettings() {
       <AdminPaymentConfig />
       <AdminPlanPricing />
       <AdminStorageResilience />
+      <AdminNacosConfigCard />
     </div>
   );
 }
@@ -3790,4 +3797,196 @@ function AdminStorageResilience() {
     </SectionCard>
   );
 }
+
+function AdminNacosConfigCard() {
+  const t = useT();
+  const { data, loading, error, refetch } = useFetch<{
+    endpoint: string;
+    health: { version: string; standalone: boolean; healthy: boolean; endpoint: string };
+    configs: Array<{ dataId: string; group: string; type: string }>;
+  }>("/api/admin/nacos/status");
+
+  const [syncing, setSyncing] = useState(false);
+
+  const handleSyncAll = async () => {
+    setSyncing(true);
+    try {
+      const res = await apiSend<{ published: string[]; errors: string[] }>("/api/admin/nacos/sync", "POST");
+      if (res.errors.length > 0) {
+        toast.warning(`Published ${res.published.length} configs, but encountered errors: ${res.errors.join(", ")}`);
+      } else {
+        toast.success(`Successfully published ${res.published.length} modular configurations to Nacos!`);
+      }
+      refetch();
+    } catch (e) {
+      toast.error(errorText(e));
+    } finally {
+      setSyncing(false);
+    }
+  };
+
+  const isHealthy = Boolean(data?.health?.healthy);
+
+  return (
+    <SectionCard title="Alibaba Nacos Dynamic Config Center">
+      <p className="text-xs text-slate-500 mb-4 -mt-1 leading-relaxed">
+        Centralized dynamic configuration management for Spring Boot backend and Next.js frontend with live hot-reload and zero container restarts.
+      </p>
+
+      <div className="grid gap-4 sm:grid-cols-2">
+        {/* Nacos Server Card */}
+        <div className="rounded-xl border border-blue-200/80 bg-gradient-to-br from-blue-50/50 via-white to-indigo-50/40 p-4 shadow-sm">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2.5">
+              <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-blue-500/15 text-blue-600 font-bold shadow-sm">
+                <Server className="h-5 w-5" />
+              </div>
+              <div>
+                <h4 className="text-sm font-bold text-slate-900 flex items-center gap-1.5">
+                  Nacos Server 2.4.3
+                  <Badge className="bg-blue-100 text-blue-800 border-blue-300 text-[9px] px-1.5 py-0 h-4">
+                    ACTIVE
+                  </Badge>
+                </h4>
+                <p className="text-[11px] text-slate-500">Service Discovery & Config Center</p>
+              </div>
+            </div>
+            <Badge
+              className={cn(
+                "text-[10px] font-bold px-2 py-0.5",
+                isHealthy
+                  ? "bg-emerald-500/15 text-emerald-700 border-emerald-300"
+                  : "bg-rose-500/15 text-rose-700 border-rose-300"
+              )}
+            >
+              {isHealthy ? "Nacos: Connected" : "Nacos: Unreachable"}
+            </Badge>
+          </div>
+
+          <div className="mt-3.5 space-y-1.5 text-xs text-slate-600 border-t border-slate-100 pt-3">
+            <div className="flex justify-between">
+              <span className="text-slate-400">Cluster Mode:</span>
+              <span className="font-mono text-slate-800 font-medium">{data?.health?.standalone ? "Standalone" : "Cluster"}</span>
+            </div>
+            <div className="flex justify-between items-center">
+              <span className="text-slate-400">Web Console:</span>
+              <a
+                href="http://localhost:8848/nacos"
+                target="_blank"
+                rel="noreferrer"
+                className="font-mono text-[11px] text-blue-600 hover:underline flex items-center gap-1"
+              >
+                http://localhost:8848/nacos
+                <ExternalLink className="h-3 w-3 shrink-0" />
+              </a>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-slate-400">Spring Boot Sync:</span>
+              <span className="text-emerald-700 font-medium">@RefreshScope (Hot-Reload)</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-slate-400">Frontend Sync:</span>
+              <span className="text-emerald-700 font-medium">TTL Cache (30s Polling)</span>
+            </div>
+          </div>
+        </div>
+
+        {/* Modular Configurations Card */}
+        <div className="rounded-xl border border-slate-200 bg-gradient-to-br from-slate-50/50 via-white to-slate-50/30 p-4 shadow-sm">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2.5">
+              <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-purple-500/10 text-purple-600 font-bold shadow-sm">
+                <Layers className="h-5 w-5" />
+              </div>
+              <div>
+                <h4 className="text-sm font-bold text-slate-900">Modular DataIDs</h4>
+                <p className="text-[11px] text-slate-500">Group: DEFAULT_GROUP</p>
+              </div>
+            </div>
+            <Badge variant="outline" className="text-[10px] font-mono text-slate-600">
+              {data?.configs?.length ?? 0} published
+            </Badge>
+          </div>
+
+          <div className="mt-3.5 space-y-1.5 text-xs text-slate-700 border-t border-slate-100 pt-3">
+            {[
+              { id: "khlan-backend.yaml", desc: "Postgres 16, Redis, JWT, HikariCP" },
+              { id: "khlan-storage.yaml", desc: "Cloudflare R2 + MinIO S3" },
+              { id: "khlan-telegram.yaml", desc: "Telegram Bot & Mini App" },
+              { id: "khlan-frontend.yaml", desc: "Marketplace Runtime & Locales" },
+            ].map((cfg) => {
+              const published = data?.configs?.some((c) => c.dataId === cfg.id);
+              return (
+                <div key={cfg.id} className="flex items-center justify-between py-0.5">
+                  <div className="flex items-center gap-1.5 truncate">
+                    <FileCode className="h-3.5 w-3.5 text-slate-400 shrink-0" />
+                    <span className="font-mono text-[11px] font-medium text-slate-800">{cfg.id}</span>
+                  </div>
+                  <span className={cn(
+                    "text-[10px] font-semibold px-1.5 py-0.2 rounded border",
+                    published
+                      ? "bg-emerald-50 text-emerald-700 border-emerald-200"
+                      : "bg-slate-100 text-slate-500 border-slate-200"
+                  )}>
+                    {published ? "SYNCED" : "PENDING"}
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      </div>
+
+      {/* Sync Action Footer */}
+      <div className="mt-5 rounded-xl border border-blue-100 bg-blue-50/50 p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+        <div>
+          <div className="flex items-center gap-2">
+            <span className={cn(
+              "flex h-2.5 w-2.5 rounded-full",
+              isHealthy ? "bg-emerald-500" : "bg-rose-500 animate-pulse"
+            )} />
+            <h5 className="text-sm font-bold text-slate-900">
+              {isHealthy ? "Nacos Config Registry Synchronized" : "Nacos Offline / Standby"}
+            </h5>
+          </div>
+          <p className="mt-1 text-xs text-slate-500">
+            Publish all database, storage, Telegram, and frontend configurations to Nacos with a single click.
+          </p>
+        </div>
+
+        <div className="flex items-center gap-2.5 shrink-0">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => refetch()}
+            disabled={syncing}
+            className="h-9 text-xs"
+          >
+            <RefreshCw className={cn("h-3.5 w-3.5 mr-1.5", syncing && "animate-spin")} />
+            {t("regenerate")}
+          </Button>
+
+          <Button
+            onClick={handleSyncAll}
+            disabled={syncing}
+            className="h-9 bg-blue-600 hover:bg-blue-500 text-white font-semibold text-xs shadow-sm"
+          >
+            {syncing ? (
+              <>
+                <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" />
+                Publishing to Nacos...
+              </>
+            ) : (
+              <>
+                <CloudUpload className="h-3.5 w-3.5 mr-1.5" />
+                Publish & Sync to Nacos
+              </>
+            )}
+          </Button>
+        </div>
+      </div>
+    </SectionCard>
+  );
+}
+
 
