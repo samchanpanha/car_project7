@@ -7,29 +7,29 @@ generator client {
 }
 
 datasource db {
-  provider = "sqlite"
+  provider = "postgresql"
   url      = env("DATABASE_URL")
 }
 
 // ---------- Users & Sellers ----------
 
 model User {
-  id            String   @id @default(cuid())
-  phone         String   @unique
+  id            String @id @default(cuid())
+  phone         String @unique
   email         String?
   name          String
-  role          String   @default("BUYER") // BUYER | SELLER | DEALER | ADMIN | SUPER_ADMIN
-  locale        String   @default("km") // km | en
-  phoneVerified Boolean  @default(false)
-  avatarUrl     String?
-  passwordHash  String? // scrypt salt:hash — null => OTP/Telegram-only account
-  telegramId    String?  @unique // Telegram user id when linked
-  telegramUsername String?
-  isBlacklisted Boolean  @default(false)
-  blacklistReason String?
-  blacklistedAt DateTime?
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  role          String @default("BUYER") // BUYER | SELLER | DEALER | ADMIN | SUPER_ADMIN
+  locale        String @default("km") // km | en
+  phoneVerified Boolean @default(false) @map("phone_verified")
+  avatarUrl     String? @map("avatar_url")
+  passwordHash  String? @map("password_hash") // scrypt salt:hash — null => OTP/Telegram-only account
+  telegramId    String? @unique @map("telegram_id") // Telegram user id when linked
+  telegramUsername String? @map("telegram_username")
+  isBlacklisted Boolean @default(false) @map("is_blacklisted")
+  blacklistReason String? @map("blacklist_reason")
+  blacklistedAt DateTime? @map("blacklisted_at")
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
 
   sellerProfile     SellerProfile?
   vehiclesSold      Vehicle[]        @relation("SellerVehicles")
@@ -40,79 +40,82 @@ model User {
   savedSearches     SavedSearch[]
   buyerAppointments Appointment[]    @relation("BuyerAppointments")
   purchaseRequests  PurchaseRequest[] @relation("BuyerPurchaseRequests")
+  @@map("users")
 }
 
 model SellerProfile {
-  id           String   @id @default(cuid())
-  userId       String   @unique
+  id           String @id @default(cuid())
+  userId       String @unique @map("user_id")
   user         User     @relation(fields: [userId], references: [id])
-  type         String   @default("PRIVATE") // PRIVATE | DEALER
-  shopName     String?
+  type         String @default("PRIVATE") // PRIVATE | DEALER
+  shopName     String? @map("shop_name")
   bio          String?
-  bioKm        String?
-  city         String   @default("Phnom Penh")
+  bioKm        String? @map("bio_km")
+  city         String @default("Phnom Penh")
   address      String?
-  verified     Boolean  @default(false)
-  verification String   @default("UNVERIFIED") // UNVERIFIED | PENDING | VERIFIED | REJECTED
-  responseRate Int      @default(0) // percent of inquiries answered <24h
-  ratingAvg    Float    @default(0) // 0-5
-  ratingCount  Int      @default(0)
-  memberSince  DateTime @default(now())
-  logoUrl      String?
+  verified     Boolean @default(false)
+  verification String @default("UNVERIFIED") // UNVERIFIED | PENDING | VERIFIED | REJECTED
+  responseRate Int @default(0) @map("response_rate") // percent of inquiries answered <24h
+  ratingAvg    Float @default(0) @map("rating_avg") // 0-5
+  ratingCount  Int @default(0) @map("rating_count")
+  memberSince  DateTime @default(now()) @map("member_since")
+  logoUrl      String? @map("logo_url")
   phone        String?
   telegram     String?
   // ----- Telegram Hub (seller/dealer self-service growth tools) -----
   // The seller's own Telegram Mini App link (any https URL, usually a t.me
   // bot-app link) shown to buyers on listings and the storefront.
-  tgMiniAppUrl String?
+  tgMiniAppUrl String? @map("tg_mini_app_url")
   // Public Telegram channel link (https://t.me/<channel>) buyers can join.
-  tgChannelUrl String?
+  tgChannelUrl String? @map("tg_channel_url")
   // Telegram group chat link (https://t.me/<group> or https://t.me/+hash).
-  tgGroupUrl   String?
+  tgGroupUrl   String? @map("tg_group_url")
   // Short unique referral code minted lazily; powers tracked invite links
   // /api/tg/<code> that count buyer clicks before redirecting into Telegram.
-  inviteCode   String?  @unique
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
-  tenantId     String?
+  inviteCode   String? @unique @map("invite_code")
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+  tenantId     String? @map("tenant_id")
   tenant       Tenant?  @relation(fields: [tenantId], references: [id])
 
   inviteEvents TelegramInviteEvent[]
+  @@map("seller_profiles")
 }
 
 // One row per buyer click on a seller's tracked Telegram invite link
 // (/api/tg/<code>?d=DEST) — powers the seller's Telegram Hub stats.
 model TelegramInviteEvent {
-  id        String   @id @default(cuid())
-  profileId String
+  id        String @id @default(cuid())
+  profileId String @map("profile_id")
   profile   SellerProfile @relation(fields: [profileId], references: [id], onDelete: Cascade)
   code      String
   // MINIAPP | CHANNEL | GROUP — which destination the click targeted
   dest      String
-  createdAt DateTime @default(now())
+  createdAt DateTime @default(now()) @map("created_at")
 
   @@index([profileId, createdAt])
   @@index([code])
+  @@map("telegram_invite_events")
 }
 
 // ---------- Tenants (Dealership Organizations) ----------
 
 model Tenant {
-  id           String   @id @default(cuid())
+  id           String @id @default(cuid())
   name         String
-  slug         String   @unique
-  logoUrl      String?
+  slug         String @unique
+  logoUrl      String? @map("logo_url")
   bio          String?
-  bioKm        String?
-  city         String   @default("Phnom Penh")
+  bioKm        String? @map("bio_km")
+  city         String @default("Phnom Penh")
   address      String?
   phone        String?
   telegram     String?
-  verified     Boolean  @default(false)
-  verification String   @default("UNVERIFIED") // UNVERIFIED | PENDING | VERIFIED | REJECTED
-  status       String   @default("ACTIVE") // ACTIVE | SUSPENDED
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  verified     Boolean @default(false)
+  verification String @default("UNVERIFIED") // UNVERIFIED | PENDING | VERIFIED | REJECTED
+  status       String @default("ACTIVE") // ACTIVE | SUSPENDED
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
 
   members      TenantMember[]
   branches     TenantBranch[]
@@ -122,155 +125,161 @@ model Tenant {
   appointments Appointment[]
   payments     SubscriptionPayment[]
   purchaseRequests PurchaseRequest[]
+  @@map("tenants")
 }
 
 model TenantMember {
-  id        String   @id @default(cuid())
-  tenantId  String
+  id        String @id @default(cuid())
+  tenantId  String @map("tenant_id")
   tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  userId    String
+  userId    String @map("user_id")
   user      User     @relation(fields: [userId], references: [id])
-  role      String   @default("SALES_STAFF") // OWNER | MANAGER | SALES_STAFF | INVENTORY_MANAGER
-  status    String   @default("ACTIVE") // ACTIVE | SUSPENDED
-  createdAt DateTime @default(now())
+  role      String @default("SALES_STAFF") // OWNER | MANAGER | SALES_STAFF | INVENTORY_MANAGER
+  status    String @default("ACTIVE") // ACTIVE | SUSPENDED
+  createdAt DateTime @default(now()) @map("created_at")
 
   @@unique([tenantId, userId])
+  @@map("tenant_members")
 }
 
 model TenantBranch {
-  id           String    @id @default(cuid())
-  tenantId     String
+  id           String @id @default(cuid())
+  tenantId     String @map("tenant_id")
   tenant       Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   name         String
-  nameKm       String?
-  city         String    @default("Phnom Penh")
+  nameKm       String? @map("name_km")
+  city         String @default("Phnom Penh")
   district     String?
   address      String
   phone        String?
   telegram     String?
-  isMain       Boolean   @default(false)
-  status       String    @default("ACTIVE") // ACTIVE | INACTIVE
-  openingHours String?
-  imageUrl     String?
-  createdAt    DateTime  @default(now())
-  updatedAt    DateTime  @updatedAt
+  isMain       Boolean @default(false) @map("is_main")
+  status       String @default("ACTIVE") // ACTIVE | INACTIVE
+  openingHours String? @map("opening_hours")
+  imageUrl     String? @map("image_url")
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
 
   vehicles     Vehicle[]
 
   @@index([tenantId])
+  @@map("tenant_branches")
 }
 
 // ---------- Subscriptions (Monetization) ----------
 
 model Subscription {
-  id               String   @id @default(cuid())
-  tenantId         String   @unique
+  id               String @id @default(cuid())
+  tenantId         String @unique @map("tenant_id")
   tenant           Tenant   @relation(fields: [tenantId], references: [id])
-  plan             String   @default("FREE") // FREE | BASIC | PRO | ENTERPRISE
-  status           String   @default("ACTIVE") // ACTIVE | CANCELLED | PAST_DUE
-  billingCycle     String   @default("MONTHLY") // MONTHLY | YEARLY
-  priceUsd         Float    @default(0)
-  listingsLimit    Int      @default(3)
-  featuredLimit    Int      @default(0)
-  seats            Int      @default(1)
-  startedAt        DateTime @default(now())
-  currentPeriodEnd DateTime @default(now())
+  plan             String @default("FREE") // FREE | BASIC | PRO | ENTERPRISE
+  status           String @default("ACTIVE") // ACTIVE | CANCELLED | PAST_DUE
+  billingCycle     String @default("MONTHLY") @map("billing_cycle") // MONTHLY | YEARLY
+  priceUsd         Float @default(0) @map("price_usd")
+  listingsLimit    Int @default(3) @map("listings_limit")
+  featuredLimit    Int @default(0) @map("featured_limit")
+  seats            Int @default(1)
+  startedAt        DateTime @default(now()) @map("started_at")
+  currentPeriodEnd DateTime @default(now()) @map("current_period_end")
+  @@map("subscriptions")
 }
 
 // ---------- Customer Dashboard ----------
 
 model SavedSearch {
-  id            String   @id @default(cuid())
-  userId        String
+  id            String @id @default(cuid())
+  userId        String @map("user_id")
   user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   name          String
-  queryJson     String // JSON of VehicleQuery filters
-  alertsEnabled Boolean  @default(false)
-  createdAt     DateTime @default(now())
+  queryJson     String @map("query_json") // JSON of VehicleQuery filters
+  alertsEnabled Boolean @default(false) @map("alerts_enabled")
+  createdAt     DateTime @default(now()) @map("created_at")
+  @@map("saved_searches")
 }
 
 model Appointment {
-  id          String   @id @default(cuid())
-  vehicleId   String
+  id          String @id @default(cuid())
+  vehicleId   String @map("vehicle_id")
   vehicle     Vehicle  @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
-  buyerId     String
+  buyerId     String @map("buyer_id")
   buyer       User     @relation("BuyerAppointments", fields: [buyerId], references: [id])
-  tenantId    String?
+  tenantId    String? @map("tenant_id")
   tenant      Tenant?  @relation(fields: [tenantId], references: [id])
-  sellerId    String
-  scheduledAt DateTime
-  status      String   @default("REQUESTED") // REQUESTED | CONFIRMED | COMPLETED | CANCELLED
+  sellerId    String @map("seller_id")
+  scheduledAt DateTime @map("scheduled_at")
+  status      String @default("REQUESTED") // REQUESTED | CONFIRMED | COMPLETED | CANCELLED
   notes       String?
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+  @@map("appointments")
 }
 
 // ---------- Subscription Payments (Bakong KHQR / Manual KHQR) ----------
 
 model SubscriptionPayment {
-  id              String    @id @default(cuid())
-  tenantId        String
+  id              String @id @default(cuid())
+  tenantId        String @map("tenant_id")
   tenant          Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  plan            String // BASIC | PRO | ENTERPRISE
-  billingCycle    String // MONTHLY | YEARLY
-  amountUsd       Float
+  plan            String  // BASIC | PRO | ENTERPRISE
+  billingCycle    String @map("billing_cycle") // MONTHLY | YEARLY
+  amountUsd       Float @map("amount_usd")
   /** Currency the seller chose at checkout (USD or KHR). */
-  currency        String   @default("USD")
+  currency        String @default("USD")
   /** Exact amount expected in `currency` at submit time (KHR snapshot included). */
-  amountExpected  Float?
+  amountExpected  Float? @map("amount_expected")
   /** USD→KHR rate snapshot used to compute amountExpected. */
-  exchangeRate    Float?
-  months          Int // 1 (monthly) | 12 (yearly)
-  method          String // BAKONG | MANUAL
+  exchangeRate    Float? @map("exchange_rate")
+  months          Int  // 1 (monthly) | 12 (yearly)
+  method          String  // BAKONG | MANUAL
   // PENDING (bakong QR issued, awaiting transfer)
   // AWAITING_VERIFICATION (manual request or bakong transfer seen, needs admin)
   // VERIFIED | REJECTED | CANCELLED
-  status          String    @default("PENDING")
-  reference       String    @unique // platform reference, e.g. PAY-20250101-AB12CD
-  bakongMd5       String?   // md5 returned by Bakong generate-qr
-  bakongHash      String?   // transaction hash found by check-by-md5
-  qrPayload       String?   // EMVCo KHQR payload string (Bakong-issued or admin-configured)
-  manualRef       String?   // seller-entered bank transaction reference (manual flow)
+  status          String @default("PENDING")
+  reference       String @unique // platform reference, e.g. PAY-20250101-AB12CD
+  bakongMd5       String? @map("bakong_md5") // md5 returned by Bakong generate-qr
+  bakongHash      String? @map("bakong_hash") // transaction hash found by check-by-md5
+  qrPayload       String? @map("qr_payload") // EMVCo KHQR payload string (Bakong-issued or admin-configured)
+  manualRef       String? @map("manual_ref") // seller-entered bank transaction reference (manual flow)
   /** Normalized, globally-unique proof key (TRX:..., APV:<code>:<date>). */
-  manualRefKey    String?   @unique
+  manualRefKey    String? @unique @map("manual_ref_key")
   /** TRX (bank transaction id) or APV (approval code). */
-  manualRefKind   String?
+  manualRefKind   String? @map("manual_ref_kind")
   /** Idempotency key from the checkout modal — prevents double submits. */
-  idempotencyKey  String?   @unique
+  idempotencyKey  String? @unique @map("idempotency_key")
   /** SHA-256 of the uploaded receipt bytes (exact reuse detection). */
-  evidenceHash    String?
+  evidenceHash    String? @map("evidence_hash")
   /** 64-bit perceptual hash — catches resized/re-encoded screenshot reuse. */
-  evidencePhash   String?
-  evidenceUrl     String?   // optional payment evidence link (manual flow)
-  evidenceImage   String?   // uploaded payment screenshot as a data URL (manual flow)
+  evidencePhash   String? @map("evidence_phash")
+  evidenceUrl     String? @map("evidence_url") // optional payment evidence link (manual flow)
+  evidenceImage   String? @map("evidence_image") // uploaded payment screenshot as a data URL (manual flow)
   /** OCR result — the screenshot is evidence, never a source of auto-approval. */
-  ocrStatus       String?   // PASS | WARN | MISMATCH | UNREADABLE | NOT_RUN
-  ocrConfidence   Float?
-  ocrRef          String?
-  ocrAmount       Float?
-  ocrCurrency     String?
-  ocrPaidAt       DateTime?
-  ocrRawText      String?
-  ocrJson         String?
+  ocrStatus       String? @map("ocr_status") // PASS | WARN | MISMATCH | UNREADABLE | NOT_RUN
+  ocrConfidence   Float? @map("ocr_confidence")
+  ocrRef          String? @map("ocr_ref")
+  ocrAmount       Float? @map("ocr_amount")
+  ocrCurrency     String? @map("ocr_currency")
+  ocrPaidAt       DateTime? @map("ocr_paid_at")
+  ocrRawText      String? @map("ocr_raw_text")
+  ocrJson         String? @map("ocr_json")
   /** JSON array of risk flag codes shown to the admin. */
-  riskFlagsJson   String?
+  riskFlagsJson   String? @map("risk_flags_json")
   /** ABA_AUTO | ADMIN | ADMIN_OVERRIDE | OCR_ASSISTED */
-  verifiedSource  String?
-  telegramSentAt  DateTime? // when the proof was delivered to the admin's Telegram bot
-  telegramError   String?   // last Telegram delivery error, when delivery failed
+  verifiedSource  String? @map("verified_source")
+  telegramSentAt  DateTime? @map("telegram_sent_at") // when the proof was delivered to the admin's Telegram bot
+  telegramError   String? @map("telegram_error") // last Telegram delivery error, when delivery failed
   // Telegram inline-button workflow — tracks the message so the webhook can
   // edit it (remove buttons, add status text) after admin approval/rejection.
-  telegramMessageId Int?      // message_id of the proof message in the group
-  telegramGroupId   String?   // chat_id where the proof was sent (for edits)
-  verifiedByName    String?   // Telegram display name of the admin who approved
-  notifiedSeller    Boolean   @default(false) // whether seller was notified of result
-  notifiedAt        DateTime? // when the seller notification was sent
+  telegramMessageId Int? @map("telegram_message_id") // message_id of the proof message in the group
+  telegramGroupId   String? @map("telegram_group_id") // chat_id where the proof was sent (for edits)
+  verifiedByName    String? @map("verified_by_name") // Telegram display name of the admin who approved
+  notifiedSeller    Boolean @default(false) @map("notified_seller") // whether seller was notified of result
+  notifiedAt        DateTime? @map("notified_at") // when the seller notification was sent
   note            String?
-  rejectionReason String?
-  reviewedById    String?
-  reviewedAt      DateTime?
-  createdAt       DateTime  @default(now())
-  updatedAt       DateTime  @updatedAt
+  rejectionReason String? @map("rejection_reason")
+  reviewedById    String? @map("reviewed_by_id")
+  reviewedAt      DateTime? @map("reviewed_at")
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
 
   abaTransactions AbaTransaction[]
 
@@ -278,135 +287,139 @@ model SubscriptionPayment {
   @@index([status])
   @@index([evidenceHash])
   @@index([evidencePhash])
+  @@map("subscription_payments")
 }
 
 // ---------- ABA PayWay / Bank Group Transactions ----------
 
 model AbaTransaction {
-  id                    String                @id @default(cuid())
-  rawMessage            String                // full text of the Telegram message
-  messageId             Int?                  // Telegram message_id in the group
-  chatId                String?               // Telegram chat_id (e.g. -1004489863210)
-  source                String                @default("ABA_PAYWAY") // ABA_PAYWAY, BAKONG, etc.
+  id                    String @id @default(cuid())
+  rawMessage            String @map("raw_message") // full text of the Telegram message
+  messageId             Int? @map("message_id") // Telegram message_id in the group
+  chatId                String? @map("chat_id") // Telegram chat_id (e.g. -1004489863210)
+  source                String @default("ABA_PAYWAY") // ABA_PAYWAY, BAKONG, etc.
 
   // Parsed fields from ABA PayWay notification:
-  trxId                 String                @unique // e.g. "179264913984347"
-  apv                   String?               // approval code e.g. "135160"
-  amount                Float                 // numeric amount, e.g. 200 or 49.0
-  currency              String                // "KHR" or "USD"
-  amountUsd             Float                 // normalized to USD for revenue / plan matching
-  payerName             String?               // e.g. "Sam Chanpanha"
-  payerAccount          String?               // e.g. "*674"
-  bankCode              String?               // e.g. "AMRTKHPPXXX"
-  merchantName          String?               // e.g. "SAM CHAN PANHA"
-  transactionDateRaw    String?               // e.g. "Oct 22, 01:05 PM"
-  transactionDate       DateTime              // parsed datetime or message timestamp
+  trxId                 String @unique @map("trx_id") // e.g. "179264913984347"
+  apv                   String?  // approval code e.g. "135160"
+  amount                Float  // numeric amount, e.g. 200 or 49.0
+  currency              String  // "KHR" or "USD"
+  amountUsd             Float @map("amount_usd") // normalized to USD for revenue / plan matching
+  payerName             String? @map("payer_name") // e.g. "Sam Chanpanha"
+  payerAccount          String? @map("payer_account") // e.g. "*674"
+  bankCode              String? @map("bank_code") // e.g. "AMRTKHPPXXX"
+  merchantName          String? @map("merchant_name") // e.g. "SAM CHAN PANHA"
+  transactionDateRaw    String? @map("transaction_date_raw") // e.g. "Oct 22, 01:05 PM"
+  transactionDate       DateTime @map("transaction_date") // parsed datetime or message timestamp
 
   // Matching status with subscription payments:
-  status                String                @default("UNMATCHED") // UNMATCHED, MATCHED, MANUAL, AMBIGUOUS
-  subscriptionPaymentId String?
+  status                String @default("UNMATCHED") // UNMATCHED, MATCHED, MANUAL, AMBIGUOUS
+  subscriptionPaymentId String? @map("subscription_payment_id")
   subscriptionPayment   SubscriptionPayment?  @relation(fields: [subscriptionPaymentId], references: [id], onDelete: SetNull)
-  matchedAt             DateTime?
-  matchedBy             String?               // "AUTO_TRX_ID", "AUTO_APV", "AUTO_AMOUNT_TIME", "MANUAL_ADMIN"
+  matchedAt             DateTime? @map("matched_at")
+  matchedBy             String? @map("matched_by") // "AUTO_TRX_ID", "AUTO_APV", "AUTO_AMOUNT_TIME", "MANUAL_ADMIN"
 
   // Deduplication & Same-Time Verification:
-  isDuplicate           Boolean               @default(false) // true if same Trx ID or message was seen again
-  duplicateCount        Int                   @default(0)     // count of duplicate delivery attempts
-  sameTimeCollision     Boolean               @default(false) // true if another transaction occurred at identical time
-  collisionTrxIds       String?               // comma-separated list of colliding Trx IDs
-  verificationNote      String?               // verification / collision audit note
+  isDuplicate           Boolean @default(false) @map("is_duplicate") // true if same Trx ID or message was seen again
+  duplicateCount        Int @default(0) @map("duplicate_count") // count of duplicate delivery attempts
+  sameTimeCollision     Boolean @default(false) @map("same_time_collision") // true if another transaction occurred at identical time
+  collisionTrxIds       String? @map("collision_trx_ids") // comma-separated list of colliding Trx IDs
+  verificationNote      String? @map("verification_note") // verification / collision audit note
 
-  createdAt             DateTime              @default(now())
-  updatedAt             DateTime              @updatedAt
+  createdAt             DateTime @default(now()) @map("created_at")
+  updatedAt             DateTime @updatedAt @map("updated_at")
 
   @@index([trxId])
   @@index([status])
   @@index([transactionDate])
   @@index([createdAt])
+  @@map("aba_transactions")
 }
 
 // ---------- Buyer Purchase Requests (vehicle sale workflow) ----------
 
 model PurchaseRequest {
-  id           String    @id @default(cuid())
-  vehicleId    String
+  id           String @id @default(cuid())
+  vehicleId    String @map("vehicle_id")
   vehicle      Vehicle   @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
-  buyerId      String
+  buyerId      String @map("buyer_id")
   buyer        User      @relation("BuyerPurchaseRequests", fields: [buyerId], references: [id])
-  tenantId     String? // set when the listing belongs to a tenant
+  tenantId     String? @map("tenant_id") // set when the listing belongs to a tenant
   tenant       Tenant?   @relation(fields: [tenantId], references: [id])
-  sellerUserId String // vehicle.sellerId — the user who fulfils the sale
+  sellerUserId String @map("seller_user_id") // vehicle.sellerId — the user who fulfils the sale
   // PENDING | ACCEPTED | COMPLETED | CANCELLED | REJECTED
-  status       String    @default("PENDING")
+  status       String @default("PENDING")
   message      String?
-  priceUsd     Float // vehicle price snapshot at request time
-  decidedById  String?
-  decidedAt    DateTime?
-  decisionNote String?
-  createdAt    DateTime  @default(now())
-  updatedAt    DateTime  @updatedAt
+  priceUsd     Float @map("price_usd") // vehicle price snapshot at request time
+  decidedById  String? @map("decided_by_id")
+  decidedAt    DateTime? @map("decided_at")
+  decisionNote String? @map("decision_note")
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
 
   @@index([vehicleId])
   @@index([buyerId])
   @@index([tenantId])
   @@index([status])
+  @@map("purchase_requests")
 }
 
 // ---------- Platform Settings (Super Admin) ----------
 
 model PlatformSetting {
-  key       String   @id
-  valueJson String
-  updatedAt DateTime @updatedAt
+  key       String @id
+  valueJson String @map("value_json")
+  updatedAt DateTime @updatedAt @map("updated_at")
+  @@map("platform_settings")
 }
 
 // ---------- Vehicles ----------
 
 model Vehicle {
-  id              String  @id @default(cuid())
-  sellerId        String
+  id              String @id @default(cuid())
+  sellerId        String @map("seller_id")
   seller          User    @relation("SellerVehicles", fields: [sellerId], references: [id])
   // Which real user (or demo persona) actually created the listing — used for
   // "my listings" ownership and edit authorization (sellerId stays the display
   // seller, which may be the shared demo seller for legacy MVP flows).
-  createdById     String?
+  createdById     String? @map("created_by_id")
   make            String
   model           String
   variant         String?
   year            Int
-  priceUsd        Float
-  mileageKm       Int
-  transmission    String // AUTOMATIC | MANUAL
-  fuel            String // PETROL | DIESEL | HYBRID | ELECTRIC
-  engineCc        Int?
-  drivetrain      String? // FWD | RWD | AWD
-  bodyType        String // SUV | SEDAN | PICKUP | HATCHBACK | VAN | COUPE
-  exteriorColor   String?
-  seats           Int? // optional seats count (e.g. 5, 7)
-  interiorColor   String? // optional interior color (e.g. Beige, Black)
-  fuelEconomy     String? // optional fuel economy / EV range
-  priceMasked     Boolean  @default(false) // Contact for Price / Hide Price
-  condition       String  @default("USED") // LIKE_NEW | USED
-  city            String  @default("Phnom Penh")
+  priceUsd        Float @map("price_usd")
+  mileageKm       Int @map("mileage_km")
+  transmission    String  // AUTOMATIC | MANUAL
+  fuel            String  // PETROL | DIESEL | HYBRID | ELECTRIC
+  engineCc        Int? @map("engine_cc")
+  drivetrain      String?  // FWD | RWD | AWD
+  bodyType        String @map("body_type") // SUV | SEDAN | PICKUP | HATCHBACK | VAN | COUPE
+  exteriorColor   String? @map("exterior_color")
+  seats           Int?  // optional seats count (e.g. 5, 7)
+  interiorColor   String? @map("interior_color") // optional interior color (e.g. Beige, Black)
+  fuelEconomy     String? @map("fuel_economy") // optional fuel economy / EV range
+  priceMasked     Boolean @default(false) @map("price_masked") // Contact for Price / Hide Price
+  condition       String @default("USED") // LIKE_NEW | USED
+  city            String @default("Phnom Penh")
   district        String?
   description     String?
-  descriptionKm   String?
-  status          String  @default("PUBLISHED") // DRAFT | PENDING_REVIEW | PUBLISHED | REJECTED | SOLD | ARCHIVED
+  descriptionKm   String? @map("description_km")
+  status          String @default("PUBLISHED") // DRAFT | PENDING_REVIEW | PUBLISHED | REJECTED | SOLD | ARCHIVED
   featured        Boolean @default(false)
-  views           Int     @default(0)
-  vinLast6        String? // only last 6 chars stored for privacy
-  plateNo         String?
-  ownershipCount  Int?
-  accidentDeclared String @default("UNKNOWN") // NONE_DECLARED | MINOR_DECLARED | MAJOR_DECLARED | UNKNOWN
-  importOrigin    String? // USA | KOREA | JAPAN | THAILAND | DUBAI | LOCAL
-  listingCategory String  @default("CAR") // CAR | MOTOR | SPARE_PART
-  partCategory    String? // TIRES_WHEELS | BRAKES_SUSPENSION | BATTERY_ELECTRICAL | ENGINE_TRANSMISSION | LIGHTS_BULBS | BODY_MIRRORS | OILS_LUBRICANTS | ACCESSORIES
-  partTarget      String? // CAR | MOTOR | UNIVERSAL
-  partCondition   String? // BRAND_NEW | USED_GENUINE | AFTERMARKET
-  compatibleModels String? // e.g. "Toyota Prius 2004-2009", "Honda Dream 125, Scoopy"
-  partNumber      String? // optional OEM / manufacturer part number
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  views           Int @default(0)
+  vinLast6        String? @map("vin_last6") // only last 6 chars stored for privacy
+  plateNo         String? @map("plate_no")
+  ownershipCount  Int? @map("ownership_count")
+  accidentDeclared String @default("UNKNOWN") @map("accident_declared") // NONE_DECLARED | MINOR_DECLARED | MAJOR_DECLARED | UNKNOWN
+  importOrigin    String? @map("import_origin") // USA | KOREA | JAPAN | THAILAND | DUBAI | LOCAL
+  listingCategory String @default("CAR") @map("listing_category") // CAR | MOTOR | SPARE_PART
+  partCategory    String? @map("part_category") // TIRES_WHEELS | BRAKES_SUSPENSION | BATTERY_ELECTRICAL | ENGINE_TRANSMISSION | LIGHTS_BULBS | BODY_MIRRORS | OILS_LUBRICANTS | ACCESSORIES
+  partTarget      String? @map("part_target") // CAR | MOTOR | UNIVERSAL
+  partCondition   String? @map("part_condition") // BRAND_NEW | USED_GENUINE | AFTERMARKET
+  compatibleModels String? @map("compatible_models") // e.g. "Toyota Prius 2004-2009", "Honda Dream 125, Scoopy"
+  partNumber      String? @map("part_number") // optional OEM / manufacturer part number
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
 
   images        VehicleImage[]
   documents     VehicleDocument[]
@@ -416,146 +429,157 @@ model Vehicle {
   reportsAbuse  ReportedContent[]
   appointments  Appointment[]
   purchaseRequests PurchaseRequest[]
-  tenantId      String?
+  tenantId      String? @map("tenant_id")
   tenant        Tenant?          @relation(fields: [tenantId], references: [id])
-  branchId      String?
+  branchId      String? @map("branch_id")
   branch        TenantBranch?    @relation(fields: [branchId], references: [id], onDelete: SetNull)
 
   @@index([listingCategory])
   @@index([partCategory])
   @@index([partTarget])
+  @@map("vehicles")
 }
 
 model VehicleImage {
-  id        String  @id @default(cuid())
-  vehicleId String
+  id        String @id @default(cuid())
+  vehicleId String @map("vehicle_id")
   vehicle   Vehicle @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
   url       String
   alt       String?
-  sortOrder Int     @default(0)
+  sortOrder Int @default(0) @map("sort_order")
+  @@map("vehicle_images")
 }
 
 model VehicleDocument {
-  id        String  @id @default(cuid())
-  vehicleId String
+  id        String @id @default(cuid())
+  vehicleId String @map("vehicle_id")
   vehicle   Vehicle @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
   // type: REGISTRATION_BOOK | IMPORT_DECLARATION | SERVICE_RECORD | INSPECTION_CERT | INSURANCE
   type      String
   // status: PROVIDED | MISSING | VERIFIED | REJECTED
-  status    String  @default("PROVIDED")
+  status    String @default("PROVIDED")
   notes     String?
-  fileUrl   String?
+  fileUrl   String? @map("file_url")
+  @@map("vehicle_documents")
 }
 
 // ---------- AI Vehicle History Reports ----------
 
 model VehicleHistoryReport {
-  id                String   @id @default(cuid())
-  vehicleId         String
+  id                String @id @default(cuid())
+  vehicleId         String @map("vehicle_id")
   vehicle           Vehicle  @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
   // JSON array of CheckResult { area, title, titleKm, status, detail, detailKm, source, confidence }
-  checksJson        String
-  overallConfidence Float    @default(0) // 0-100
-  summaryEn         String?
-  summaryKm         String?
+  checksJson        String @map("checks_json")
+  overallConfidence Float @default(0) @map("overall_confidence") // 0-100
+  summaryEn         String? @map("summary_en")
+  summaryKm         String? @map("summary_km")
   // JSON array of limitation strings (en+km pairs)
-  limitationsJson   String?
-  status            String   @default("COMPLETE") // PENDING | PROCESSING | COMPLETE | FAILED
-  requestedBy       String?
-  createdAt         DateTime @default(now())
+  limitationsJson   String? @map("limitations_json")
+  status            String @default("COMPLETE") // PENDING | PROCESSING | COMPLETE | FAILED
+  requestedBy       String? @map("requested_by")
+  createdAt         DateTime @default(now()) @map("created_at")
+  @@map("vehicle_history_reports")
 }
 
 // ---------- Engagement ----------
 
 model Favorite {
-  id        String   @id @default(cuid())
-  userId    String
+  id        String @id @default(cuid())
+  userId    String @map("user_id")
   user      User     @relation(fields: [userId], references: [id])
-  vehicleId String
+  vehicleId String @map("vehicle_id")
   vehicle   Vehicle  @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
-  createdAt DateTime @default(now())
+  createdAt DateTime @default(now()) @map("created_at")
 
   @@unique([userId, vehicleId])
+  @@map("favorites")
 }
 
 model Conversation {
-  id        String   @id @default(cuid())
-  vehicleId String
+  id        String @id @default(cuid())
+  vehicleId String @map("vehicle_id")
   vehicle   Vehicle  @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
-  buyerId   String
+  buyerId   String @map("buyer_id")
   buyer     User     @relation("BuyerConversations", fields: [buyerId], references: [id])
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
 
   messages Message[]
+  @@map("conversations")
 }
 
 model Message {
-  id             String       @id @default(cuid())
-  conversationId String
+  id             String @id @default(cuid())
+  conversationId String @map("conversation_id")
   conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
-  senderId       String? // null => system message
+  senderId       String? @map("sender_id") // null => system message
   sender         User?        @relation(fields: [senderId], references: [id])
   body           String
-  isSystem       Boolean      @default(false)
-  createdAt      DateTime     @default(now())
+  isSystem       Boolean @default(false) @map("is_system")
+  createdAt      DateTime @default(now()) @map("created_at")
+  @@map("messages")
 }
 
 model ReportedContent {
-  id        String   @id @default(cuid())
-  vehicleId String
+  id        String @id @default(cuid())
+  vehicleId String @map("vehicle_id")
   vehicle   Vehicle  @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
-  reason    String // SCAM | WRONG_INFO | DUPLICATE | OFFENSIVE | SOLD | OTHER
+  reason    String  // SCAM | WRONG_INFO | DUPLICATE | OFFENSIVE | SOLD | OTHER
   details   String?
-  status    String   @default("OPEN") // OPEN | REVIEWED | RESOLVED | DISMISSED
-  createdAt DateTime @default(now())
+  status    String @default("OPEN") // OPEN | REVIEWED | RESOLVED | DISMISSED
+  createdAt DateTime @default(now()) @map("created_at")
+  @@map("reported_contents")
 }
 
 model AuditLog {
-  id        String   @id @default(cuid())
-  actorId   String?
+  id        String @id @default(cuid())
+  actorId   String? @map("actor_id")
   action    String
   entity    String
-  entityId  String?
-  metaJson  String?
-  createdAt DateTime @default(now())
+  entityId  String? @map("entity_id")
+  metaJson  String? @map("meta_json")
+  createdAt DateTime @default(now()) @map("created_at")
+  @@map("audit_logs")
 }
 
 model FraudAlert {
-  id              String    @id @default(cuid())
-  userId          String
-  tenantId        String
+  id              String @id @default(cuid())
+  userId          String @map("user_id")
+  tenantId        String @map("tenant_id")
   reason          String
-  detectedPayee   String?
-  expectedPayee   String?
+  detectedPayee   String? @map("detected_payee")
+  expectedPayee   String? @map("expected_payee")
   amount          Float?
   currency        String?
-  slipRef         String?
-  slipDateRaw     String?
-  evidenceImage   String?
-  status          String    @default("PENDING") // PENDING | DISMISSED | BLACKLISTED
-  telegramMsgId   Int?
-  telegramChatId  String?
-  resolvedBy      String?
-  resolvedAt      DateTime?
-  createdAt       DateTime  @default(now())
+  slipRef         String? @map("slip_ref")
+  slipDateRaw     String? @map("slip_date_raw")
+  evidenceImage   String? @map("evidence_image")
+  status          String @default("PENDING") // PENDING | DISMISSED | BLACKLISTED
+  telegramMsgId   Int? @map("telegram_msg_id")
+  telegramChatId  String? @map("telegram_chat_id")
+  resolvedBy      String? @map("resolved_by")
+  resolvedAt      DateTime? @map("resolved_at")
+  createdAt       DateTime @default(now()) @map("created_at")
 
   @@index([userId])
   @@index([tenantId])
   @@index([status])
+  @@map("fraud_alerts")
 }
 
 model PendingStorageSync {
-  id        String    @id @default(cuid())
-  fileName  String    @unique
-  mimeType  String
-  byteSize  Int
-  source    String    @default("MINIO") // MINIO | LOCAL
-  status    String    @default("PENDING") // PENDING | SYNCED | FAILED
+  id        String @id @default(cuid())
+  fileName  String @unique @map("file_name")
+  mimeType  String @map("mime_type")
+  byteSize  Int @map("byte_size")
+  source    String @default("MINIO") // MINIO | LOCAL
+  status    String @default("PENDING") // PENDING | SYNCED | FAILED
   error     String?
-  createdAt DateTime  @default(now())
-  syncedAt  DateTime?
+  createdAt DateTime @default(now()) @map("created_at")
+  syncedAt  DateTime? @map("synced_at")
 
   @@index([status])
+  @@map("pending_storage_sync")
 }
 

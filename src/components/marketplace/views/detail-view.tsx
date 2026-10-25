@@ -21,7 +21,8 @@ import {
   Flag, Gauge, Handshake, Heart, Loader2, MapPin, MessageSquare, Phone, PhoneCall, RefreshCw, Send, ShieldCheck,
   ShieldAlert, Star, Timer, TriangleAlert, Users, Wrench,
 } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { isInTelegram, setupMainButton, tgHaptic, tgHapticSelection, tgShareListing } from "@/lib/telegram";
 import { formatKhr, formatMileage, formatUsd, timeAgo } from "@/lib/format";
 import {
   bodyTypeLabels,
@@ -71,6 +72,31 @@ export function DetailView({ vehicleId }: { vehicleId: string }) {
   const [buyOpen, setBuyOpen] = useState(false);
   const [buyMessage, setBuyMessage] = useState("");
   const [buySubmitting, setBuySubmitting] = useState(false);
+
+  // Telegram Mini App MainButton integration
+  useEffect(() => {
+    if (!isInTelegram() || !data?.vehicle) return;
+    const v = data.vehicle;
+    const label = v.sellerFull?.telegram
+      ? `💬 Telegram @${v.sellerFull.telegram.replace(/^@/, "")}`
+      : `💬 ${t("contactSeller")}`;
+
+    const handle = setupMainButton();
+    if (!handle) return;
+
+    handle.show(label, () => {
+      tgHaptic("medium");
+      if (v.sellerFull?.telegram) {
+        window.open(`https://t.me/${v.sellerFull.telegram.replace(/^@/, "")}`, "_blank");
+      } else {
+        setContactOpen(true);
+      }
+    });
+
+    return () => {
+      handle.hide();
+    };
+  }, [data?.vehicle, t]);
 
   if (loading && !data) {
     return (
@@ -539,21 +565,35 @@ export function DetailView({ vehicleId }: { vehicleId: string }) {
                 </Button>
               ) : (
                 <Button
-                  onClick={openAuthedDialog(() => setContactOpen(true))}
+                  onClick={openAuthedDialog(() => {
+                    tgHaptic("light");
+                    setContactOpen(true);
+                  })}
                   className="bg-amber-500 hover:bg-amber-400 text-slate-950 font-semibold h-11"
                 >
                   <MessageSquare className="h-4 w-4 mr-2" aria-hidden />
                   {t("contactSeller")}
                 </Button>
               )}
-              <Button onClick={toggleFavorite} variant="outline" className="h-11" aria-pressed={isFav}>
+              <Button
+                onClick={() => {
+                  tgHapticSelection();
+                  toggleFavorite();
+                }}
+                variant="outline"
+                className="h-11"
+                aria-pressed={isFav}
+              >
                 <Heart className={cn("h-4 w-4 mr-2", isFav && "fill-rose-500 text-rose-500")} aria-hidden />
                 {isFav ? (locale === "km" ? "រក្សាទុករួច" : "Saved") : t("navFavorites")}
               </Button>
             </div>
             {v.status === "PUBLISHED" && (
               <Button
-                onClick={openBuyDialog}
+                onClick={() => {
+                  tgHaptic("light");
+                  openBuyDialog();
+                }}
                 className="mt-2 h-11 w-full bg-emerald-600 hover:bg-emerald-700 text-white font-semibold"
               >
                 <Handshake className="h-4 w-4 mr-2" aria-hidden />
@@ -562,7 +602,10 @@ export function DetailView({ vehicleId }: { vehicleId: string }) {
             )}
             {v.status === "PUBLISHED" && v.listingCategory !== "SPARE_PART" && (
               <Button
-                onClick={openAuthedDialog(() => setTdOpen(true))}
+                onClick={openAuthedDialog(() => {
+                  tgHaptic("light");
+                  setTdOpen(true);
+                })}
                 variant="outline"
                 className="mt-2 h-11 w-full border-teal-200 text-teal-700 hover:bg-teal-50"
               >
@@ -570,6 +613,24 @@ export function DetailView({ vehicleId }: { vehicleId: string }) {
                 {t("requestTestDrive")}
               </Button>
             )}
+
+            {/* Telegram 1-tap Native Share Button */}
+            <Button
+              onClick={() => {
+                tgHaptic("medium");
+                tgShareListing({
+                  id: v.id,
+                  title: `${v.year} ${v.make} ${v.model}`,
+                  priceUsd: v.priceUsd,
+                  category: v.listingCategory,
+                });
+              }}
+              variant="outline"
+              className="mt-2 h-11 w-full border-sky-200 text-sky-700 hover:bg-sky-50 dark:border-sky-800 dark:text-sky-400 font-medium"
+            >
+              <Send className="h-4 w-4 mr-2" aria-hidden />
+              {t("shareToTelegram")}
+            </Button>
             {v.sellerFull.phone && (
               <p className="mt-3 flex items-center gap-2 text-sm text-slate-500">
                 <Phone className="h-3.5 w-3.5" aria-hidden />

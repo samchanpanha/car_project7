@@ -114,6 +114,7 @@ services:
       CLOUDFLARE_R2_ACCESS_KEY_ID: ${CLOUDFLARE_R2_ACCESS_KEY_ID:-}
       CLOUDFLARE_R2_SECRET_ACCESS_KEY: ${CLOUDFLARE_R2_SECRET_ACCESS_KEY:-}
       CLOUDFLARE_R2_BUCKET: ${CLOUDFLARE_R2_BUCKET:-cars-storage}
+      CLOUDFLARE_R2_PREFIX: ${CLOUDFLARE_R2_PREFIX:-car_list/}
       CLOUDFLARE_R2_PUBLIC_URL: ${CLOUDFLARE_R2_PUBLIC_URL:-}
       NACOS_SERVER_ADDR: nacos:8848
       NACOS_DISCOVERY_ENABLED: "true"
@@ -148,14 +149,18 @@ services:
       PORT: 3000
       HOSTNAME: 0.0.0.0
       BACKEND_URL: http://backend:8080
-      NEXT_PUBLIC_API_URL: http://localhost/api
+      DATABASE_URL: postgresql://khlan:khlan_secret_2026@postgres:5432/khlandb
       CLOUDFLARE_R2_ENDPOINT: ${CLOUDFLARE_R2_ENDPOINT:-}
       CLOUDFLARE_R2_ACCESS_KEY_ID: ${CLOUDFLARE_R2_ACCESS_KEY_ID:-}
       CLOUDFLARE_R2_SECRET_ACCESS_KEY: ${CLOUDFLARE_R2_SECRET_ACCESS_KEY:-}
       CLOUDFLARE_R2_BUCKET: ${CLOUDFLARE_R2_BUCKET:-cars-storage}
+      CLOUDFLARE_R2_PREFIX: ${CLOUDFLARE_R2_PREFIX:-car_list/}
       CLOUDFLARE_R2_PUBLIC_URL: ${CLOUDFLARE_R2_PUBLIC_URL:-}
     depends_on:
-      - backend
+      postgres:
+        condition: service_healthy
+      backend:
+        condition: service_started
     volumes:
       - ./db:/app/db
       - ./public:/app/public

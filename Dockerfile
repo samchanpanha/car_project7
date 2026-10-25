@@ -53,7 +53,7 @@ FROM base AS daemon
 WORKDIR /app
 
 ENV NODE_ENV=production
-ENV DATABASE_URL="file:/app/db/custom.db"
+ENV DATABASE_URL="postgresql://khlan:khlan_secret_2026@postgres:5432/khlandb"
 
 # Copy installed dependencies and source code needed for tsx execution
 COPY --from=deps /app/node_modules ./node_modules
@@ -83,7 +83,7 @@ ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1
 ENV PORT=3000
 ENV HOSTNAME="0.0.0.0"
-ENV DATABASE_URL="file:/app/db/custom.db"
+ENV DATABASE_URL="postgresql://khlan:khlan_secret_2026@postgres:5432/khlandb"
 
 # Create persistent storage directories
 RUN mkdir -p /app/db /app/uploads

@@ -2,7 +2,14 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import crypto from "node:crypto";
 import { db } from "@/lib/db";
-import { isR2Configured, uploadToR2, checkR2Health, getFromR2 } from "@/lib/r2-client";
+import {
+  isR2Configured,
+  uploadToR2,
+  checkR2Health,
+  getFromR2,
+  getR2Config,
+  countR2Objects,
+} from "@/lib/r2-client";
 import {
   isMinioConfigured,
   uploadToMinio,
@@ -91,9 +98,14 @@ export async function saveWithStorageFailover(
   return `/api/uploads/${name}`;
 }
 
+
 export interface StorageStatusDTO {
   r2Configured: boolean;
   r2Healthy: boolean;
+  r2Bucket?: string;
+  r2Prefix?: string;
+  r2PublicUrl?: string;
+  r2ObjectCount?: number;
   minioConfigured: boolean;
   minioHealthy: boolean;
   pendingCount: number;
@@ -111,9 +123,11 @@ export interface StorageStatusDTO {
  * Get the current health and status of Cloudflare R2, MinIO, and pending sync files.
  */
 export async function getStorageResilienceStatus(): Promise<StorageStatusDTO> {
-  const [r2Healthy, minioHealthy, pendingList] = await Promise.all([
+  const r2Cfg = getR2Config();
+  const [r2Healthy, minioHealthy, r2ObjectCount, pendingList] = await Promise.all([
     checkR2Health().catch(() => false),
     checkMinioHealth().catch(() => false),
+    countR2Objects().catch(() => 0),
     db.pendingStorageSync
       .findMany({
         where: { status: "PENDING" },
@@ -126,6 +140,10 @@ export async function getStorageResilienceStatus(): Promise<StorageStatusDTO> {
   return {
     r2Configured: isR2Configured(),
     r2Healthy,
+    r2Bucket: r2Cfg.bucketName,
+    r2Prefix: r2Cfg.keyPrefix,
+    r2PublicUrl: r2Cfg.publicBaseUrl,
+    r2ObjectCount,
     minioConfigured: isMinioConfigured(),
     minioHealthy,
     pendingCount: pendingList.length,

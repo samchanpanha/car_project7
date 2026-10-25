@@ -9,6 +9,8 @@ import {
   initTelegram,
   tgSendAuth,
   setupBackButton,
+  getTmaStartParam,
+  parseTmaDeepLink,
   type TgBackButtonHandle,
 } from "@/lib/telegram";
 import { Header } from "@/components/marketplace/header";
@@ -125,6 +127,14 @@ function TelegramBoot() {
     (async () => {
       if (!isInTelegram()) return;
       await initTelegram();
+
+      // Deep link routing (startapp=vehicle_<id> etc.)
+      const startParam = getTmaStartParam();
+      const deepTarget = parseTmaDeepLink(startParam);
+      if (deepTarget && !cancelled) {
+        navigate(deepTarget);
+      }
+
       const authed = await tgSendAuth();
       if (!authed || cancelled) return;
       try {
@@ -140,7 +150,7 @@ function TelegramBoot() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [navigate]);
 
   // Wire the native BackButton once; toggle visibility per view.
   // Only inside a real Mini App session — plain browsers (and the telegram

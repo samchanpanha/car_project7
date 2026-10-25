@@ -270,6 +270,32 @@ export interface SellerTelegramDTO {
   };
 }
 
+/** Admin platform-level Telegram bot & Mini App configuration */
+export interface AdminTelegramConfigDTO {
+  botUsername: string | null;
+  botToken: string | null;
+  chatId: string | null;
+  miniAppUrl: string | null;
+  channelUrl: string | null;
+  groupUrl: string | null;
+  tmaEnabled: boolean;
+  autoAuthEnabled: boolean;
+  leadAlertsEnabled: boolean;
+  hasEnvToken: boolean;
+}
+
+/** Live status returned by Telegram getMe test endpoint */
+export interface TelegramBotStatusDTO {
+  connected: boolean;
+  botId?: number;
+  botName?: string;
+  botUsername?: string;
+  canJoinGroups?: boolean;
+  canReadAllGroupMessages?: boolean;
+  supportsInlineQueries?: boolean;
+  error?: string;
+}
+
 /** Valid ?d= destinations on tracked invite links. */
 export type TelegramDest = "MINIAPP" | "CHANNEL" | "GROUP";
 

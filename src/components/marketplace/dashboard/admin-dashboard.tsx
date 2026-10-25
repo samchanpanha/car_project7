@@ -15,6 +15,8 @@ import type {
   AuditEntryDTO,
   PlatformSettingsDTO,
   SessionDTO,
+  AdminTelegramConfigDTO,
+  TelegramBotStatusDTO,
 } from "@/lib/dashboard-types";
 import type { VehicleStatus } from "@/lib/types";
 import type { SubscriptionPaymentDTO } from "@/lib/commerce-types";
@@ -40,10 +42,10 @@ import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import {
-  BadgeCheck, Car, ChevronDown, CreditCard, DollarSign, FileCheck2, Gauge, Hourglass, Image as ImageIcon,
+  Activity, BadgeCheck, Car, ChevronDown, CreditCard, DollarSign, FileCheck2, Gauge, Hourglass, Image as ImageIcon,
   LayoutDashboard, Loader2, MessageSquare, MoreHorizontal, ScrollText, Send, Settings, ShieldCheck, Sparkles,
   Star, Store, TriangleAlert, Upload, Users, Wallet, RefreshCw, Link2, Search, Check, CheckCircle2,
-  Calendar, Clock, Copy, Repeat, Trash2, Cloud, CloudUpload, HardDrive, Database,
+  Calendar, Clock, Copy, Repeat, Trash2, Cloud, CloudUpload, HardDrive, Database, ExternalLink, Eye, EyeOff,
 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
@@ -76,6 +78,7 @@ export function AdminDashboard({ me }: { me: SessionDTO }) {
     { id: "users", label: t("tabUsers"), icon: Users },
     { id: "payments", label: t("tabPayments"), icon: CreditCard },
     { id: "ai", label: t("tabAi"), icon: Sparkles },
+    { id: "telegram", label: t("tabTelegram"), icon: Send },
     { id: "settings", label: t("tabSettings"), icon: Settings },
     { id: "storage", label: t("storageSyncTitle"), icon: HardDrive },
     { id: "audit", label: t("tabAudit"), icon: ScrollText },
@@ -96,6 +99,7 @@ export function AdminDashboard({ me }: { me: SessionDTO }) {
       {active === "users" && <AdminUsers />}
       {active === "payments" && <AdminPayments />}
       {active === "ai" && <AdminAi />}
+      {active === "telegram" && <AdminTelegramManagement />}
       {active === "settings" && <AdminSettings />}
       {active === "storage" && <AdminStorageResilience />}
       {active === "audit" && <AdminAudit />}
@@ -876,6 +880,370 @@ function AdminSettings() {
       <AdminPaymentConfig />
       <AdminPlanPricing />
       <AdminStorageResilience />
+    </div>
+  );
+}
+
+// ---------------- Telegram & Mini App Management ----------------
+
+function AdminTelegramManagement() {
+  const t = useT();
+  const { data, loading, error, refetch } = useFetch<AdminTelegramConfigDTO>("/api/admin/telegram");
+  const [form, setForm] = useState<AdminTelegramConfigDTO | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [showToken, setShowToken] = useState(false);
+
+  // Bot test status state
+  const [testing, setTesting] = useState(false);
+  const [botStatus, setBotStatus] = useState<TelegramBotStatusDTO | null>(null);
+
+  useEffect(() => {
+    if (data) setForm(data);
+  }, [data]);
+
+  const handleTestConnection = async () => {
+    setTesting(true);
+    setBotStatus(null);
+    try {
+      const res = await apiSend<TelegramBotStatusDTO>("/api/admin/telegram/test", "POST", {
+        botToken: form?.botToken || undefined,
+      });
+      setBotStatus(res);
+      if (res.connected) {
+        toast.success(t("tgBotConnected", { username: res.botUsername || "unknown", name: res.botName || "Telegram Bot" }));
+      } else {
+        toast.error(t("tgBotDisconnected", { error: res.error || "Connection failed" }));
+      }
+    } catch (e) {
+      const msg = errorText(e);
+      setBotStatus({ connected: false, error: msg });
+      toast.error(t("tgBotDisconnected", { error: msg }));
+    } finally {
+      setTesting(false);
+    }
+  };
+
+  const handleSave = async () => {
+    if (!form) return;
+    setSaving(true);
+    try {
+      const saved = await apiSend<AdminTelegramConfigDTO>("/api/admin/telegram", "PUT", {
+        botUsername: form.botUsername?.trim() || null,
+        botToken: form.botToken?.trim() || null,
+        chatId: form.chatId?.trim() || null,
+        miniAppUrl: form.miniAppUrl?.trim() || null,
+        channelUrl: form.channelUrl?.trim() || null,
+        groupUrl: form.groupUrl?.trim() || null,
+        tmaEnabled: form.tmaEnabled,
+        autoAuthEnabled: form.autoAuthEnabled,
+        leadAlertsEnabled: form.leadAlertsEnabled,
+      });
+      setForm(saved);
+      toast.success(t("tgPlatformConfigSaved"));
+      refetch();
+    } catch (e) {
+      toast.error(isForbidden(e) ? t("toastForbidden") : errorText(e));
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  if (loading && !data) return <Skeleton className="h-72 w-full rounded-xl" />;
+  if (error && !data) return <FetchErrorState message={error} onRetry={refetch} />;
+  if (!form) return null;
+
+  return (
+    <div className="space-y-6">
+      {/* Bot Connection & Status Card */}
+      <SectionCard
+        title={t("tgBotStatus")}
+        action={
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={handleTestConnection}
+            disabled={testing}
+            className="h-8 gap-1.5 text-xs font-semibold cursor-pointer"
+          >
+            {testing ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
+            {testing ? t("tgTestingConnection") : t("tgTestConnection")}
+          </Button>
+        }
+      >
+        <div className="space-y-3">
+          {botStatus ? (
+            botStatus.connected ? (
+              <div className="rounded-xl border border-emerald-200 bg-emerald-50/70 p-4">
+                <div className="flex items-start gap-3">
+                  <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-emerald-600 text-white shadow-xs">
+                    <CheckCircle2 className="h-5 w-5" />
+                  </span>
+                  <div className="min-w-0 flex-1">
+                    <h4 className="text-sm font-bold text-emerald-950">
+                      {t("tgBotConnected", { username: botStatus.botUsername || "Bot", name: botStatus.botName || "Telegram Bot" })}
+                    </h4>
+                    <p className="mt-0.5 text-xs text-emerald-700">
+                      Bot ID: <code className="font-mono font-semibold">{botStatus.botId}</code>
+                      {botStatus.canJoinGroups && " · Groups allowed"}
+                      {botStatus.canReadAllGroupMessages && " · Read group messages enabled"}
+                    </p>
+                  </div>
+                  <Badge className="bg-emerald-600 text-white font-mono text-[10px] shrink-0">ONLINE</Badge>
+                </div>
+              </div>
+            ) : (
+              <div className="rounded-xl border border-rose-200 bg-rose-50/70 p-4">
+                <div className="flex items-start gap-3">
+                  <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-rose-600 text-white shadow-xs">
+                    <TriangleAlert className="h-5 w-5" />
+                  </span>
+                  <div className="min-w-0 flex-1">
+                    <h4 className="text-sm font-bold text-rose-950">
+                      {t("tgBotDisconnected", { error: botStatus.error || "Failed to reach Telegram Bot API" })}
+                    </h4>
+                    <p className="mt-0.5 text-xs text-rose-700">
+                      Please check the Bot Token below or ensure your host has outbound internet access to https://api.telegram.org.
+                    </p>
+                  </div>
+                  <Badge variant="destructive" className="font-mono text-[10px] shrink-0">OFFLINE</Badge>
+                </div>
+              </div>
+            )
+          ) : (
+            <div className="flex items-center justify-between rounded-xl border border-slate-200 bg-slate-50/60 p-4">
+              <div className="flex items-center gap-3">
+                <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-sky-500 text-white shadow-xs">
+                  <Send className="h-5 w-5" />
+                </span>
+                <div>
+                  <h4 className="text-sm font-semibold text-slate-900">
+                    {form.botUsername ? `@${form.botUsername}` : "No bot configured yet"}
+                  </h4>
+                  <p className="text-xs text-slate-500">
+                    {form.botToken ? "Token provided — click 'Test Bot Connection' to verify live status." : "Provide a bot token below from @BotFather."}
+                  </p>
+                </div>
+              </div>
+              {form.hasEnvToken && (
+                <Badge variant="outline" className="text-xs text-slate-600 border-slate-300">
+                  ENV Token Active
+                </Badge>
+              )}
+            </div>
+          )}
+        </div>
+      </SectionCard>
+
+      {/* Bot Credentials & Notification Routing */}
+      <SectionCard title="Bot Credentials & Notifications">
+        <div className="grid gap-4 sm:grid-cols-2">
+          <div className="sm:col-span-2">
+            <div className="flex items-center justify-between">
+              <Label htmlFor="tg-token" className="text-xs font-semibold text-slate-700">
+                {t("tgBotTokenLabel")}
+              </Label>
+              <button
+                type="button"
+                onClick={() => setShowToken(!showToken)}
+                className="flex items-center gap-1 text-[11px] text-sky-600 hover:text-sky-700 cursor-pointer"
+              >
+                {showToken ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
+                {showToken ? "Hide token" : "Reveal token"}
+              </button>
+            </div>
+            <Input
+              id="tg-token"
+              type={showToken ? "text" : "password"}
+              placeholder="e.g. 123456789:ABCdefGhIJKlmNoPQRsTUVwxyZ"
+              className="mt-1.5 h-9 font-mono text-xs"
+              value={form.botToken ?? ""}
+              onChange={(e) => setForm({ ...form, botToken: e.target.value })}
+            />
+            <p className="mt-1 text-[11px] text-slate-400">{t("tgBotTokenHint")}</p>
+          </div>
+
+          <div>
+            <Label htmlFor="tg-username" className="text-xs font-semibold text-slate-700">
+              {t("tgBotUsernameLabel")}
+            </Label>
+            <div className="relative mt-1.5">
+              <span className="absolute left-3 top-2.5 text-xs font-semibold text-slate-400">@</span>
+              <Input
+                id="tg-username"
+                type="text"
+                placeholder="KhLanBot"
+                className="h-9 pl-7 text-xs"
+                value={form.botUsername ?? ""}
+                onChange={(e) => setForm({ ...form, botUsername: e.target.value.replace(/^@/, "") })}
+              />
+            </div>
+            <p className="mt-1 text-[11px] text-slate-400">{t("tgBotUsernameHint")}</p>
+          </div>
+
+          <div>
+            <Label htmlFor="tg-chatid" className="text-xs font-semibold text-slate-700">
+              {t("tgChatIdLabel")}
+            </Label>
+            <Input
+              id="tg-chatid"
+              type="text"
+              placeholder="e.g. -100123456789 or 987654321"
+              className="mt-1.5 h-9 font-mono text-xs"
+              value={form.chatId ?? ""}
+              onChange={(e) => setForm({ ...form, chatId: e.target.value })}
+            />
+            <p className="mt-1 text-[11px] text-slate-400">{t("tgChatIdHint")}</p>
+          </div>
+        </div>
+      </SectionCard>
+
+      {/* Official Mini App & Community Links */}
+      <SectionCard title="Official Mini App & Community Links">
+        <div className="space-y-4">
+          <div>
+            <div className="flex items-center justify-between">
+              <Label htmlFor="tg-miniapp-url" className="text-xs font-semibold text-slate-700">
+                {t("tgOfficialMiniAppUrl")}
+              </Label>
+              {form.miniAppUrl && (
+                <a
+                  href={form.miniAppUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex items-center gap-1 text-[11px] text-sky-600 hover:text-sky-700 font-medium"
+                >
+                  <ExternalLink className="h-3 w-3" />
+                  Open Mini App
+                </a>
+              )}
+            </div>
+            <Input
+              id="tg-miniapp-url"
+              type="url"
+              placeholder="https://t.me/KhLanBot/app"
+              className="mt-1.5 h-9 text-xs"
+              value={form.miniAppUrl ?? ""}
+              onChange={(e) => setForm({ ...form, miniAppUrl: e.target.value })}
+            />
+            <p className="mt-1 text-[11px] text-slate-400">{t("tgOfficialMiniAppHint")}</p>
+          </div>
+
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div>
+              <Label htmlFor="tg-channel-url" className="text-xs font-semibold text-slate-700">
+                {t("tgOfficialChannelUrl")}
+              </Label>
+              <Input
+                id="tg-channel-url"
+                type="url"
+                placeholder="https://t.me/khlan_channel"
+                className="mt-1.5 h-9 text-xs"
+                value={form.channelUrl ?? ""}
+                onChange={(e) => setForm({ ...form, channelUrl: e.target.value })}
+              />
+            </div>
+            <div>
+              <Label htmlFor="tg-group-url" className="text-xs font-semibold text-slate-700">
+                {t("tgOfficialGroupUrl")}
+              </Label>
+              <Input
+                id="tg-group-url"
+                type="url"
+                placeholder="https://t.me/khlan_community"
+                className="mt-1.5 h-9 text-xs"
+                value={form.groupUrl ?? ""}
+                onChange={(e) => setForm({ ...form, groupUrl: e.target.value })}
+              />
+            </div>
+          </div>
+        </div>
+      </SectionCard>
+
+      {/* Feature Toggles */}
+      <SectionCard title="Mini App & Automation Feature Toggles">
+        <div className="divide-y divide-slate-100">
+          <div className="flex items-center justify-between py-3">
+            <div className="pr-4">
+              <Label htmlFor="sw-tma" className="text-xs font-bold text-slate-800">
+                {t("tgTmaEnabled")}
+              </Label>
+              <p className="text-[11px] text-slate-500">{t("tgTmaEnabledHint")}</p>
+            </div>
+            <Switch
+              id="sw-tma"
+              checked={form.tmaEnabled}
+              onCheckedChange={(checked) => setForm({ ...form, tmaEnabled: checked })}
+            />
+          </div>
+
+          <div className="flex items-center justify-between py-3">
+            <div className="pr-4">
+              <Label htmlFor="sw-autoauth" className="text-xs font-bold text-slate-800">
+                {t("tgAutoAuthEnabled")}
+              </Label>
+              <p className="text-[11px] text-slate-500">{t("tgAutoAuthEnabledHint")}</p>
+            </div>
+            <Switch
+              id="sw-autoauth"
+              checked={form.autoAuthEnabled}
+              onCheckedChange={(checked) => setForm({ ...form, autoAuthEnabled: checked })}
+            />
+          </div>
+
+          <div className="flex items-center justify-between py-3">
+            <div className="pr-4">
+              <Label htmlFor="sw-leadalerts" className="text-xs font-bold text-slate-800">
+                {t("tgLeadAlertsEnabled")}
+              </Label>
+              <p className="text-[11px] text-slate-500">{t("tgLeadAlertsEnabledHint")}</p>
+            </div>
+            <Switch
+              id="sw-leadalerts"
+              checked={form.leadAlertsEnabled}
+              onCheckedChange={(checked) => setForm({ ...form, leadAlertsEnabled: checked })}
+            />
+          </div>
+        </div>
+      </SectionCard>
+
+      {/* Deep Linking Reference Card */}
+      <SectionCard title="Telegram Mini App Deep-Linking Format">
+        <div className="space-y-2 text-xs text-slate-600">
+          <p className="text-slate-500">
+            KhLan handles seamless deep-linking inside Telegram Mini Apps. Any link opened with <code className="rounded bg-slate-100 px-1 py-0.5 font-mono text-[11px] font-semibold text-slate-800">startapp=&lt;param&gt;</code> automatically routes to the intended item:
+          </p>
+          <div className="grid gap-2 sm:grid-cols-2 pt-2">
+            <div className="rounded-lg border border-slate-200 bg-slate-50/70 p-2.5">
+              <p className="font-mono font-semibold text-sky-700 text-[11px]">startapp=vehicle_veh_123</p>
+              <p className="text-[10px] text-slate-500 mt-0.5">Directly opens vehicle detail view & initializes MainButton</p>
+            </div>
+            <div className="rounded-lg border border-slate-200 bg-slate-50/70 p-2.5">
+              <p className="font-mono font-semibold text-emerald-700 text-[11px]">startapp=seller_usr_456</p>
+              <p className="text-[10px] text-slate-500 mt-0.5">Directly opens seller showroom & verified inventory</p>
+            </div>
+            <div className="rounded-lg border border-slate-200 bg-slate-50/70 p-2.5">
+              <p className="font-mono font-semibold text-teal-700 text-[11px]">startapp=report_veh_123</p>
+              <p className="text-[10px] text-slate-500 mt-0.5">Directly opens AI vehicle condition & provenance report</p>
+            </div>
+            <div className="rounded-lg border border-slate-200 bg-slate-50/70 p-2.5">
+              <p className="font-mono font-semibold text-amber-700 text-[11px]">startapp=browse_Toyota</p>
+              <p className="text-[10px] text-slate-500 mt-0.5">Filters browse catalogue with search keyword</p>
+            </div>
+          </div>
+        </div>
+      </SectionCard>
+
+      {/* Save Button */}
+      <div className="flex justify-end">
+        <Button
+          onClick={handleSave}
+          disabled={saving}
+          className="bg-sky-600 hover:bg-sky-700 text-white font-semibold h-10 px-6 cursor-pointer gap-2"
+        >
+          {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+          {t("tgSavePlatformConfig")}
+        </Button>
+      </div>
     </div>
   );
 }
@@ -3150,6 +3518,10 @@ function AdminStorageResilience() {
   const { data, loading, error, refetch } = useFetch<{
     r2Configured: boolean;
     r2Healthy: boolean;
+    r2Bucket?: string;
+    r2Prefix?: string;
+    r2PublicUrl?: string;
+    r2ObjectCount?: number;
     minioConfigured: boolean;
     minioHealthy: boolean;
     pendingCount: number;
@@ -3164,6 +3536,39 @@ function AdminStorageResilience() {
   }>("/api/admin/storage/status");
 
   const [syncing, setSyncing] = useState(false);
+  const [testing, setTesting] = useState(false);
+  const [testResult, setTestResult] = useState<{
+    success: boolean;
+    latencyMs: number;
+    objectCount: number;
+    sampleObjects: string[];
+    error?: string;
+  } | null>(null);
+
+  const handleTestConnection = async () => {
+    setTesting(true);
+    setTestResult(null);
+    try {
+      const res = await apiSend<{
+        success: boolean;
+        latencyMs: number;
+        objectCount: number;
+        sampleObjects: string[];
+        error?: string;
+      }>("/api/admin/storage/test-connection", "POST");
+      setTestResult(res);
+      if (res.success) {
+        toast.success(`Cloudflare R2 ping successful (${res.latencyMs}ms)`);
+      } else {
+        toast.error(`R2 test failed: ${res.error || "Unknown error"}`);
+      }
+      refetch();
+    } catch (e) {
+      toast.error(errorText(e));
+    } finally {
+      setTesting(false);
+    }
+  };
 
   const handleSync = async () => {
     setSyncing(true);
@@ -3193,19 +3598,25 @@ function AdminStorageResilience() {
   return (
     <SectionCard title={t("storageSyncTitle")}>
       <p className="text-xs text-slate-500 mb-4 -mt-1 leading-relaxed">
-        {t("storageSyncDesc")}
+        {t("storageSyncDesc")} All new car listings, avatars, and documents default to Cloudflare R2 with global CDN distribution.
       </p>
+
       <div className="grid gap-4 sm:grid-cols-2">
         {/* Cloudflare R2 Card */}
-        <div className="rounded-xl border border-slate-200 bg-gradient-to-br from-amber-50/40 via-white to-orange-50/30 p-4">
+        <div className="rounded-xl border border-amber-200/80 bg-gradient-to-br from-amber-50/50 via-white to-orange-50/40 p-4 shadow-sm">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2.5">
-              <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-amber-500/10 text-amber-600 font-bold">
+              <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-amber-500/15 text-amber-600 font-bold shadow-sm">
                 <Cloud className="h-5 w-5" />
               </div>
               <div>
-                <h4 className="text-sm font-bold text-slate-900">Cloudflare R2 Storage</h4>
-                <p className="text-[11px] text-slate-500">Primary Global CDN & Bucket</p>
+                <h4 className="text-sm font-bold text-slate-900 flex items-center gap-1.5">
+                  Cloudflare R2 Storage
+                  <Badge className="bg-amber-100 text-amber-800 border-amber-300 text-[9px] px-1.5 py-0 h-4">
+                    DEFAULT
+                  </Badge>
+                </h4>
+                <p className="text-[11px] text-slate-500">Primary Global Edge Storage</p>
               </div>
             </div>
             <Badge
@@ -3219,23 +3630,78 @@ function AdminStorageResilience() {
               {data?.r2Healthy ? t("r2StatusHealthy") : t("r2StatusDegraded")}
             </Badge>
           </div>
+
           <div className="mt-3.5 space-y-1.5 text-xs text-slate-600 border-t border-slate-100 pt-3">
             <div className="flex justify-between">
               <span className="text-slate-400">Target Bucket:</span>
-              <span className="font-mono text-slate-700 font-medium">cars-storage</span>
+              <span className="font-mono text-slate-800 font-semibold">{data?.r2Bucket || "cars-storage"}</span>
             </div>
             <div className="flex justify-between">
-              <span className="text-slate-400">CDN Acceleration:</span>
-              <span className="text-emerald-700 font-medium">Enabled (Direct Serving)</span>
+              <span className="text-slate-400">Object Prefix:</span>
+              <span className="font-mono text-slate-700 font-medium">{data?.r2Prefix || "car_list/"}</span>
             </div>
+            <div className="flex justify-between items-center">
+              <span className="text-slate-400">Public CDN URL:</span>
+              <a
+                href={data?.r2PublicUrl || "#"}
+                target="_blank"
+                rel="noreferrer"
+                className="font-mono text-[11px] text-blue-600 hover:underline max-w-[200px] truncate flex items-center gap-1"
+                title={data?.r2PublicUrl}
+              >
+                {data?.r2PublicUrl || "Not configured"}
+                <ExternalLink className="h-3 w-3 shrink-0" />
+              </a>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-slate-400">Objects in Bucket:</span>
+              <span className="font-medium text-slate-900">
+                {data?.r2ObjectCount !== undefined ? `${data.r2ObjectCount} object(s)` : "Checking..."}
+              </span>
+            </div>
+          </div>
+
+          <div className="mt-4 pt-3 border-t border-amber-100 flex items-center justify-between">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleTestConnection}
+              disabled={testing}
+              className="h-8 text-[11px] border-amber-300 bg-white hover:bg-amber-50 text-amber-900"
+            >
+              {testing ? (
+                <>
+                  <Loader2 className="h-3 w-3 mr-1.5 animate-spin" />
+                  Testing...
+                </>
+              ) : (
+                <>
+                  <Activity className="h-3 w-3 mr-1.5 text-amber-600" />
+                  Test R2 Ping
+                </>
+              )}
+            </Button>
+
+            {testResult && (
+              <span className="text-[11px] font-medium text-slate-600">
+                {testResult.success ? (
+                  <span className="text-emerald-700 font-semibold flex items-center gap-1">
+                    <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600" />
+                    Ping: {testResult.latencyMs}ms
+                  </span>
+                ) : (
+                  <span className="text-rose-600 font-semibold">Failed</span>
+                )}
+              </span>
+            )}
           </div>
         </div>
 
         {/* MinIO Reserved Storage Card */}
-        <div className="rounded-xl border border-slate-200 bg-gradient-to-br from-teal-50/40 via-white to-emerald-50/30 p-4">
+        <div className="rounded-xl border border-slate-200 bg-gradient-to-br from-teal-50/40 via-white to-emerald-50/30 p-4 shadow-sm">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2.5">
-              <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-teal-500/10 text-teal-600 font-bold">
+              <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-teal-500/10 text-teal-600 font-bold shadow-sm">
                 <HardDrive className="h-5 w-5" />
               </div>
               <div>
@@ -3262,6 +3728,10 @@ function AdminStorageResilience() {
             <div className="flex justify-between">
               <span className="text-slate-400">Local Persistence:</span>
               <span className="font-mono text-slate-700 font-medium">Docker Volume</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-slate-400">Pending Sync Items:</span>
+              <span className="font-mono text-slate-700 font-medium">{pendingCount}</span>
             </div>
           </div>
         </div>
