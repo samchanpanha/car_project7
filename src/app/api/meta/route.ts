@@ -8,7 +8,18 @@ export async function GET() {
   try {
     const publishedWhere = { status: "PUBLISHED" };
 
-    const [makeRows, cityRows, priceAgg, yearAgg, sellerRows] = await Promise.all([
+    const [
+      makeRows,
+      cityRows,
+      priceAgg,
+      yearAgg,
+      sellerRows,
+      carCount,
+      motorCount,
+      carPartCount,
+      motorPartCount,
+      totalCount,
+    ] = await Promise.all([
       db.vehicle.findMany({
         where: publishedWhere,
         select: { make: true },
@@ -57,6 +68,23 @@ export async function GET() {
         },
         orderBy: { name: "asc" },
       }),
+      db.vehicle.count({ where: { ...publishedWhere, listingCategory: "CAR" } }),
+      db.vehicle.count({ where: { ...publishedWhere, listingCategory: "MOTOR" } }),
+      db.vehicle.count({
+        where: {
+          ...publishedWhere,
+          listingCategory: "SPARE_PART",
+          OR: [{ partTarget: "CAR" }, { partTarget: "UNIVERSAL" }, { partTarget: null }],
+        },
+      }),
+      db.vehicle.count({
+        where: {
+          ...publishedWhere,
+          listingCategory: "SPARE_PART",
+          OR: [{ partTarget: "MOTOR" }, { partTarget: "UNIVERSAL" }],
+        },
+      }),
+      db.vehicle.count({ where: publishedWhere }),
     ]);
 
     const sellers = sellerRows
@@ -81,6 +109,13 @@ export async function GET() {
       yearMin: yearAgg._min.year ?? 2000,
       yearMax: yearAgg._max.year ?? 2025,
       sellers,
+      categoryCounts: {
+        car: carCount,
+        motor: motorCount,
+        carPart: carPartCount,
+        motorPart: motorPartCount,
+        total: totalCount,
+      },
     };
 
     return NextResponse.json(meta);

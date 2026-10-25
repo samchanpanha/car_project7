@@ -7,7 +7,16 @@ import type { Locale } from "./i18n";
 
 export type View =
   | { name: "home" }
-  | { name: "browse"; q?: string; make?: string; bodyType?: string; sort?: SortOption }
+  | {
+      name: "browse";
+      q?: string;
+      make?: string;
+      bodyType?: string;
+      sort?: SortOption;
+      category?: "ALL" | "CAR" | "MOTOR" | "SPARE_PART";
+      partTarget?: string;
+      partCategory?: string;
+    }
   | { name: "detail"; vehicleId: string }
   | { name: "report"; vehicleId: string }
   | { name: "sell" }

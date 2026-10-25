@@ -22,18 +22,28 @@ export async function GET(req: Request) {
 }
 
 const createVehicleSchema = z.object({
+  listingCategory: z.enum(["CAR", "MOTOR", "SPARE_PART"]).default("CAR"),
+  partCategory: z.string().optional().nullable(),
+  partTarget: z.enum(["CAR", "MOTOR", "UNIVERSAL"]).optional().nullable(),
+  partCondition: z.enum(["BRAND_NEW", "USED_GENUINE", "AFTERMARKET"]).optional().nullable(),
+  compatibleModels: z.string().optional().nullable(),
+  partNumber: z.string().optional().nullable(),
   make: z.string().min(1),
   model: z.string().min(1),
   variant: z.string().optional().nullable(),
-  year: z.number().int().min(1990).max(2026),
-  priceUsd: z.number().positive(),
-  mileageKm: z.number().int().min(0),
-  transmission: z.enum(["AUTOMATIC", "MANUAL"]),
-  fuel: z.enum(["PETROL", "DIESEL", "HYBRID", "ELECTRIC"]),
+  year: z.number().int().min(1970).max(2027).default(() => new Date().getFullYear()),
+  priceUsd: z.number().min(0).default(0),
+  priceMasked: z.boolean().optional().default(false),
+  mileageKm: z.number().int().min(0).default(0),
+  transmission: z.enum(["AUTOMATIC", "MANUAL"]).default("AUTOMATIC"),
+  fuel: z.enum(["PETROL", "DIESEL", "HYBRID", "ELECTRIC"]).default("PETROL"),
   engineCc: z.number().int().optional().nullable(),
   drivetrain: z.enum(["FWD", "RWD", "AWD", "4WD"]).optional().nullable(),
-  bodyType: z.enum(["SUV", "SEDAN", "PICKUP", "HATCHBACK", "VAN", "COUPE"]),
+  bodyType: z.string().default("SEDAN"),
   exteriorColor: z.string().optional().nullable(),
+  seats: z.number().int().min(1).max(30).optional().nullable(),
+  interiorColor: z.string().optional().nullable(),
+  fuelEconomy: z.string().optional().nullable(),
   city: z.string().default("Phnom Penh"),
   district: z.string().optional().nullable(),
   description: z.string().optional().nullable(),
@@ -49,7 +59,10 @@ const createVehicleSchema = z.object({
   images: z.array(z.string().min(1)).optional(),
   // Optional vehicle papers — sellers declare them at creation time too.
   documents: z.array(documentInputSchema.omit({ id: true })).max(30).optional(),
-});
+}).refine(
+  (data) => data.priceMasked || data.priceUsd > 0,
+  { message: "Price is required when not masked", path: ["priceUsd"] }
+);
 
 export async function POST(req: Request) {
   try {
@@ -91,24 +104,49 @@ export async function POST(req: Request) {
     if (!isStaff) {
       const { readPlatformSettings, sellerTrialWindow } = await import("@/lib/platform-settings");
       const settings = await readPlatformSettings();
-      const trial = sellerTrialWindow(actor.createdAt, settings.freeTrialDays, settings.freeTrialEnabled);
-      const hasActiveTrial = trial.enabled && !trial.expired;
 
       const tenantSub = membership?.tenant?.subscription;
-      const hasActivePaidSub = Boolean(tenantSub && tenantSub.status === "ACTIVE" && tenantSub.plan !== "FREE");
+      let listingsLimit = 15;
 
-      if (!hasActiveTrial && !hasActivePaidSub) {
-        return NextResponse.json(
-          {
-            error: "Selling cars requires an active subscription or free trial. Please complete payment for a subscription plan to publish vehicle listings.",
-            code: "SUBSCRIPTION_REQUIRED",
-          },
-          { status: 403 },
-        );
+      if (membership) {
+        // Dealership team member (owner or staff): strictly inherits parent dealership subscription
+        let isTenantActive = Boolean(tenantSub && tenantSub.status === "ACTIVE");
+        if (isTenantActive && tenantSub?.plan === "FREE") {
+          const { getManualPaymentConfig } = await import("@/lib/api/payments");
+          const manualCfg = await getManualPaymentConfig();
+          isTenantActive = manualCfg.freePlan.enabled !== false;
+        }
+
+        if (!isTenantActive) {
+          return NextResponse.json(
+            {
+              error: "Your dealership's subscription has expired or is inactive. Please contact your dealership manager to renew the subscription.",
+              code: "DEALERSHIP_SUBSCRIPTION_EXPIRED",
+            },
+            { status: 403 },
+          );
+        }
+
+        listingsLimit = tenantSub?.listingsLimit ?? 15;
+      } else {
+        // Private individual seller: relies on free trial or platform trial window
+        const trial = sellerTrialWindow(actor.createdAt, settings.freeTrialDays, settings.freeTrialEnabled);
+        const hasActiveTrial = trial.enabled && !trial.expired;
+
+        if (!hasActiveTrial) {
+          return NextResponse.json(
+            {
+              error: "Selling cars requires an active subscription or free trial. Please complete payment for a subscription plan to publish vehicle listings.",
+              code: "SUBSCRIPTION_REQUIRED",
+            },
+            { status: 403 },
+          );
+        }
+
+        listingsLimit = settings.freeTrialEnabled ? 15 : 0;
       }
 
       // Check published listings limit
-      const listingsLimit = hasActivePaidSub ? (tenantSub?.listingsLimit ?? 15) : (settings.freeTrialEnabled ? 15 : 0);
       const publishedCount = await db.vehicle.count({
         where: membership ? { tenantId: membership.tenantId, status: "PUBLISHED" } : { createdById: actor.id, status: "PUBLISHED" },
       });
@@ -121,6 +159,26 @@ export async function POST(req: Request) {
           { status: 402 },
         );
       }
+
+      // Spare parts plan gating: Free and Basic plans can only sell complete vehicles (Cars & Motors).
+      // Selling spare parts requires a Pro or Enterprise plan.
+      if (data.listingCategory === "SPARE_PART") {
+        const tenantSub = membership?.tenant?.subscription;
+        const canSellParts = Boolean(
+          tenantSub &&
+          tenantSub.status === "ACTIVE" &&
+          (tenantSub.plan === "PRO" || tenantSub.plan === "ENTERPRISE"),
+        );
+        if (!canSellParts) {
+          return NextResponse.json(
+            {
+              error: "Selling spare parts requires a Pro or Enterprise plan. Please upgrade your subscription to list spare parts.",
+              code: "SPARE_PARTS_PLAN_REQUIRED",
+            },
+            { status: 403 },
+          );
+        }
+      }
     }
 
     const vehicle = await db.vehicle.create({
@@ -132,11 +190,18 @@ export async function POST(req: Request) {
         createdById: actor.id,
         ...(membership ? { tenantId: membership.tenantId } : {}),
         branchId: data.branchId ?? null,
+        listingCategory: data.listingCategory,
+        partCategory: data.partCategory ?? null,
+        partTarget: data.partTarget ?? null,
+        partCondition: data.partCondition ?? null,
+        compatibleModels: data.compatibleModels ?? null,
+        partNumber: data.partNumber ?? null,
         make: data.make,
         model: data.model,
         variant: data.variant ?? null,
         year: data.year,
         priceUsd: data.priceUsd,
+        priceMasked: Boolean(data.priceMasked),
         mileageKm: data.mileageKm,
         transmission: data.transmission,
         fuel: data.fuel,
@@ -144,6 +209,9 @@ export async function POST(req: Request) {
         drivetrain: data.drivetrain ?? null,
         bodyType: data.bodyType,
         exteriorColor: data.exteriorColor ?? null,
+        seats: data.seats ?? null,
+        interiorColor: data.interiorColor ?? null,
+        fuelEconomy: data.fuelEconomy ?? null,
         city: data.city,
         district: data.district ?? null,
         description: data.description ?? null,

@@ -34,6 +34,9 @@ export interface ManualPaymentConfig {
   /** Per-currency KHQR images — dedicated QR codes for USD vs KHR payments */
   khqrImageUsd: string | null;     // data URL or public path for USD KHQR
   khqrImageKhr: string | null;     // data URL or public path for KHR KHQR
+  /** Dedicated 2x2 cycle-currency QR codes */
+  khqrImageMonthlyKhr: string | null; // data URL or public path for Monthly KHR QR
+  khqrImageYearlyKhr: string | null;  // data URL or public path for Yearly KHR QR
   /** KHR exchange rate per USD (default 4100) */
   khrExchangeRate: number;
   /** Maximum transaction age in hours allowed for reuse prevention (default 72h = 3 days) */
@@ -61,6 +64,8 @@ const DEFAULT_CONFIG: ManualPaymentConfig = {
   khqrImageYearly: null,
   khqrImageUsd: null,
   khqrImageKhr: null,
+  khqrImageMonthlyKhr: null,
+  khqrImageYearlyKhr: null,
   khrExchangeRate: 4100,
   maxTrxAgeHours: 72,
   skipMerchantCheck: true,

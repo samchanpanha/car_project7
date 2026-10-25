@@ -17,11 +17,17 @@ public class MinioConfig {
     @Value("${minio.secret-key:minioadmin}")
     private String secretKey;
 
+    @Value("${minio.region:auto}")
+    private String region;
+
     @Bean
     public MinioClient minioClient() {
-        return MinioClient.builder()
+        var builder = MinioClient.builder()
                 .endpoint(endpoint)
-                .credentials(accessKey, secretKey)
-                .build();
+                .credentials(accessKey, secretKey);
+        if (region != null && !region.isBlank() && !region.equalsIgnoreCase("auto")) {
+            builder.region(region);
+        }
+        return builder.build();
     }
 }

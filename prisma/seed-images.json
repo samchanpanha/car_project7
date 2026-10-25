@@ -82,5 +82,17 @@
     "https://z-cdn.chatglm.cn/image-search-mcp/images-ppt/edef90f3142f.jpg",
     "https://z-cdn.chatglm.cn/image-search-mcp/images-ppt/e853e17eea83.jpeg",
     "https://z-cdn.chatglm.cn/image-search-mcp/images-ppt/b9dcc9378385.jpg"
+  ],
+  "honda_dream": [
+    "/images/seed/honda_dream.jpg"
+  ],
+  "honda_scoopy": [
+    "/images/seed/honda_scoopy.jpg"
+  ],
+  "oem_brake_pads": [
+    "/images/seed/oem_brake_pads.jpg"
+  ],
+  "motorcycle_parts_kit": [
+    "/images/seed/motorcycle_parts_kit.jpg"
   ]
 }

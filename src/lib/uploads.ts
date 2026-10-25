@@ -6,6 +6,7 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import crypto from "node:crypto";
+import { isR2Configured, uploadToR2 } from "@/lib/r2-client";
 
 /** Directory where uploaded files (images + PDFs) are stored. */
 export const UPLOAD_DIR = path.join(process.cwd(), "uploads");
@@ -49,12 +50,12 @@ export function parseFileDataUrl(dataUrl: string): { mime: string; bytes: Buffer
   return { mime, bytes };
 }
 
+
+import { saveWithStorageFailover } from "@/lib/storage-resilience";
+
 /** Persist an uploaded file (image or PDF); returns the public URL that serves it. */
 export async function saveUploadImage(bytes: Buffer, mime: string): Promise<string> {
-  await fs.mkdir(UPLOAD_DIR, { recursive: true });
-  const name = `${crypto.randomUUID()}.${EXT_BY_MIME[mime]}`;
-  await fs.writeFile(path.join(UPLOAD_DIR, name), bytes);
-  return `/api/uploads/${name}`;
+  return saveWithStorageFailover(bytes, mime);
 }
 
 /** True when `file` is a safe stored-file filename (blocks path traversal). */

@@ -63,6 +63,15 @@ async function main() {
     byStatus.map((s) => `${s.status}: ${s._count._all}`).join(", ")
   );
 
+  const byCategory = await prisma.vehicle.groupBy({
+    by: ["listingCategory"],
+    _count: { _all: true },
+  });
+  console.log(
+    "Vehicles by category:",
+    byCategory.map((c) => `${c.listingCategory}: ${c._count._all}`).join(", ")
+  );
+
   const conv = await prisma.conversation.findUnique({
     where: { id: "conv_demo_1" },
     include: { messages: { orderBy: { createdAt: "asc" } } },

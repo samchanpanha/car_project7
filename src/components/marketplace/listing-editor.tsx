@@ -21,14 +21,36 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Progress } from "@/components/ui/progress";
+import { Switch } from "@/components/ui/switch";
 import {
-  CarFront, ChevronLeft, ChevronRight, FileText, FileUp, GripVertical, ImagePlus, Link2, Loader2, Plus, Star, Trash2, TriangleAlert, UploadCloud, X,
+  CarFront, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, FileText, FileUp, GripVertical, Image as ImageIcon, ImagePlus, Link2, Loader2, PhoneCall, Plus, Sparkles, Star, Trash2, TriangleAlert, UploadCloud, X,
 } from "lucide-react";
-import { fuelLabels, transmissionLabels } from "@/lib/i18n";
+import {
+  bodyTypeLabels,
+  fuelLabels,
+  motorBodyTypeLabels,
+  partCategoryLabels,
+  partConditionLabels,
+  partTargetLabels,
+  transmissionLabels,
+} from "@/lib/i18n";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 
 const BODY_TYPES = ["SUV", "SEDAN", "PICKUP", "VAN", "HATCHBACK", "COUPE"];
+const MOTOR_BODY_TYPES = ["SCOOTER", "CUB", "SPORT", "CRUISER", "DIRT", "ELECTRIC", "OTHER"];
+const PART_CATEGORIES = [
+  "TIRES_WHEELS",
+  "BRAKES_SUSPENSION",
+  "BATTERY_ELECTRICAL",
+  "ENGINE_TRANSMISSION",
+  "LIGHTS_BULBS",
+  "BODY_MIRRORS",
+  "OILS_LUBRICANTS",
+  "ACCESSORIES",
+];
+const PART_CONDITIONS = ["BRAND_NEW", "USED_GENUINE", "AFTERMARKET"];
+const PART_TARGETS = ["CAR", "MOTOR", "UNIVERSAL"];
 const FUELS = ["PETROL", "DIESEL", "HYBRID", "ELECTRIC"];
 const TRANSMISSIONS = ["AUTOMATIC", "MANUAL"];
 const DRIVETRAINS = ["FWD", "RWD", "AWD", "4WD"];
@@ -395,6 +417,30 @@ export function PhotoUploader({
 
   return (
     <div className="space-y-3">
+      {/* Unlimited HD Photos Highlight Banner */}
+      <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-amber-200 bg-gradient-to-r from-amber-50 via-orange-50 to-amber-50 px-3.5 py-2.5 shadow-xs">
+        <div className="flex items-center gap-2.5">
+          <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-amber-500 text-white shadow-xs">
+            <Sparkles className="h-4 w-4" />
+          </span>
+          <div>
+            <p className="text-xs font-bold text-amber-950 flex items-center gap-1.5">
+              {t("unlimitedPhotosBadge")}
+              <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-semibold text-emerald-800 border border-emerald-200">
+                Active
+              </span>
+            </p>
+            <p className="text-[11px] text-amber-900/80">
+              {t("unlimitedPhotosDesc")}
+            </p>
+          </div>
+        </div>
+        <div className="flex items-center gap-1.5 text-xs font-semibold text-slate-700 bg-white/90 px-2.5 py-1 rounded-lg border border-amber-200 shadow-xs">
+          <ImageIcon className="h-3.5 w-3.5 text-amber-600" />
+          <span>{images.length} {images.length === 1 ? "photo" : "photos"}</span>
+        </div>
+      </div>
+
       {/* Dropzone container */}
       <div
         onDragOver={(e) => {
@@ -599,12 +645,22 @@ export function PhotoUploader({
 // ---------------- ListingEditorDialog ----------------
 
 interface EditorForm {
+  listingCategory: "CAR" | "MOTOR" | "SPARE_PART";
+  partCategory: string;
+  partTarget: string;
+  partCondition: string;
+  compatibleModels: string;
+  partNumber: string;
   make: string;
   model: string;
   variant: string;
   year: string;
   mileageKm: string;
   priceUsd: string;
+  priceMasked: boolean;
+  seats: string;
+  interiorColor: string;
+  fuelEconomy: string;
   transmission: string;
   fuel: string;
   engineCc: string;
@@ -629,12 +685,22 @@ interface EditorForm {
 
 function toForm(v: ManageableVehicleDetailDTO): EditorForm {
   return {
+    listingCategory: (v as any).listingCategory ?? "CAR",
+    partCategory: (v as any).partCategory ?? "TIRES_WHEELS",
+    partTarget: (v as any).partTarget ?? "CAR",
+    partCondition: (v as any).partCondition ?? "BRAND_NEW",
+    compatibleModels: (v as any).compatibleModels ?? "",
+    partNumber: (v as any).partNumber ?? "",
     make: v.make,
     model: v.model,
     variant: v.variant ?? "",
     year: String(v.year),
     mileageKm: String(v.mileageKm),
     priceUsd: String(v.priceUsd),
+    priceMasked: Boolean(v.priceMasked),
+    seats: v.seats != null ? String(v.seats) : "",
+    interiorColor: v.interiorColor ?? "",
+    fuelEconomy: v.fuelEconomy ?? "",
     transmission: v.transmission,
     fuel: v.fuel,
     engineCc: v.engineCc ? String(v.engineCc) : "",
@@ -685,6 +751,7 @@ export function ListingEditorDialog({
   );
   const vehicle = detail.data?.vehicle ?? null;
   const [form, setForm] = useState<EditorForm | null>(null);
+  const [showMoreInfo, setShowMoreInfo] = useState(false);
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
@@ -706,13 +773,38 @@ export function ListingEditorDialog({
 
   const validate = (): string | null => {
     if (!form) return null;
+    if (form.listingCategory === "SPARE_PART") {
+      if (!form.make.trim()) return locale === "km" ? "សូមបញ្ចូលម៉ាក / ផលិតករ" : "Please enter the brand/manufacturer";
+      if (!form.model.trim()) return locale === "km" ? "សូមបញ្ចូលឈ្មោះគ្រឿងបន្លាស់" : "Please enter the part name";
+      if (!form.partCategory) return locale === "km" ? "សូមជ្រើសប្រភេទគ្រឿងបន្លាស់" : "Please select part category";
+      if (!form.priceMasked) {
+        const p = Number(form.priceUsd);
+        if (!Number.isFinite(p) || p <= 0) return locale === "km" ? "សូមបញ្ចូលតម្លៃ" : "Please enter a valid price";
+      }
+      return null;
+    }
+    if (form.listingCategory === "MOTOR") {
+      if (!form.make.trim()) return locale === "km" ? "សូមបញ្ចូលម៉ាកម៉ូតូ" : "Please enter the motorcycle make";
+      if (!form.model.trim()) return locale === "km" ? "សូមបញ្ចូលម៉ូដែលម៉ូតូ" : "Please enter the motorcycle model";
+      const y = Number(form.year);
+      if (!Number.isInteger(y) || y < 1980 || y > 2026)
+        return locale === "km" ? "ឆ្នាំមិនត្រឹមត្រូវ" : "Enter a valid year";
+      if (!form.priceMasked) {
+        const p = Number(form.priceUsd);
+        if (!Number.isFinite(p) || p <= 0) return locale === "km" ? "សូមបញ្ចូលតម្លៃ" : "Please enter a valid price";
+      }
+      return null;
+    }
+    // CAR
     if (!form.make.trim()) return locale === "km" ? "សូមបញ្ចូលម៉ាកឡាន" : "Please enter the make";
     if (!form.model.trim()) return locale === "km" ? "សូមបញ្ចូលម៉ូដែល" : "Please enter the model";
     const y = Number(form.year);
     if (!Number.isInteger(y) || y < 1990 || y > 2026)
       return locale === "km" ? "ឆ្នាំមិនត្រឹមត្រូវ" : "Enter a valid year (1990–2026)";
-    const p = Number(form.priceUsd);
-    if (!Number.isFinite(p) || p <= 0) return locale === "km" ? "សូមបញ្ចូលតម្លៃ" : "Please enter a valid price";
+    if (!form.priceMasked) {
+      const p = Number(form.priceUsd);
+      if (!Number.isFinite(p) || p <= 0) return locale === "km" ? "សូមបញ្ចូលតម្លៃ" : "Please enter a valid price";
+    }
     const m = Number(form.mileageKm);
     if (Number.isNaN(m) || m < 0) return locale === "km" ? "ចម្ងាយដំណើរមិនត្រឹមត្រូវ" : "Enter a valid mileage";
     if (!form.bodyType || !form.fuel || !form.transmission)
@@ -729,27 +821,40 @@ export function ListingEditorDialog({
     }
     setSaving(true);
     try {
+      const isPart = form.listingCategory === "SPARE_PART";
+      const isMotor = form.listingCategory === "MOTOR";
+
       await apiSend(`/api/vehicles/${vehicleId}`, "PATCH", {
+        listingCategory: form.listingCategory,
+        partCategory: isPart ? form.partCategory : null,
+        partTarget: isPart ? form.partTarget : null,
+        partCondition: isPart ? form.partCondition : null,
+        compatibleModels: isPart ? (form.compatibleModels.trim() || null) : null,
+        partNumber: isPart ? (form.partNumber.trim() || null) : null,
         make: form.make.trim(),
         model: form.model.trim(),
         variant: form.variant.trim() || null,
-        year: Number(form.year),
-        priceUsd: Number(form.priceUsd),
-        mileageKm: Math.round(Number(form.mileageKm) || 0),
-        transmission: form.transmission,
-        fuel: form.fuel,
+        year: isPart ? (Number(form.year) || new Date().getFullYear()) : Number(form.year),
+        priceUsd: Number(form.priceUsd) || 0,
+        priceMasked: form.priceMasked,
+        seats: !isPart && !isMotor && form.seats ? Number(form.seats) : null,
+        interiorColor: !isPart && !isMotor ? (form.interiorColor.trim() || null) : null,
+        fuelEconomy: !isPart && !isMotor ? (form.fuelEconomy.trim() || null) : null,
+        mileageKm: isPart ? 0 : Math.round(Number(form.mileageKm) || 0),
+        transmission: isPart ? "AUTOMATIC" : form.transmission,
+        fuel: isPart ? "PETROL" : form.fuel,
         engineCc: form.engineCc ? Number(form.engineCc) : null,
-        drivetrain: form.drivetrain || null,
-        bodyType: form.bodyType,
+        drivetrain: !isPart && !isMotor ? (form.drivetrain || null) : null,
+        bodyType: isPart ? "PART" : form.bodyType,
         exteriorColor: form.exteriorColor.trim() || null,
         city: form.city.trim() || "Phnom Penh",
         district: form.district.trim() || null,
-        condition: form.condition,
-        accidentDeclared: form.accidentDeclared,
-        ownershipCount: form.ownershipCount ? Number(form.ownershipCount) : null,
-        vinLast6: form.vinLast6.trim().slice(0, 6) || null,
-        plateNo: form.plateNo.trim() || null,
-        importOrigin: form.importOrigin || null,
+        condition: isPart ? (form.partCondition === "BRAND_NEW" ? "LIKE_NEW" : "USED") : form.condition,
+        accidentDeclared: isPart ? "NONE_DECLARED" : form.accidentDeclared,
+        ownershipCount: !isPart && form.ownershipCount ? Number(form.ownershipCount) : null,
+        vinLast6: !isPart && form.vinLast6.trim() ? form.vinLast6.trim().slice(0, 6) : null,
+        plateNo: !isPart && form.plateNo.trim() ? form.plateNo.trim() : null,
+        importOrigin: !isPart && form.importOrigin ? form.importOrigin : null,
         description: form.description.trim() || null,
         descriptionKm: form.descriptionKm.trim() || null,
         branchId: form.branchId.trim() || null,
@@ -794,6 +899,52 @@ export function ListingEditorDialog({
           <p className="py-6 text-center text-sm text-slate-500">{t("errorGeneric")}</p>
         ) : (
           <div className="space-y-5">
+            {/* Category Selector Tabs */}
+            <div>
+              <Label className="text-xs font-semibold text-slate-500 mb-1.5 block">Category</Label>
+              <div className="grid grid-cols-3 gap-2 p-1 bg-slate-100 rounded-xl border border-slate-200">
+                <button
+                  type="button"
+                  onClick={() => set({ listingCategory: "CAR", bodyType: "SEDAN" })}
+                  className={cn(
+                    "flex items-center justify-center gap-2 py-1.5 px-3 rounded-lg text-xs font-bold transition-all cursor-pointer",
+                    form.listingCategory === "CAR"
+                      ? "bg-white text-slate-950 shadow-xs border border-slate-200"
+                      : "text-slate-600 hover:text-slate-950 hover:bg-white/50"
+                  )}
+                >
+                  <span>🚗</span>
+                  <span>{t("categoryCars")}</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => set({ listingCategory: "MOTOR", bodyType: "SCOOTER" })}
+                  className={cn(
+                    "flex items-center justify-center gap-2 py-1.5 px-3 rounded-lg text-xs font-bold transition-all cursor-pointer",
+                    form.listingCategory === "MOTOR"
+                      ? "bg-white text-slate-950 shadow-xs border border-slate-200"
+                      : "text-slate-600 hover:text-slate-950 hover:bg-white/50"
+                  )}
+                >
+                  <span>🏍️</span>
+                  <span>{t("categoryMotors")}</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => set({ listingCategory: "SPARE_PART", bodyType: "PART" })}
+                  className={cn(
+                    "flex items-center justify-center gap-2 py-1.5 px-3 rounded-lg text-xs font-bold transition-all cursor-pointer",
+                    form.listingCategory === "SPARE_PART"
+                      ? "bg-white text-slate-950 shadow-xs border border-slate-200"
+                      : "text-slate-600 hover:text-slate-950 hover:bg-white/50"
+                  )}
+                >
+                  <span>⚙️</span>
+                  <span>{t("categorySpareParts")}</span>
+                </button>
+              </div>
+            </div>
+
             {/* Photos — unlimited stock manager */}
             <section>
               <Label className="text-xs font-medium text-slate-500">{t("formPhotos")}</Label>
@@ -824,73 +975,265 @@ export function ListingEditorDialog({
               </div>
             </section>
 
-            {/* Car details */}
-            <section>
-              <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-400">{t("sectionCarDetails")}</p>
-              <div className="grid grid-cols-2 gap-3">
-                <EditField label={t("formMake")}>
-                  <Input value={form.make} onChange={(e) => set({ make: e.target.value })} list="kl-ed-makes" />
-                  <datalist id="kl-ed-makes">
-                    {(meta?.makes ?? []).map((m) => <option key={m} value={m} />)}
-                  </datalist>
-                </EditField>
-                <EditField label={t("formModel")}>
-                  <Input value={form.model} onChange={(e) => set({ model: e.target.value })} />
-                </EditField>
-                <EditField label={t("formVariant")}>
-                  <Input value={form.variant} onChange={(e) => set({ variant: e.target.value })} />
-                </EditField>
-                <EditField label={t("formYear")}>
-                  <Input type="number" min={1990} max={2026} value={form.year} onChange={(e) => set({ year: e.target.value })} />
-                </EditField>
-                <EditField label={t("specMileage")}>
-                  <Input type="number" min={0} value={form.mileageKm} onChange={(e) => set({ mileageKm: e.target.value })} />
-                </EditField>
-                <EditField label={t("formColor")}>
-                  <Input value={form.exteriorColor} onChange={(e) => set({ exteriorColor: e.target.value })} placeholder="White" />
-                </EditField>
-                <EditField label={t("formBodyType")}>
-                  <EditSelect value={form.bodyType} onChange={(v) => set({ bodyType: v })} options={BODY_TYPES.map((b) => ({ value: b, label: b }))} placeholder={t("formBodyType")} />
-                </EditField>
-                <EditField label={t("formFuel")}>
-                  <EditSelect value={form.fuel} onChange={(v) => set({ fuel: v })} options={FUELS.map((f) => ({ value: f, label: fuelLabels[f]?.[locale] ?? f }))} placeholder={t("formFuel")} />
-                </EditField>
-                <EditField label={t("formTransmission")}>
-                  <EditSelect value={form.transmission} onChange={(v) => set({ transmission: v })} options={TRANSMISSIONS.map((tr) => ({ value: tr, label: transmissionLabels[tr]?.[locale] ?? tr }))} placeholder={t("formTransmission")} />
-                </EditField>
-                <EditField label={t("formDrivetrain")}>
-                  <EditSelect value={form.drivetrain} onChange={(v) => set({ drivetrain: v })} options={DRIVETRAINS.map((d) => ({ value: d, label: d }))} placeholder="—" />
-                </EditField>
-                <EditField label={t("formEngine")}>
-                  <Input type="number" min={0} value={form.engineCc} onChange={(e) => set({ engineCc: e.target.value })} />
-                </EditField>
-                <EditField label={t("formCondition")}>
-                  <EditSelect value={form.condition} onChange={(v) => set({ condition: v })} options={[{ value: "LIKE_NEW", label: t("condLIKE_NEW") }, { value: "USED", label: t("condUSED") }]} placeholder={t("formCondition")} />
-                </EditField>
-                <EditField label={t("formAccident")}>
-                  <EditSelect value={form.accidentDeclared} onChange={(v) => set({ accidentDeclared: v })} options={ACCIDENTS.map((a) => ({ value: a, label: t(`accident${a}` as never) }))} placeholder={t("formAccident")} />
-                </EditField>
-                <EditField label={t("formOwners")}>
-                  <Input type="number" min={0} value={form.ownershipCount} onChange={(e) => set({ ownershipCount: e.target.value })} />
-                </EditField>
-                <EditField label={t("formVin")}>
-                  <Input value={form.vinLast6} maxLength={6} onChange={(e) => set({ vinLast6: e.target.value.toUpperCase() })} />
-                </EditField>
-                <EditField label={t("formPlate")}>
-                  <Input value={form.plateNo} onChange={(e) => set({ plateNo: e.target.value })} />
-                </EditField>
-                <EditField label={t("formImport")}>
-                  <EditSelect value={form.importOrigin} onChange={(v) => set({ importOrigin: v })} options={IMPORTS.map((i) => ({ value: i, label: i }))} placeholder="—" />
-                </EditField>
-              </div>
-            </section>
+            {/* SPARE PART DETAILS */}
+            {form.listingCategory === "SPARE_PART" && (
+              <section className="space-y-3">
+                <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">{t("categorySpareParts")}</p>
+                <div className="grid grid-cols-3 gap-2">
+                  {PART_TARGETS.map((tgt) => (
+                    <button
+                      key={tgt}
+                      type="button"
+                      onClick={() => set({ partTarget: tgt })}
+                      className={cn(
+                        "py-1.5 px-3 rounded-lg border text-xs font-semibold cursor-pointer transition-colors text-center",
+                        form.partTarget === tgt
+                          ? "border-amber-500 bg-amber-50 text-amber-900 font-bold shadow-xs"
+                          : "border-slate-200 text-slate-600 hover:border-slate-300"
+                      )}
+                    >
+                      {partTargetLabels[tgt]?.[locale] ?? tgt}
+                    </button>
+                  ))}
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <EditField label={t("partCategoryLabel")}>
+                    <EditSelect
+                      value={form.partCategory}
+                      onChange={(v) => set({ partCategory: v })}
+                      options={PART_CATEGORIES.map((pc) => ({
+                        value: pc,
+                        label: partCategoryLabels[pc]?.[locale] ?? pc,
+                      }))}
+                      placeholder={t("partCategoryLabel")}
+                    />
+                  </EditField>
+                  <EditField label={t("partConditionLabel")}>
+                    <EditSelect
+                      value={form.partCondition}
+                      onChange={(v) => set({ partCondition: v })}
+                      options={PART_CONDITIONS.map((cond) => ({
+                        value: cond,
+                        label: partConditionLabels[cond]?.[locale] ?? cond,
+                      }))}
+                      placeholder={t("partConditionLabel")}
+                    />
+                  </EditField>
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <EditField label="Brand / Manufacturer">
+                    <Input value={form.make} onChange={(e) => set({ make: e.target.value })} placeholder="Toyota, Michelin..." />
+                  </EditField>
+                  <EditField label="Part Name / Model">
+                    <Input value={form.model} onChange={(e) => set({ model: e.target.value })} placeholder="Brake Pads, Battery..." />
+                  </EditField>
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <EditField label={t("compatibleModelsLabel")} hint="Vehicles this part fits">
+                    <Input value={form.compatibleModels} onChange={(e) => set({ compatibleModels: e.target.value })} placeholder="e.g. Prius 2004-2009" />
+                  </EditField>
+                  <EditField label={t("partNumberLabel")} hint="OEM SKU number">
+                    <Input value={form.partNumber} onChange={(e) => set({ partNumber: e.target.value })} placeholder="e.g. 04465-47060" />
+                  </EditField>
+                </div>
+              </section>
+            )}
+
+            {/* MOTORCYCLE DETAILS */}
+            {form.listingCategory === "MOTOR" && (
+              <section className="space-y-3">
+                <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">{t("categoryMotors")}</p>
+                <div className="grid grid-cols-2 gap-3">
+                  <EditField label="Motorcycle Make">
+                    <Input value={form.make} onChange={(e) => set({ make: e.target.value })} placeholder="Honda, Yamaha..." />
+                  </EditField>
+                  <EditField label="Motorcycle Model">
+                    <Input value={form.model} onChange={(e) => set({ model: e.target.value })} placeholder="Dream 125, Scoopy..." />
+                  </EditField>
+                  <EditField label={t("formYear")}>
+                    <Input type="number" min={1980} max={2026} value={form.year} onChange={(e) => set({ year: e.target.value })} />
+                  </EditField>
+                  <EditField label={t("specMileage")}>
+                    <Input type="number" min={0} value={form.mileageKm} onChange={(e) => set({ mileageKm: e.target.value })} />
+                  </EditField>
+                  <EditField label={t("motorBodyType")}>
+                    <EditSelect
+                      value={form.bodyType}
+                      onChange={(v) => set({ bodyType: v })}
+                      options={MOTOR_BODY_TYPES.map((bt) => ({ value: bt, label: motorBodyTypeLabels[bt]?.[locale] ?? bt }))}
+                      placeholder={t("motorBodyType")}
+                    />
+                  </EditField>
+                  <EditField label={t("engineDisplacement")}>
+                    <Input type="number" min={50} max={2500} value={form.engineCc} onChange={(e) => set({ engineCc: e.target.value })} placeholder="125" />
+                  </EditField>
+                  <EditField label={t("formTransmission")}>
+                    <EditSelect
+                      value={form.transmission}
+                      onChange={(v) => set({ transmission: v })}
+                      options={[
+                        { value: "AUTOMATIC", label: "Automatic" },
+                        { value: "MANUAL", label: "Manual / Semi-Auto" },
+                      ]}
+                      placeholder={t("formTransmission")}
+                    />
+                  </EditField>
+                  <EditField label={t("formFuel")}>
+                    <EditSelect
+                      value={form.fuel}
+                      onChange={(v) => set({ fuel: v })}
+                      options={[
+                        { value: "PETROL", label: "Petrol" },
+                        { value: "ELECTRIC", label: "Electric" },
+                      ]}
+                      placeholder={t("formFuel")}
+                    />
+                  </EditField>
+                </div>
+              </section>
+            )}
+
+            {/* CAR DETAILS */}
+            {form.listingCategory === "CAR" && (
+              <section>
+                <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-400">{t("sectionCarDetails")}</p>
+                <div className="grid grid-cols-2 gap-3">
+                  <EditField label={t("formMake")}>
+                    <Input value={form.make} onChange={(e) => set({ make: e.target.value })} list="kl-ed-makes" />
+                    <datalist id="kl-ed-makes">
+                      {(meta?.makes ?? []).map((m) => <option key={m} value={m} />)}
+                    </datalist>
+                  </EditField>
+                  <EditField label={t("formModel")}>
+                    <Input value={form.model} onChange={(e) => set({ model: e.target.value })} />
+                  </EditField>
+                  <EditField label={t("formVariant")}>
+                    <Input value={form.variant} onChange={(e) => set({ variant: e.target.value })} />
+                  </EditField>
+                  <EditField label={t("formYear")}>
+                    <Input type="number" min={1990} max={2026} value={form.year} onChange={(e) => set({ year: e.target.value })} />
+                  </EditField>
+                  <EditField label={t("specMileage")}>
+                    <Input type="number" min={0} value={form.mileageKm} onChange={(e) => set({ mileageKm: e.target.value })} />
+                  </EditField>
+                  <EditField label={t("formColor")}>
+                    <Input value={form.exteriorColor} onChange={(e) => set({ exteriorColor: e.target.value })} placeholder="White" />
+                  </EditField>
+                  <EditField label={t("formBodyType")}>
+                    <EditSelect value={form.bodyType} onChange={(v) => set({ bodyType: v })} options={BODY_TYPES.map((b) => ({ value: b, label: b }))} placeholder={t("formBodyType")} />
+                  </EditField>
+                  <EditField label={t("formFuel")}>
+                    <EditSelect value={form.fuel} onChange={(v) => set({ fuel: v })} options={FUELS.map((f) => ({ value: f, label: fuelLabels[f]?.[locale] ?? f }))} placeholder={t("formFuel")} />
+                  </EditField>
+                  <EditField label={t("formTransmission")}>
+                    <EditSelect value={form.transmission} onChange={(v) => set({ transmission: v })} options={TRANSMISSIONS.map((tr) => ({ value: tr, label: transmissionLabels[tr]?.[locale] ?? tr }))} placeholder={t("formTransmission")} />
+                  </EditField>
+                  <EditField label={t("formDrivetrain")}>
+                    <EditSelect value={form.drivetrain} onChange={(v) => set({ drivetrain: v })} options={DRIVETRAINS.map((d) => ({ value: d, label: d }))} placeholder="—" />
+                  </EditField>
+                  <EditField label={t("formEngine")}>
+                    <Input type="number" min={0} value={form.engineCc} onChange={(e) => set({ engineCc: e.target.value })} />
+                  </EditField>
+                  <EditField label={t("formCondition")}>
+                    <EditSelect value={form.condition} onChange={(v) => set({ condition: v })} options={[{ value: "LIKE_NEW", label: t("condLIKE_NEW") }, { value: "USED", label: t("condUSED") }]} placeholder={t("formCondition")} />
+                  </EditField>
+                  <EditField label={t("formAccident")}>
+                    <EditSelect value={form.accidentDeclared} onChange={(v) => set({ accidentDeclared: v })} options={ACCIDENTS.map((a) => ({ value: a, label: t(`accident${a}` as never) }))} placeholder={t("formAccident")} />
+                  </EditField>
+                  <EditField label={t("formOwners")}>
+                    <Input type="number" min={0} value={form.ownershipCount} onChange={(e) => set({ ownershipCount: e.target.value })} />
+                  </EditField>
+                  <EditField label={t("formVin")}>
+                    <Input value={form.vinLast6} maxLength={6} onChange={(e) => set({ vinLast6: e.target.value.toUpperCase() })} />
+                  </EditField>
+                  <EditField label={t("formPlate")}>
+                    <Input value={form.plateNo} onChange={(e) => set({ plateNo: e.target.value })} />
+                  </EditField>
+                  <EditField label={t("formImport")}>
+                    <EditSelect value={form.importOrigin} onChange={(v) => set({ importOrigin: v })} options={IMPORTS.map((i) => ({ value: i, label: i }))} placeholder="—" />
+                  </EditField>
+                </div>
+
+                {/* Optional Core Specs Pack Toggle */}
+                <div className="mt-3">
+                  <button
+                    type="button"
+                    onClick={() => setShowMoreInfo(!showMoreInfo)}
+                    className="inline-flex items-center gap-1.5 text-xs font-semibold text-amber-700 hover:text-amber-800 bg-amber-50 hover:bg-amber-100/80 px-3 py-1.5 rounded-lg border border-amber-200 transition-colors cursor-pointer"
+                  >
+                    {showMoreInfo ? <ChevronUp className="h-3.5 w-3.5" /> : <Plus className="h-3.5 w-3.5" />}
+                    {showMoreInfo ? t("hideMoreInfo") : t("addMoreInfo")}
+                  </button>
+
+                  {showMoreInfo && (
+                    <div className="mt-3 grid grid-cols-1 sm:grid-cols-3 gap-3 p-3.5 rounded-xl border border-amber-200/80 bg-amber-50/40 animate-in fade-in slide-in-from-top-1">
+                      <EditField label={t("specSeats")} hint={locale === "km" ? "ឧ. 5 ឬ 7" : "e.g. 5 or 7"}>
+                        <Input
+                          type="number"
+                          min={1}
+                          max={20}
+                          value={form.seats}
+                          onChange={(e) => set({ seats: e.target.value })}
+                          placeholder="5"
+                        />
+                      </EditField>
+                      <EditField label={t("specInteriorColor")} hint={locale === "km" ? "ឧ. ខ្មៅ, លឿងខ្ចី" : "e.g. Beige, Black"}>
+                        <Input
+                          value={form.interiorColor}
+                          onChange={(e) => set({ interiorColor: e.target.value })}
+                          placeholder={locale === "km" ? "ខ្មៅ / លឿងខ្ចី" : "Beige / Black"}
+                        />
+                      </EditField>
+                      <EditField label={t("specFuelEconomy")} hint={locale === "km" ? "ឧ. 6.5 L/100km ឬ 450 km" : "e.g. 6.5 L/100km or 450 km"}>
+                        <Input
+                          value={form.fuelEconomy}
+                          onChange={(e) => set({ fuelEconomy: e.target.value })}
+                          placeholder={t("specFuelEconomyPlaceholder")}
+                        />
+                      </EditField>
+                    </div>
+                  )}
+                </div>
+              </section>
+            )}
 
             {/* Price & location */}
             <section>
               <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-400">{t("sectionPriceLocation")}</p>
+              
+              {/* Mask Price Toggle */}
+              <div className="rounded-xl border border-slate-200 bg-slate-50/70 p-3 flex items-start justify-between gap-3 mb-3">
+                <div>
+                  <Label htmlFor="ed-mask-price" className="text-xs font-semibold text-slate-900 cursor-pointer flex items-center gap-1.5">
+                    <PhoneCall className="h-3.5 w-3.5 text-amber-600" />
+                    {t("maskPrice")}
+                  </Label>
+                  <p className="text-[11px] text-slate-500 mt-0.5">
+                    {t("maskPriceHint")}
+                  </p>
+                </div>
+                <Switch
+                  id="ed-mask-price"
+                  checked={form.priceMasked}
+                  onCheckedChange={(v) => set({ priceMasked: v })}
+                />
+              </div>
+
               <div className="grid grid-cols-2 gap-3">
-                <EditField label={t("formPrice")}>
-                  <Input type="number" min={0} value={form.priceUsd} onChange={(e) => set({ priceUsd: e.target.value })} />
+                <EditField
+                  label={form.priceMasked ? `${t("formPrice")} (${locale === "km" ? "ជម្រើស" : "Optional"})` : t("formPrice")}
+                  hint={form.priceMasked ? (locale === "km" ? "តម្លៃខាងក្នុង" : "Reference price") : undefined}
+                >
+                  <Input
+                    type="number"
+                    min={0}
+                    value={form.priceUsd}
+                    onChange={(e) => set({ priceUsd: e.target.value })}
+                    placeholder={form.priceMasked ? "—" : "18500"}
+                  />
                 </EditField>
                 <EditField label={t("formCity")}>
                   <Input value={form.city} onChange={(e) => set({ city: e.target.value })} />
@@ -969,10 +1312,13 @@ export function ListingEditorDialog({
   );
 }
 
-function EditField({ label, children }: { label: string; children: React.ReactNode }) {
+function EditField({ label, children, hint }: { label: string; children: React.ReactNode; hint?: string }) {
   return (
     <div>
-      <Label className="text-xs font-medium text-slate-500">{label}</Label>
+      <div className="flex items-center justify-between gap-1">
+        <Label className="text-xs font-medium text-slate-500">{label}</Label>
+        {hint && <span className="text-[10px] text-slate-400">{hint}</span>}
+      </div>
       <div className="mt-1.5">{children}</div>
     </div>
   );

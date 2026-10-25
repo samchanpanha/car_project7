@@ -70,6 +70,9 @@ export interface PaymentConfigDTO {
     /** Per-currency KHQR images — dedicated QR codes for USD vs KHR payments */
     khqrImageUsd: string | null;
     khqrImageKhr: string | null;
+    /** Dedicated 2x2 cycle-currency QR codes */
+    khqrImageMonthlyKhr?: string | null;
+    khqrImageYearlyKhr?: string | null;
     /** KHR exchange rate per USD (default 4100) */
     khrExchangeRate: number;
     skipMerchantCheck?: boolean;

@@ -13,9 +13,11 @@ export const PLAN_CATALOG: PlanDTO[] = [
     listingsLimit: 3,
     featuredLimit: 0,
     seats: 1,
+    canSellSpareParts: false,
     features: [
-      { en: "Up to 3 active listings", km: "ឡានដាក់លក់សកម្មបាន ៣" },
-      { en: "Standard listing page", km: "ទំព័របង្ហាញឡានស្តង់ដារ" },
+      { en: "Up to 3 active listings", km: "ឡាន/ម៉ូតូដាក់លក់សកម្មបាន ៣" },
+      { en: "Sell Cars & Motorcycles", km: "ដាក់លក់ឡាន និងម៉ូតូ" },
+      { en: "Standard listing page", km: "ទំព័របង្ហាញស្តង់ដារ" },
       { en: "1 team seat", km: "កៅអីសមាជិក ១" },
     ],
   },
@@ -27,9 +29,11 @@ export const PLAN_CATALOG: PlanDTO[] = [
     listingsLimit: 15,
     featuredLimit: 3,
     seats: 3,
+    canSellSpareParts: false,
     features: [
-      { en: "Up to 15 active listings", km: "ឡានដាក់លក់សកម្មបាន ១៥" },
-      { en: "3 featured slots", km: "កន្លែងឡានពិសេស ៣" },
+      { en: "Up to 15 active listings", km: "ឡាន/ម៉ូតូដាក់លក់សកម្មបាន ១៥" },
+      { en: "Sell Cars & Motorcycles", km: "ដាក់លក់ឡាន និងម៉ូតូ" },
+      { en: "3 featured slots", km: "កន្លែងបង្ហាញពិសេស ៣" },
       { en: "3 team seats", km: "កៅអីសមាជិក ៣" },
       { en: "Lead inbox with buyer chat", km: "ប្រអប់សារពីអតិថិជន" },
     ],
@@ -42,9 +46,11 @@ export const PLAN_CATALOG: PlanDTO[] = [
     listingsLimit: 50,
     featuredLimit: 10,
     seats: 8,
+    canSellSpareParts: true,
     features: [
-      { en: "Up to 50 active listings", km: "ឡានដាក់លក់សកម្មបាន ៥០" },
-      { en: "10 featured slots", km: "កន្លែងឡានពិសេស ១០" },
+      { en: "Up to 50 active listings", km: "ដាក់លក់សកម្មបាន ៥០" },
+      { en: "Sell Cars, Motors & Spare Parts", km: "ដាក់លក់ឡាន ម៉ូតូ និងគ្រឿងបន្លាស់" },
+      { en: "10 featured slots", km: "កន្លែងបង្ហាញពិសេស ១០" },
       { en: "8 team seats", km: "កៅអីសមាជិក ៨" },
       { en: "AI history reports & priority support", km: "របាយការណ៍ AI និងជំនួយប្រកបដោយអាទិភាព" },
     ],
@@ -57,9 +63,11 @@ export const PLAN_CATALOG: PlanDTO[] = [
     listingsLimit: 200,
     featuredLimit: 40,
     seats: 25,
+    canSellSpareParts: true,
     features: [
-      { en: "Up to 200 active listings", km: "ឡានដាក់លក់សកម្មបាន ២០០" },
-      { en: "40 featured slots", km: "កន្លែងឡានពិសេស ៤០" },
+      { en: "Up to 200 active listings", km: "ដាក់លក់សកម្មបាន ២០០" },
+      { en: "Sell Cars, Motors & Spare Parts (Car & Motor)", km: "ដាក់លក់ឡាន ម៉ូតូ និងគ្រឿងបន្លាស់គ្រប់ប្រភេទ" },
+      { en: "40 featured slots", km: "កន្លែងបង្ហាញពិសេស ៤០" },
       { en: "25 team seats", km: "កៅអីសមាជិក ២៥" },
       { en: "Dedicated account manager & API access", km: "អ្នកគ្រប់គ្រងគណនីផ្ទាល់ខ្លួន និងការប្រើ API" },
     ],
@@ -77,6 +85,7 @@ export function normalizedMonthlyPrice(priceUsd: number, billingCycle: string): 
 
 /** Map a Subscription row to the shared SubscriptionDTO. */
 export function toSubscriptionDTO(sub: Subscription): SubscriptionDTO {
+  const catalogRow = PLAN_BY_KEY[sub.plan as PlanKey];
   return {
     id: sub.id,
     plan: sub.plan as SubscriptionDTO["plan"],
@@ -86,6 +95,7 @@ export function toSubscriptionDTO(sub: Subscription): SubscriptionDTO {
     listingsLimit: sub.listingsLimit,
     featuredLimit: sub.featuredLimit,
     seats: sub.seats,
+    canSellSpareParts: catalogRow?.canSellSpareParts ?? (sub.plan === "PRO" || sub.plan === "ENTERPRISE"),
     startedAt: sub.startedAt.toISOString(),
     currentPeriodEnd: sub.currentPeriodEnd.toISOString(),
   };

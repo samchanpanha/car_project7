@@ -19,6 +19,12 @@ export async function GET(req: Request) {
         ? (statusParam as VehicleStatus)
         : undefined;
 
+    const categoryParam = sp.get("category")?.toUpperCase() || undefined;
+    const category =
+      categoryParam && ["CAR", "MOTOR", "SPARE_PART"].includes(categoryParam)
+        ? categoryParam
+        : undefined;
+
     const branchId = sp.get("branchId") || undefined;
     const q = sp.get("q")?.trim() || undefined;
     const priceMin = sp.get("priceMin") ? Number(sp.get("priceMin")) : undefined;
@@ -28,6 +34,7 @@ export async function GET(req: Request) {
     const where: any = {
       tenantId: tenant.id,
       ...(status ? { status } : {}),
+      ...(category ? { listingCategory: category } : {}),
       ...(branchId ? { branchId } : {}),
     };
 
@@ -37,6 +44,8 @@ export async function GET(req: Request) {
         { model: { contains: q } },
         { vinLast6: { contains: q } },
         { plateNo: { contains: q } },
+        { partNumber: { contains: q } },
+        { compatibleModels: { contains: q } },
       ];
     }
 

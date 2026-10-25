@@ -23,7 +23,9 @@ export async function GET() {
           config.khqrImageMonthly ||
           config.khqrImageYearly ||
           config.khqrImageUsd ||
-          config.khqrImageKhr
+          config.khqrImageKhr ||
+          config.khqrImageMonthlyKhr ||
+          config.khqrImageYearlyKhr
         ),
         khqrDataUrl: await khqrDataUrl(config),
         khqrImage: config.khqrImage,
@@ -33,6 +35,9 @@ export async function GET() {
         // Per-currency KHQR images — fallback to cycle or default QR
         khqrImageUsd: config.khqrImageUsd || config.khqrImageMonthly || config.khqrImage || "/khqr/khqr-monthly.jpg",
         khqrImageKhr: config.khqrImageKhr || config.khqrImageYearly || config.khqrImage || "/khqr/khqr-yearly.jpg",
+        // Dedicated 2x2 cycle-currency QR codes
+        khqrImageMonthlyKhr: config.khqrImageMonthlyKhr || config.khqrImageKhr || config.khqrImageMonthly || "/khqr/khqr-monthly.jpg",
+        khqrImageYearlyKhr: config.khqrImageYearlyKhr || config.khqrImageKhr || config.khqrImageYearly || "/khqr/khqr-yearly.jpg",
         khrExchangeRate: config.khrExchangeRate || 4100,
         skipMerchantCheck: config.skipMerchantCheck ?? true,
       },

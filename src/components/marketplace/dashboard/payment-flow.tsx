@@ -500,13 +500,14 @@ export function RequestSubscriptionDialog({
   const priceKhr = (configuredKhr && configuredKhr > 0) ? configuredKhr : Math.round((priceUsd * khrRate) / 100) * 100;
 
   const qrSrcUsd =
-    manual?.khqrImageUsd ??
     (cycle === "YEARLY" ? manual?.khqrImageYearly : manual?.khqrImageMonthly) ??
+    manual?.khqrImageUsd ??
     manual?.khqrImage ??
     manual?.khqrDataUrl ??
     (cycle === "YEARLY" ? "/khqr/khqr-yearly.jpg" : "/khqr/khqr-monthly.jpg");
 
   const qrSrcKhr =
+    (cycle === "YEARLY" ? manual?.khqrImageYearlyKhr : manual?.khqrImageMonthlyKhr) ??
     manual?.khqrImageKhr ??
     (cycle === "YEARLY" ? manual?.khqrImageYearly : manual?.khqrImageMonthly) ??
     manual?.khqrImage ??
@@ -2185,13 +2186,14 @@ export function SubscriptionPaywallCard({
   const priceKhr = (configuredKhr && configuredKhr > 0) ? configuredKhr : Math.round((priceUsd * khrRate) / 100) * 100;
 
   const qrSrcUsd =
-    manual?.khqrImageUsd ??
     (cycle === "YEARLY" ? manual?.khqrImageYearly : manual?.khqrImageMonthly) ??
+    manual?.khqrImageUsd ??
     manual?.khqrImage ??
     manual?.khqrDataUrl ??
     (cycle === "YEARLY" ? "/khqr/khqr-yearly.jpg" : "/khqr/khqr-monthly.jpg");
 
   const qrSrcKhr =
+    (cycle === "YEARLY" ? manual?.khqrImageYearlyKhr : manual?.khqrImageMonthlyKhr) ??
     manual?.khqrImageKhr ??
     (cycle === "YEARLY" ? manual?.khqrImageYearly : manual?.khqrImageMonthly) ??
     manual?.khqrImage ??

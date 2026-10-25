@@ -92,6 +92,7 @@ export type AppDbClient = PrismaClient & {
   abaTransaction: any;
   tenantBranch: any;
   subscriptionPayment: any;
+  pendingStorageSync: any;
 };
 
 export const db: AppDbClient = ensureClient() as AppDbClient;

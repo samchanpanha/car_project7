@@ -19,11 +19,14 @@ public class MinioStorageService {
 
     private final MinioClient minioClient;
 
-    @Value("${minio.bucket.public:khlan-public}")
+    @Value("${minio.bucket.public:cars-storage}")
     private String publicBucket;
 
-    @Value("${minio.bucket.private:khlan-private}")
+    @Value("${minio.bucket.private:cars-storage}")
     private String privateBucket;
+
+    @Value("${minio.public-url:}")
+    private String publicUrlBase;
 
     private static final Map<String, String> EXT_BY_MIME = Map.of(
             "image/jpeg", "jpg",
@@ -40,36 +43,45 @@ public class MinioStorageService {
     public void initBuckets() {
         try {
             ensureBucket(publicBucket, true);
-            ensureBucket(privateBucket, false);
-            log.info("MinIO buckets initialized: [{}, {}]", publicBucket, privateBucket);
+            if (!publicBucket.equals(privateBucket)) {
+                ensureBucket(privateBucket, false);
+            }
+            log.info("Storage buckets initialized: [{}, {}]", publicBucket, privateBucket);
         } catch (Exception e) {
-            log.error("Failed to initialize MinIO buckets", e);
+            log.warn("Storage buckets init notice (expected if using Cloudflare R2): {}", e.getMessage());
         }
     }
 
-    private void ensureBucket(String bucketName, boolean isPublic) throws Exception {
-        boolean exists = minioClient.bucketExists(BucketExistsArgs.builder().bucket(bucketName).build());
-        if (!exists) {
-            minioClient.makeBucket(MakeBucketArgs.builder().bucket(bucketName).build());
-            log.info("Created MinIO bucket: {}", bucketName);
+    private void ensureBucket(String bucketName, boolean isPublic) {
+        try {
+            boolean exists = minioClient.bucketExists(BucketExistsArgs.builder().bucket(bucketName).build());
+            if (!exists) {
+                minioClient.makeBucket(MakeBucketArgs.builder().bucket(bucketName).build());
+                log.info("Created bucket: {}", bucketName);
 
-            if (isPublic) {
-                // Anonymous read policy for public car photos
-                String policy = """
-                        {
-                          "Version": "2012-10-17",
-                          "Statement": [
-                            {
-                              "Effect": "Allow",
-                              "Principal": "*",
-                              "Action": ["s3:GetObject"],
-                              "Resource": ["arn:aws:s3:::%s/*"]
-                            }
-                          ]
-                        }
-                        """.formatted(bucketName);
-                minioClient.setBucketPolicy(SetBucketPolicyArgs.builder().bucket(bucketName).config(policy).build());
+                if (isPublic) {
+                    try {
+                        String policy = """
+                                {
+                                  "Version": "2012-10-17",
+                                  "Statement": [
+                                    {
+                                      "Effect": "Allow",
+                                      "Principal": "*",
+                                      "Action": ["s3:GetObject"],
+                                      "Resource": ["arn:aws:s3:::%s/*"]
+                                    }
+                                  ]
+                                }
+                                """.formatted(bucketName);
+                        minioClient.setBucketPolicy(SetBucketPolicyArgs.builder().bucket(bucketName).config(policy).build());
+                    } catch (Exception pe) {
+                        log.debug("Bucket policy skipped (e.g. Cloudflare R2 managed externally): {}", pe.getMessage());
+                    }
+                }
             }
+        } catch (Exception e) {
+            log.warn("Could not check/create bucket {} (continuing as bucket may already exist on R2): {}", bucketName, e.getMessage());
         }
     }
 
@@ -90,6 +102,11 @@ public class MinioStorageService {
                             .contentType(mimeType)
                             .build()
             );
+        }
+
+        if (publicUrlBase != null && !publicUrlBase.isBlank()) {
+            String base = publicUrlBase.endsWith("/") ? publicUrlBase.substring(0, publicUrlBase.length() - 1) : publicUrlBase;
+            return base + "/" + objectName;
         }
 
         // Return path served through Nginx /media/

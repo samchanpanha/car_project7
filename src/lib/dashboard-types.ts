@@ -65,6 +65,7 @@ export interface PlanDTO {
   listingsLimit: number;
   featuredLimit: number;
   seats: number;
+  canSellSpareParts?: boolean;
   features: { en: string; km: string }[];
 }
 
@@ -78,6 +79,7 @@ export interface SubscriptionDTO {
   listingsLimit: number;
   featuredLimit: number;
   seats: number;
+  canSellSpareParts?: boolean;
   startedAt: string;
   currentPeriodEnd: string;
 }
@@ -90,6 +92,13 @@ export interface TenantMemberDTO {
   role: TenantRole;
   status: "ACTIVE" | "SUSPENDED";
   createdAt: string;
+}
+
+export interface TenantStaffResponseDTO {
+  members: TenantMemberDTO[];
+  seatsLimit: number;
+  seatsUsed: number;
+  plan: string;
 }
 
 export interface TenantBranchDTO {

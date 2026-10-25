@@ -7,11 +7,18 @@ import type { VehicleDetailDTO, VehicleStatus, VehiclesResponseDTO } from "./typ
 /** Row of GET /api/vehicles/mine — the signed-in user's own (non-tenant) listings. */
 export interface MyListingRowDTO {
   id: string;
+  listingCategory?: string;
+  partCategory?: string | null;
+  partTarget?: string | null;
+  partCondition?: string | null;
+  compatibleModels?: string | null;
+  partNumber?: string | null;
   make: string;
   model: string;
   variant: string | null;
   year: number;
   priceUsd: number;
+  priceMasked?: boolean;
   mileageKm: number;
   status: VehicleStatus;
   featured: boolean;

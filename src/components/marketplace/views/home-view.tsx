@@ -18,6 +18,8 @@ import {
   TriangleAlert,
   ArrowRight,
   CarFront,
+  Bike,
+  Wrench,
   BadgeCheck,
   Sparkles,
   Building2,
@@ -29,8 +31,14 @@ import {
 } from "lucide-react";
 import { useState, useMemo } from "react";
 import { cn } from "@/lib/utils";
+import { partCategoryLabels, motorBodyTypeLabels } from "@/lib/i18n";
 
 const BODY_TYPES = ["SUV", "SEDAN", "PICKUP", "VAN", "HATCHBACK", "COUPE"] as const;
+const MOTOR_BODY_TYPES = ["SCOOTER", "CUB", "SPORT", "CRUISER", "DIRT", "ELECTRIC"] as const;
+const PART_CATEGORIES = [
+  "ENGINE", "TRANSMISSION", "BRAKES", "SUSPENSION", "TIRES_WHEELS",
+  "ELECTRICAL", "BODY_LIGHTS", "OILS_FLUIDS", "ACCESSORIES"
+] as const;
 
 const PRICE_RANGES = [
   { id: "all", labelEn: "All Prices", labelKm: "គ្រប់តម្លៃ", min: undefined, max: undefined },
@@ -41,6 +49,9 @@ const PRICE_RANGES = [
 ] as const;
 
 const POPULAR_BRANDS = ["Toyota", "Lexus", "Ford", "Mercedes-Benz", "Hyundai", "Kia", "Honda", "Mazda"];
+const POPULAR_MOTOR_BRANDS = ["Honda", "Yamaha", "Suzuki", "Kawasaki", "BMW"];
+
+export type SplitCategory = "ALL" | "CAR" | "MOTOR" | "CAR_PART" | "MOTOR_PART";
 
 export function HomeView() {
   const t = useT();
@@ -48,6 +59,8 @@ export function HomeView() {
   const navigate = useAppStore((s) => s.navigate);
 
   // Filter States
+  const [splitCategory, setSplitCategory] = useState<SplitCategory>("ALL");
+  const [partCategory, setPartCategory] = useState("all");
   const [q, setQ] = useState("");
   const [searchDraft, setSearchDraft] = useState("");
   const [make, setMake] = useState("all");
@@ -69,6 +82,34 @@ export function HomeView() {
     [priceRangeId],
   );
 
+  // Dynamic Search Placeholder based on active split category
+  const heroSearchPlaceholder = useMemo(() => {
+    if (splitCategory === "CAR_PART") return t("searchCarPartsPlaceholder");
+    if (splitCategory === "MOTOR_PART") return t("searchMotorPartsPlaceholder");
+    if (splitCategory === "MOTOR") return t("searchMotorPlaceholder");
+    if (splitCategory === "CAR") return t("searchCarPlaceholder");
+    return t("searchPlaceholder");
+  }, [splitCategory, t]);
+
+  // Dynamic Titles for the marketplace inventory section
+  const inventoryTitle = useMemo(() => {
+    if (splitCategory === "CAR") return locale === "km" ? "រថយន្តទាំងអស់ក្នុងផ្សារ" : "Explore All Cars in Cambodia";
+    if (splitCategory === "MOTOR") return locale === "km" ? "ម៉ូតូទាំងអស់ក្នុងផ្សារ" : "Explore Motorcycles in Cambodia";
+    if (splitCategory === "CAR_PART") return locale === "km" ? "គ្រឿងបន្លាស់រថយន្ត & OEM" : "Car Spare Parts & OEM Components";
+    if (splitCategory === "MOTOR_PART") return locale === "km" ? "គ្រឿងបន្លាស់ម៉ូតូ & ប្រដាប់តុបតែង" : "Motorcycle Parts & Accessories";
+    return locale === "km" ? "យានយន្ត និងគ្រឿងបន្លាស់ទាំងអស់" : "All Vehicles & Spare Parts in Cambodia";
+  }, [splitCategory, locale]);
+
+  const inventorySubtitle = useMemo(() => {
+    if (splitCategory === "CAR") return t("categoryCarsDesc");
+    if (splitCategory === "MOTOR") return t("categoryMotorsDesc");
+    if (splitCategory === "CAR_PART") return t("categoryCarPartsDesc");
+    if (splitCategory === "MOTOR_PART") return t("categoryMotorPartsDesc");
+    return locale === "km"
+      ? "ស្វែងរករថយន្ត ម៉ូតូ និងគ្រឿងបន្លាស់ពីឃ្លាំងផ្លូវការ និងម្ចាស់ផ្ទាល់ទូទាំងប្រទេសកម្ពុជា"
+      : "Browse verified inventory with real-time stock counts, instant filtering, and dealer contacts.";
+  }, [splitCategory, t, locale]);
+
   // Build query object for backend
   const queryObj = useMemo(() => {
     const params: Record<string, string | number> = {
@@ -76,6 +117,20 @@ export function HomeView() {
       page,
       sort,
     };
+    if (splitCategory === "CAR") {
+      params.category = "CAR";
+    } else if (splitCategory === "MOTOR") {
+      params.category = "MOTOR";
+    } else if (splitCategory === "CAR_PART") {
+      params.category = "SPARE_PART";
+      params.partTarget = "CAR";
+    } else if (splitCategory === "MOTOR_PART") {
+      params.category = "SPARE_PART";
+      params.partTarget = "MOTOR";
+    }
+    if (partCategory && partCategory !== "all") {
+      params.partCategory = partCategory;
+    }
     if (q.trim()) params.q = q.trim();
     if (make && make !== "all") params.make = make;
     if (bodyType && bodyType !== "all") params.bodyType = bodyType;
@@ -85,7 +140,20 @@ export function HomeView() {
     if (activePriceRange?.min != null) params.priceMin = activePriceRange.min;
     if (activePriceRange?.max != null) params.priceMax = activePriceRange.max;
     return params;
-  }, [q, make, bodyType, sellerType, sellerId, sellerVerified, activePriceRange, sort, page, pageSize]);
+  }, [
+    splitCategory,
+    partCategory,
+    q,
+    make,
+    bodyType,
+    sellerType,
+    sellerId,
+    sellerVerified,
+    activePriceRange,
+    sort,
+    page,
+    pageSize,
+  ]);
 
   // Main vehicle listing data (paged)
   const { data, loading } = useFetch<PagedVehiclesResponseDTO>(
@@ -126,6 +194,8 @@ export function HomeView() {
   // Count active filters
   const hasActiveFilters = Boolean(
     q.trim() ||
+      splitCategory !== "ALL" ||
+      (partCategory && partCategory !== "all") ||
       (make && make !== "all") ||
       (bodyType && bodyType !== "all") ||
       sellerType ||
@@ -136,6 +206,8 @@ export function HomeView() {
   );
 
   const resetFilters = () => {
+    setSplitCategory("ALL");
+    setPartCategory("all");
     setQ("");
     setSearchDraft("");
     setMake("all");
@@ -169,6 +241,89 @@ export function HomeView() {
     [sellersList, sellerId],
   );
 
+  // 4-Pillar Visual Split Hero Cards
+  const SPLIT_CARDS = useMemo(
+    () => [
+      {
+        id: "CAR" as const,
+        title: t("categoryCars"),
+        desc: t("categoryCarsDesc"),
+        icon: CarFront,
+        count: meta?.categoryCounts?.car ?? 0,
+        countLabel: locale === "km" ? "រថយន្ត" : "Cars",
+        tags: [
+          locale === "km" ? "សេដាន" : "Sedan",
+          "SUV",
+          locale === "km" ? "ភីកអាប់" : "Pickup",
+          locale === "km" ? "ហាយប្រ៊ីដ" : "Hybrid",
+        ],
+        accentGradient: "from-amber-500/15 via-orange-500/5 to-transparent",
+        accentBorder: "border-amber-300/80 hover:border-amber-500",
+        iconBg: "bg-amber-100 text-amber-700",
+        badgeBg: "bg-amber-500 text-slate-950",
+        activeRing: "ring-2 ring-amber-500",
+      },
+      {
+        id: "MOTOR" as const,
+        title: t("categoryMotors"),
+        desc: t("categoryMotorsDesc"),
+        icon: Bike,
+        count: meta?.categoryCounts?.motor ?? 0,
+        countLabel: locale === "km" ? "គ្រឿង" : "Motors",
+        tags: [
+          locale === "km" ? "ស្កូទ័រ" : "Scooter",
+          "Cub 125cc",
+          locale === "km" ? "ស្ព័រ" : "Sport",
+          "Cruiser",
+        ],
+        accentGradient: "from-sky-500/15 via-blue-500/5 to-transparent",
+        accentBorder: "border-sky-300/80 hover:border-sky-500",
+        iconBg: "bg-sky-100 text-sky-700",
+        badgeBg: "bg-sky-600 text-white",
+        activeRing: "ring-2 ring-sky-500",
+      },
+      {
+        id: "CAR_PART" as const,
+        title: t("categoryCarParts"),
+        desc: t("categoryCarPartsDesc"),
+        icon: Wrench,
+        count: meta?.categoryCounts?.carPart ?? 0,
+        countLabel: locale === "km" ? "គ្រឿងបន្លាស់" : "Parts",
+        tags: [
+          locale === "km" ? "ហ្វ្រាំង" : "Brakes",
+          locale === "km" ? "អាគុយ" : "Battery",
+          locale === "km" ? "តម្រងប្រេង" : "Filters",
+          "OEM",
+        ],
+        accentGradient: "from-indigo-500/15 via-violet-500/5 to-transparent",
+        accentBorder: "border-indigo-300/80 hover:border-indigo-500",
+        iconBg: "bg-indigo-100 text-indigo-700",
+        badgeBg: "bg-indigo-600 text-white",
+        activeRing: "ring-2 ring-indigo-500",
+      },
+      {
+        id: "MOTOR_PART" as const,
+        title: t("categoryMotorParts"),
+        desc: t("categoryMotorPartsDesc"),
+        icon: Wrench,
+        count: meta?.categoryCounts?.motorPart ?? 0,
+        countLabel: locale === "km" ? "គ្រឿងបន្លាស់" : "Parts",
+        tags: [
+          locale === "km" ? "កង់ & សំបក" : "Tires",
+          locale === "km" ? "ច្រវ៉ាក់ & ញ៉ុង" : "Chains",
+          locale === "km" ? "ប៊ូស៊ី" : "Plugs",
+          locale === "km" ? "ភ្លើង" : "Lights",
+        ],
+        accentGradient: "from-emerald-500/15 via-teal-500/5 to-transparent",
+        accentBorder: "border-emerald-300/80 hover:border-emerald-500",
+        iconBg: "bg-emerald-100 text-emerald-700",
+        badgeBg: "bg-emerald-600 text-white",
+        activeRing: "ring-2 ring-emerald-500",
+      },
+    ],
+    [meta?.categoryCounts, t, locale],
+  );
+
   return (
     <div className="pb-16 md:pb-12 space-y-12">
       {/* ---------- Hero Section ---------- */}
@@ -187,8 +342,52 @@ export function HomeView() {
             </p>
           </div>
 
+          {/* Marketplace Category Selection Tabs */}
+          <div className="mt-6 flex flex-wrap items-center gap-2">
+            {[
+              { id: "ALL", label: t("categoryAll"), icon: null, count: meta?.categoryCounts?.total },
+              { id: "CAR", label: t("categoryCars"), icon: CarFront, count: meta?.categoryCounts?.car },
+              { id: "MOTOR", label: t("categoryMotors"), icon: Bike, count: meta?.categoryCounts?.motor },
+              { id: "CAR_PART", label: t("categoryCarParts"), icon: Wrench, count: meta?.categoryCounts?.carPart },
+              { id: "MOTOR_PART", label: t("categoryMotorParts"), icon: Wrench, count: meta?.categoryCounts?.motorPart },
+            ].map((cat) => {
+              const Icon = cat.icon;
+              const active = splitCategory === cat.id;
+              return (
+                <button
+                  key={cat.id}
+                  type="button"
+                  onClick={() => {
+                    setSplitCategory(cat.id as SplitCategory);
+                    setPartCategory("all");
+                    setPage(1);
+                  }}
+                  className={cn(
+                    "inline-flex items-center gap-2 rounded-xl px-4 py-2 text-xs sm:text-sm font-semibold transition-all shadow-sm cursor-pointer",
+                    active
+                      ? "bg-amber-500 text-slate-950 font-bold shadow-md shadow-amber-500/20"
+                      : "bg-white/10 hover:bg-white/20 text-white border border-white/15 backdrop-blur-md",
+                  )}
+                >
+                  {Icon && <Icon className="h-4 w-4" />}
+                  <span>{cat.label}</span>
+                  {cat.count != null && (
+                    <span
+                      className={cn(
+                        "ml-1 text-[11px] px-1.5 py-0.2 rounded-full font-bold",
+                        active ? "bg-slate-950/20 text-slate-950" : "bg-white/20 text-white",
+                      )}
+                    >
+                      {cat.count}
+                    </span>
+                  )}
+                </button>
+              );
+            })}
+          </div>
+
           {/* Quick Hero Search & Filter Bar */}
-          <form onSubmit={handleSearchSubmit} className="mt-7 max-w-4xl" role="search">
+          <form onSubmit={handleSearchSubmit} className="mt-4 max-w-4xl" role="search">
             <div className="flex flex-col sm:flex-row gap-2 rounded-2xl bg-white p-2.5 shadow-2xl backdrop-blur-md border border-slate-100">
               {/* Search text input */}
               <div className="flex-1 flex items-center gap-2.5 px-3 min-w-0">
@@ -196,7 +395,7 @@ export function HomeView() {
                 <Input
                   value={searchDraft}
                   onChange={(e) => setSearchDraft(e.target.value)}
-                  placeholder={locale === "km" ? "ស្វែងរក ម៉ាក, ម៉ូឌែល, ឃ្លាំងឡាន… (ឧ. Lexus, Prado, Sokha)" : "Search make, model, dealer… (e.g. Prado, Lexus, Sokha)"}
+                  placeholder={heroSearchPlaceholder}
                   className="border-0 h-10 text-slate-900 placeholder:text-slate-400 focus-visible:ring-0 px-0 text-sm"
                   aria-label={t("searchButton")}
                 />
@@ -394,6 +593,95 @@ export function HomeView() {
         </div>
       </section>
 
+      {/* ---------- 4-Pillar Visual Split Hero Cards (Hybrid Hub) ---------- */}
+      <section className="mx-auto max-w-7xl px-4" aria-labelledby="marketplace-hub-title">
+        <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-2 pb-4">
+          <div>
+            <p className="text-xs font-bold uppercase tracking-wider text-amber-600">
+              {locale === "km" ? "ជម្រើសទិញ-លក់តាមផ្នែក" : "Explore by Category"}
+            </p>
+            <h2 id="marketplace-hub-title" className="text-xl sm:text-2xl font-black text-slate-900 tracking-tight">
+              {locale === "km" ? "ស្វែងរកតាមប្រភេទយានយន្ត និងគ្រឿងបន្លាស់" : "Find What You Need in Cambodia"}
+            </h2>
+          </div>
+          <p className="text-xs sm:text-sm text-slate-500 max-w-md">
+            {locale === "km"
+              ? "រថយន្ត ម៉ូតូ និងគ្រឿងបន្លាស់សុទ្ធពីឃ្លាំង និងម្ចាស់ផ្ទាល់ដែលបានត្រួតពិនិត្យ"
+              : "Browse verified inventory with real-time stock counts, instant filtering, and dealer contacts."}
+          </p>
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          {SPLIT_CARDS.map((card) => {
+            const Icon = card.icon;
+            const active = splitCategory === card.id;
+            return (
+              <div
+                key={card.id}
+                onClick={() => {
+                  setSplitCategory(card.id);
+                  setPartCategory("all");
+                  setPage(1);
+                  scrollToInventory();
+                }}
+                className={cn(
+                  "group relative flex flex-col justify-between rounded-2xl border p-5 shadow-sm transition-all duration-200 cursor-pointer overflow-hidden",
+                  active
+                    ? cn("bg-white shadow-md ring-2", card.activeRing, card.accentBorder)
+                    : cn("bg-white hover:shadow-lg hover:-translate-y-1", card.accentBorder),
+                )}
+              >
+                {/* Subtle gradient backdrop */}
+                <div
+                  className={cn(
+                    "absolute inset-0 bg-gradient-to-br opacity-50 pointer-events-none transition-opacity group-hover:opacity-100",
+                    card.accentGradient,
+                  )}
+                />
+
+                <div className="relative">
+                  {/* Header: Icon + Count badge */}
+                  <div className="flex items-center justify-between gap-2">
+                    <span className={cn("inline-flex h-11 w-11 items-center justify-center rounded-xl font-bold shadow-xs", card.iconBg)}>
+                      <Icon className="h-6 w-6" aria-hidden />
+                    </span>
+                    <span className={cn("rounded-full px-2.5 py-1 text-xs font-bold shadow-xs", card.badgeBg)}>
+                      {card.count} {card.countLabel}
+                    </span>
+                  </div>
+
+                  {/* Title & Description */}
+                  <h3 className="mt-3.5 text-base sm:text-lg font-bold text-slate-900 group-hover:text-amber-600 transition-colors">
+                    {card.title}
+                  </h3>
+                  <p className="mt-1 text-xs text-slate-500 line-clamp-2 leading-relaxed">
+                    {card.desc}
+                  </p>
+
+                  {/* Quick Tags */}
+                  <div className="mt-3.5 flex flex-wrap gap-1.5">
+                    {card.tags.map((tag) => (
+                      <span
+                        key={tag}
+                        className="rounded-md bg-slate-100/90 group-hover:bg-white text-slate-600 px-2 py-0.5 text-[11px] font-medium border border-slate-200/60"
+                      >
+                        {tag}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Footer action link */}
+                <div className="relative mt-5 pt-3 border-t border-slate-100 flex items-center justify-between text-xs font-bold text-slate-900 group-hover:text-amber-600">
+                  <span>{locale === "km" ? "មើលទំនិញទាំងអស់" : "Explore Category"}</span>
+                  <ArrowRight className="h-4 w-4 transition-transform duration-200 group-hover:translate-x-1" />
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </section>
+
       {/* ---------- Featured Section (Showcased Vehicles) ---------- */}
       {featuredList.length > 0 && !hasActiveFilters && (
         <section className="mx-auto max-w-7xl px-4" aria-labelledby="featured-title">
@@ -448,13 +736,11 @@ export function HomeView() {
                 <CarFront className="h-5 w-5" />
               </span>
               <h2 id="marketplace-title" className="text-2xl sm:text-3xl font-black text-slate-900 tracking-tight">
-                {locale === "km" ? "រថយន្តទាំងអស់ក្នុងផ្សារ" : "Explore All Cars in Cambodia"}
+                {inventoryTitle}
               </h2>
             </div>
             <p className="mt-1 text-sm text-slate-500">
-              {locale === "km"
-                ? "ស្វែងរករថយន្តពីឃ្លាំងផ្លូវការ និងម្ចាស់ផ្ទាល់ទូទាំងប្រទេសកម្ពុជា"
-                : "Browse verified inventory from certified dealerships and trusted private sellers across Cambodia."}
+              {inventorySubtitle}
             </p>
           </div>
 
@@ -468,7 +754,7 @@ export function HomeView() {
                 variant="outline"
                 size="sm"
                 onClick={resetFilters}
-                className="h-8 text-xs text-slate-600 border-slate-300 hover:bg-slate-100"
+                className="h-8 text-xs text-slate-600 border-slate-300 hover:bg-slate-100 cursor-pointer"
               >
                 <RotateCcw className="h-3.5 w-3.5 mr-1" />
                 {t("clearFilters")}
@@ -477,8 +763,138 @@ export function HomeView() {
           </div>
         </div>
 
+        {/* 5-Way Split Category Segmented Bar */}
+        <div className="mt-6 flex items-center gap-2 overflow-x-auto pb-1 no-scrollbar border-b border-slate-200/80">
+          {[
+            { id: "ALL", label: t("categoryAll"), icon: null, count: meta?.categoryCounts?.total ?? total },
+            { id: "CAR", label: t("categoryCars"), icon: CarFront, count: meta?.categoryCounts?.car },
+            { id: "MOTOR", label: t("categoryMotors"), icon: Bike, count: meta?.categoryCounts?.motor },
+            { id: "CAR_PART", label: t("categoryCarParts"), icon: Wrench, count: meta?.categoryCounts?.carPart },
+            { id: "MOTOR_PART", label: t("categoryMotorParts"), icon: Wrench, count: meta?.categoryCounts?.motorPart },
+          ].map((cat) => {
+            const Icon = cat.icon;
+            const active = splitCategory === cat.id;
+            return (
+              <button
+                key={cat.id}
+                type="button"
+                onClick={() => {
+                  setSplitCategory(cat.id as SplitCategory);
+                  setPartCategory("all");
+                  setPage(1);
+                }}
+                className={cn(
+                  "inline-flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs sm:text-sm font-semibold transition-all shadow-xs cursor-pointer whitespace-nowrap border",
+                  active
+                    ? "bg-slate-900 text-white border-slate-900 shadow-md shadow-slate-900/10"
+                    : "bg-white text-slate-700 border-slate-200 hover:border-slate-300 hover:text-slate-900",
+                )}
+              >
+                {Icon && <Icon className={cn("h-4 w-4", active ? "text-amber-400" : "text-slate-500")} />}
+                <span>{cat.label}</span>
+                {cat.count != null && (
+                  <span
+                    className={cn(
+                      "ml-1 rounded-full px-2 py-0.5 text-[11px] font-bold",
+                      active ? "bg-amber-500 text-slate-950" : "bg-slate-100 text-slate-600",
+                    )}
+                  >
+                    {cat.count}
+                  </span>
+                )}
+              </button>
+            );
+          })}
+        </div>
+
+        {/* Contextual Sub-category Pills for Spare Parts */}
+        {(splitCategory === "CAR_PART" || splitCategory === "MOTOR_PART") && (
+          <div className="mt-3 flex flex-wrap items-center gap-1.5 text-xs">
+            <span className="text-slate-500 font-semibold mr-1">{t("partCategoryLabel")}:</span>
+            <button
+              type="button"
+              onClick={() => {
+                setPartCategory("all");
+                setPage(1);
+              }}
+              className={cn(
+                "rounded-full px-3 py-1 font-medium transition-all cursor-pointer text-xs border",
+                partCategory === "all"
+                  ? "bg-indigo-600 text-white border-indigo-600 font-bold shadow-xs"
+                  : "bg-white text-slate-700 border-slate-200 hover:border-slate-300",
+              )}
+            >
+              {t("categoryAll")}
+            </button>
+            {PART_CATEGORIES.map((pc) => {
+              const active = partCategory === pc;
+              return (
+                <button
+                  key={pc}
+                  type="button"
+                  onClick={() => {
+                    setPartCategory(active ? "all" : pc);
+                    setPage(1);
+                  }}
+                  className={cn(
+                    "rounded-full px-3 py-1 font-medium transition-all cursor-pointer text-xs border",
+                    active
+                      ? "bg-indigo-600 text-white border-indigo-600 font-bold shadow-xs"
+                      : "bg-white text-slate-700 border-slate-200 hover:border-slate-300",
+                  )}
+                >
+                  {partCategoryLabels[pc]?.[locale] ?? pc}
+                </button>
+              );
+            })}
+          </div>
+        )}
+
+        {/* Contextual Sub-category Pills for Motorcycles */}
+        {splitCategory === "MOTOR" && (
+          <div className="mt-3 flex flex-wrap items-center gap-1.5 text-xs">
+            <span className="text-slate-500 font-semibold mr-1">{t("motorBodyType")}:</span>
+            <button
+              type="button"
+              onClick={() => {
+                setBodyType("all");
+                setPage(1);
+              }}
+              className={cn(
+                "rounded-full px-3 py-1 font-medium transition-all cursor-pointer text-xs border",
+                bodyType === "all"
+                  ? "bg-sky-600 text-white border-sky-600 font-bold shadow-xs"
+                  : "bg-white text-slate-700 border-slate-200 hover:border-slate-300",
+              )}
+            >
+              {t("categoryAll")}
+            </button>
+            {MOTOR_BODY_TYPES.map((bt) => {
+              const active = bodyType === bt;
+              return (
+                <button
+                  key={bt}
+                  type="button"
+                  onClick={() => {
+                    setBodyType(active ? "all" : bt);
+                    setPage(1);
+                  }}
+                  className={cn(
+                    "rounded-full px-3 py-1 font-medium transition-all cursor-pointer text-xs border",
+                    active
+                      ? "bg-sky-600 text-white border-sky-600 font-bold shadow-xs"
+                      : "bg-white text-slate-700 border-slate-200 hover:border-slate-300",
+                  )}
+                >
+                  {motorBodyTypeLabels[bt]?.[locale] ?? bt}
+                </button>
+              );
+            })}
+          </div>
+        )}
+
         {/* Filter Controls Bar */}
-        <div className="mt-6 space-y-4">
+        <div className="mt-4 space-y-4">
           {/* 1. Seller Type Main Segmented Tabs */}
           <div className="flex flex-wrap items-center gap-2 p-1.5 bg-slate-100/90 rounded-xl border border-slate-200/80">
             {/* All Cars Tab */}
@@ -697,6 +1113,43 @@ export function HomeView() {
           {hasActiveFilters && (
             <div className="flex flex-wrap items-center gap-2 pt-1 text-xs">
               <span className="text-slate-500 font-medium">{locale === "km" ? "តម្រងសកម្ម:" : "Active Filters:"}</span>
+
+              {splitCategory !== "ALL" && (
+                <span className="inline-flex items-center gap-1 bg-amber-50 text-amber-900 border border-amber-200 rounded-full px-2.5 py-0.5 font-medium">
+                  <span>
+                    {splitCategory === "CAR"
+                      ? t("categoryCars")
+                      : splitCategory === "MOTOR"
+                      ? t("categoryMotors")
+                      : splitCategory === "CAR_PART"
+                      ? t("categoryCarParts")
+                      : t("categoryMotorParts")}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSplitCategory("ALL");
+                      setPartCategory("all");
+                    }}
+                    className="hover:text-amber-700 cursor-pointer"
+                  >
+                    <X className="h-3 w-3" />
+                  </button>
+                </span>
+              )}
+
+              {partCategory !== "all" && (
+                <span className="inline-flex items-center gap-1 bg-indigo-50 text-indigo-900 border border-indigo-200 rounded-full px-2.5 py-0.5 font-medium">
+                  <span>{partCategoryLabels[partCategory]?.[locale] ?? partCategory}</span>
+                  <button
+                    type="button"
+                    onClick={() => setPartCategory("all")}
+                    className="hover:text-indigo-700 cursor-pointer"
+                  >
+                    <X className="h-3 w-3" />
+                  </button>
+                </span>
+              )}
 
               {q.trim() && (
                 <span className="inline-flex items-center gap-1 bg-amber-50 text-amber-900 border border-amber-200 rounded-full px-2.5 py-0.5 font-medium">

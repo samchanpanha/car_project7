@@ -20,6 +20,8 @@ export interface PlanPriceCfg {
   listingsLimit: number;
   featuredLimit: number;
   seats: number;
+  /** when false the plan cannot list spare parts (cars/motors only) */
+  canSellSpareParts?: boolean;
   /** when false the plan is hidden from sellers and cannot be purchased */
   enabled: boolean;
 }
@@ -28,6 +30,7 @@ export type PlanPricingConfig = Record<PaidPlanKey, PlanPriceCfg>;
 
 /** Shape of the free-tier config, mirrored structurally from payments.ts. */
 interface FreePlanOverrides {
+  enabled?: boolean;
   listingsLimit: number;
   featuredLimit: number;
   seats: number;
@@ -67,6 +70,7 @@ function defaultPricing(): PlanPricingConfig {
       listingsLimit: row.listingsLimit,
       featuredLimit: row.featuredLimit,
       seats: row.seats,
+      canSellSpareParts: row.canSellSpareParts ?? (key === "PRO" || key === "ENTERPRISE"),
       enabled: true,
     };
   }
@@ -94,6 +98,7 @@ export async function getPlanPricing(): Promise<PlanPricingConfig> {
         listingsLimit: clampLimit(p.listingsLimit, d.listingsLimit),
         featuredLimit: clampLimit(p.featuredLimit, d.featuredLimit),
         seats: clampLimit(p.seats, d.seats, 1),
+        canSellSpareParts: typeof p.canSellSpareParts === "boolean" ? p.canSellSpareParts : d.canSellSpareParts,
         enabled: typeof p.enabled === "boolean" ? p.enabled : d.enabled,
       };
     }
@@ -178,10 +183,16 @@ export async function getPlanCatalog(opts?: {
       listingsLimit: cfg.listingsLimit,
       featuredLimit: cfg.featuredLimit,
       seats: cfg.seats,
+      canSellSpareParts: cfg.canSellSpareParts ?? p.canSellSpareParts ?? false,
     };
   });
   if (opts?.includeDisabled) return rows;
-  return rows.filter((p) => p.plan === "FREE" || pricing[p.plan as PaidPlanKey].enabled);
+  return rows.filter((p) => {
+    if (p.plan === "FREE") {
+      return opts?.freePlan ? opts.freePlan.enabled : true;
+    }
+    return pricing[p.plan as PaidPlanKey].enabled;
+  });
 }
 
 /** Price for a configured plan/cycle and currency (USD or KHR). */

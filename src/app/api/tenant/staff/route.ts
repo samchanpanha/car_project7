@@ -6,7 +6,8 @@ import {
   requireTenantMember,
   toErrorResponse,
 } from "@/lib/api/guards";
-import type { TenantMemberDTO, TenantRole } from "@/lib/dashboard-types";
+import { PLAN_CATALOG } from "@/lib/api/plans";
+import type { TenantMemberDTO, TenantRole, TenantStaffResponseDTO } from "@/lib/dashboard-types";
 
 export const dynamic = "force-dynamic";
 
@@ -33,13 +34,31 @@ export async function GET() {
   try {
     const { tenant } = await requireTenantMember();
 
-    const members = await db.tenantMember.findMany({
-      where: { tenantId: tenant.id },
-      orderBy: { createdAt: "asc" },
-      include: { user: { select: { name: true, phone: true } } },
-    });
+    const [members, tenantSub] = await Promise.all([
+      db.tenantMember.findMany({
+        where: { tenantId: tenant.id },
+        orderBy: { createdAt: "asc" },
+        include: { user: { select: { name: true, phone: true } } },
+      }),
+      db.subscription.findUnique({
+        where: { tenantId: tenant.id },
+      }),
+    ]);
 
-    return NextResponse.json(members.map(toMemberDTO));
+    const catalogRow = PLAN_CATALOG.find((p) => p.plan === (tenantSub?.plan ?? "FREE"));
+    const seatsLimit = (tenantSub?.seats && tenantSub.seats > 0)
+      ? tenantSub.seats
+      : (catalogRow?.seats ?? 1);
+    const seatsUsed = members.filter((m) => m.status === "ACTIVE").length;
+
+    const res: TenantStaffResponseDTO = {
+      members: members.map(toMemberDTO),
+      seatsLimit,
+      seatsUsed,
+      plan: tenantSub?.plan ?? "FREE",
+    };
+
+    return NextResponse.json(res);
   } catch (err) {
     return toErrorResponse(err, "api/tenant/staff GET", "Failed to load staff");
   }
@@ -78,7 +97,28 @@ export async function POST(req: Request) {
 
     const { name, phone, role } = parsed.data;
 
+    // Check if dealership subscription is expired or past due
+    const tenantSub = await db.subscription.findUnique({
+      where: { tenantId: tenant.id },
+    });
+    if (tenantSub && (tenantSub.status === "EXPIRED" || tenantSub.status === "PAST_DUE")) {
+      return NextResponse.json(
+        {
+          error: "Your dealership subscription has expired. Please renew your subscription to invite new team members.",
+          code: "SUBSCRIPTION_EXPIRED",
+        },
+        { status: 403 },
+      );
+    }
+
+    const catalogRow = PLAN_CATALOG.find((p) => p.plan === (tenantSub?.plan ?? "FREE"));
+    const maxSeats = (tenantSub?.seats && tenantSub.seats > 0)
+      ? tenantSub.seats
+      : (catalogRow?.seats ?? 1);
+
     const existing = await db.user.findUnique({ where: { phone } });
+    let isAlreadyActiveMember = false;
+
     if (existing) {
       // Already a member of ANOTHER tenant → reject.
       const otherMembership = await db.tenantMember.findFirst({
@@ -101,6 +141,27 @@ export async function POST(req: Request) {
           { status: 400 },
         );
       }
+      if (ownMembership && ownMembership.status === "ACTIVE") {
+        isAlreadyActiveMember = true;
+      }
+    }
+
+    // If not already an active seat holder, verify seat limit
+    if (!isAlreadyActiveMember) {
+      const activeMembersCount = await db.tenantMember.count({
+        where: { tenantId: tenant.id, status: "ACTIVE" },
+      });
+      if (activeMembersCount >= maxSeats) {
+        return NextResponse.json(
+          {
+            error: `Seat limit reached (${activeMembersCount}/${maxSeats} seats used). Please upgrade your subscription plan to add more team members.`,
+            code: "SEAT_LIMIT_REACHED",
+            seatsLimit: maxSeats,
+            seatsUsed: activeMembersCount,
+          },
+          { status: 403 },
+        );
+      }
     }
 
     // Upsert the user by phone (create as DEALER; update name when different).
@@ -114,7 +175,7 @@ export async function POST(req: Request) {
     const upserted = await db.tenantMember.upsert({
       where: { tenantId_userId: { tenantId: tenant.id, userId: user.id } },
       create: { tenantId: tenant.id, userId: user.id, role, status: "ACTIVE" },
-      update: { role },
+      update: { role, status: "ACTIVE" },
       include: { user: { select: { name: true, phone: true } } },
     });
 

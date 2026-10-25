@@ -5,7 +5,16 @@ import { useT } from "@/hooks/use-t";
 import { useFetch, qs, apiSend } from "@/lib/client-hooks";
 import type { MetaDTO, SortOption } from "@/lib/types";
 import type { PagedVehiclesResponseDTO } from "@/lib/listing-types";
-import { bodyTypeLabels, fuelLabels, transmissionLabels, drivetrainLabels } from "@/lib/i18n";
+import {
+  bodyTypeLabels,
+  drivetrainLabels,
+  fuelLabels,
+  motorBodyTypeLabels,
+  partCategoryLabels,
+  partConditionLabels,
+  partTargetLabels,
+  transmissionLabels,
+} from "@/lib/i18n";
 import { VehicleCard, VehicleCardSkeleton } from "@/components/marketplace/vehicle-card";
 import { Pagination } from "@/components/marketplace/pagination";
 import { Button } from "@/components/ui/button";
@@ -20,7 +29,7 @@ import {
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { Skeleton } from "@/components/ui/skeleton";
-import { SlidersHorizontal, Search, X, BookmarkPlus, Loader2 } from "lucide-react";
+import { SlidersHorizontal, Search, X, BookmarkPlus, Loader2, Bike, CarFront, Wrench } from "lucide-react";
 import { useMemo, useState } from "react";
 import { formatUsd } from "@/lib/format";
 import { toast } from "sonner";
@@ -28,12 +37,21 @@ import { cn } from "@/lib/utils";
 import { errorText } from "@/components/marketplace/dashboard/bits";
 
 const BODY_TYPES = ["SUV", "SEDAN", "PICKUP", "VAN", "HATCHBACK", "COUPE"];
+const MOTOR_BODY_TYPES = ["SCOOTER", "CUB", "SPORT", "CRUISER", "DIRT", "ELECTRIC", "OTHER"];
+const PART_TARGETS = ["CAR", "MOTOR", "UNIVERSAL"];
+const PART_CATEGORIES = [
+  "ENGINE", "TRANSMISSION", "BRAKES", "SUSPENSION", "TIRES_WHEELS",
+  "ELECTRICAL", "BODY_LIGHTS", "INTERIOR", "ACCESSORIES", "OILS_FLUIDS", "EXHAUST", "OTHER"
+];
 const FUELS = ["PETROL", "DIESEL", "HYBRID", "ELECTRIC"];
 const TRANSMISSIONS = ["AUTOMATIC", "MANUAL"];
 const DRIVETRAINS = ["FWD", "RWD", "AWD"];
 const CONDITIONS = ["LIKE_NEW", "USED"];
 
 export interface BrowseFilters {
+  category: "ALL" | "CAR" | "MOTOR" | "SPARE_PART";
+  partCategory: string;
+  partTarget: string;
   q: string;
   make: string;
   bodyType: string[]; // multi-value, comma-joined to the API
@@ -56,6 +74,9 @@ export interface BrowseFilters {
 
 export function emptyFilters(): BrowseFilters {
   return {
+    category: "ALL",
+    partCategory: "",
+    partTarget: "",
     q: "", make: "", bodyType: [], fuel: [], transmission: [], drivetrain: [],
     condition: "", city: "", sellerType: "", sellerVerified: false,
     featured: false, hasReport: false,
@@ -68,6 +89,9 @@ export function emptyFilters(): BrowseFilters {
 function buildParams(f: BrowseFilters, sort: SortOption, page: number): Record<string, string | number> {
   const params: Record<string, string | number> = { sort, limit: 12 };
   if (page > 1) params.page = page;
+  if (f.category && f.category !== "ALL") params.category = f.category;
+  if (f.partCategory) params.partCategory = f.partCategory;
+  if (f.partTarget) params.partTarget = f.partTarget;
   if (f.q.trim()) params.q = f.q.trim();
   if (f.make) params.make = f.make;
   if (f.bodyType.length) params.bodyType = f.bodyType.join(",");
@@ -110,52 +134,159 @@ export function FiltersPanel({
   const locale = useAppStore((s) => s.locale);
   const { data: meta } = useFetch<MetaDTO>("/api/meta");
 
-  const set = (patch: Partial<BrowseFilters>) => setFilters({ ...filters, ...patch });
-
-  return (
+  const set = (patch: Partial<BrowseFilters>) => setFilters({ ...filters, ...patch });  return (
     <div className="space-y-5" data-testid="filters-panel">
       <div>
-        <Label htmlFor="f-q" className="text-xs text-slate-500">{t("searchPlaceholder")}</Label>
-        <Input id="f-q" value={filters.q} onChange={(e) => set({ q: e.target.value })} className="mt-1.5 h-9" />
+        <Label htmlFor="f-q" className="text-xs text-slate-500">
+          {filters.category === "SPARE_PART"
+            ? filters.partTarget === "MOTOR"
+              ? t("searchMotorPartsPlaceholder")
+              : t("searchCarPartsPlaceholder")
+            : filters.category === "MOTOR"
+            ? t("searchMotorPlaceholder")
+            : filters.category === "CAR"
+            ? t("searchCarPlaceholder")
+            : t("searchPlaceholder")}
+        </Label>
+        <Input
+          id="f-q"
+          value={filters.q}
+          onChange={(e) => set({ q: e.target.value })}
+          placeholder={
+            filters.category === "SPARE_PART"
+              ? filters.partTarget === "MOTOR"
+                ? t("searchMotorPartsPlaceholder")
+                : t("searchCarPartsPlaceholder")
+              : filters.category === "MOTOR"
+              ? t("searchMotorPlaceholder")
+              : filters.category === "CAR"
+              ? t("searchCarPlaceholder")
+              : t("searchPlaceholder")
+          }
+          className="mt-1.5 h-9"
+        />
       </div>
 
-      <div>
-        <Label className="text-xs text-slate-500">{t("allMakes")}</Label>
-        <Select value={filters.make || "all"} onValueChange={(v) => set({ make: v === "all" ? "" : v })}>
-          <SelectTrigger className="mt-1.5 h-9" aria-label={t("allMakes")}>
-            <SelectValue placeholder={t("allMakes")} />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">{t("allMakes")}</SelectItem>
-            {(meta?.makes ?? []).map((m) => (
-              <SelectItem key={m} value={m}>{m}</SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      </div>
+      {filters.category === "SPARE_PART" ? (
+        <>
+          <div>
+            <Label className="text-xs text-slate-500">{t("partTarget")}</Label>
+            <Select value={filters.partTarget || "all"} onValueChange={(v) => set({ partTarget: v === "all" ? "" : v })}>
+              <SelectTrigger className="mt-1.5 h-9" aria-label={t("partTarget")}>
+                <SelectValue placeholder={t("partTargetAll")} />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">{t("partTargetAll")}</SelectItem>
+                {PART_TARGETS.map((pt) => (
+                  <SelectItem key={pt} value={pt}>{partTargetLabels[pt]?.[locale] ?? pt}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
 
-      <div>
-        <Label className="text-xs text-slate-500">{t("bodyType")}</Label>
-        <div className="mt-1.5 flex flex-wrap gap-1.5">
-          {BODY_TYPES.map((bt) => {
-            const active = filters.bodyType.includes(bt);
-            return (
-              <button
-                key={bt}
-                onClick={() => setFilters(toggleValue(filters, "bodyType", bt))}
-                className={`rounded-full border px-3 py-1 text-xs font-medium transition-colors cursor-pointer ${
-                  active
-                    ? "border-amber-500 bg-amber-50 text-amber-700"
-                    : "border-slate-200 text-slate-600 hover:border-slate-300"
-                }`}
-                aria-pressed={active}
-              >
-                {bodyTypeLabels[bt]?.[locale] ?? bt}
-              </button>
-            );
-          })}
-        </div>
-      </div>
+          <div>
+            <Label className="text-xs text-slate-500">{t("partCategoryLabel")}</Label>
+            <Select value={filters.partCategory || "all"} onValueChange={(v) => set({ partCategory: v === "all" ? "" : v })}>
+              <SelectTrigger className="mt-1.5 h-9" aria-label={t("partCategoryLabel")}>
+                <SelectValue placeholder={t("categoryAll")} />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">{t("categoryAll")}</SelectItem>
+                {PART_CATEGORIES.map((pc) => (
+                  <SelectItem key={pc} value={pc}>{partCategoryLabels[pc]?.[locale] ?? pc}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div>
+            <Label htmlFor="f-make-part" className="text-xs text-slate-500">{locale === "km" ? "ម៉ាក" : "Brand / Make"}</Label>
+            <Input
+              id="f-make-part"
+              placeholder={locale === "km" ? "ឧ. Toyota, Honda, Brembo..." : "e.g. Toyota, Honda, Brembo..."}
+              value={filters.make}
+              onChange={(e) => set({ make: e.target.value })}
+              className="mt-1.5 h-9"
+            />
+          </div>
+        </>
+      ) : filters.category === "MOTOR" ? (
+        <>
+          <div>
+            <Label htmlFor="f-make-motor" className="text-xs text-slate-500">{locale === "km" ? "ម៉ាកម៉ូតូ" : "Motorcycle Brand"}</Label>
+            <Input
+              id="f-make-motor"
+              placeholder={locale === "km" ? "ឧ. Honda, Yamaha, Suzuki..." : "e.g. Honda, Yamaha, Suzuki..."}
+              value={filters.make}
+              onChange={(e) => set({ make: e.target.value })}
+              className="mt-1.5 h-9"
+            />
+          </div>
+
+          <div>
+            <Label className="text-xs text-slate-500">{t("motorBodyType")}</Label>
+            <div className="mt-1.5 flex flex-wrap gap-1.5">
+              {MOTOR_BODY_TYPES.map((bt) => {
+                const active = filters.bodyType.includes(bt);
+                return (
+                  <button
+                    key={bt}
+                    onClick={() => setFilters(toggleValue(filters, "bodyType", bt))}
+                    className={`rounded-full border px-3 py-1 text-xs font-medium transition-colors cursor-pointer ${
+                      active
+                        ? "border-amber-500 bg-amber-50 text-amber-700"
+                        : "border-slate-200 text-slate-600 hover:border-slate-300"
+                    }`}
+                    aria-pressed={active}
+                  >
+                    {motorBodyTypeLabels[bt]?.[locale] ?? bt}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        </>
+      ) : (
+        <>
+          <div>
+            <Label className="text-xs text-slate-500">{t("allMakes")}</Label>
+            <Select value={filters.make || "all"} onValueChange={(v) => set({ make: v === "all" ? "" : v })}>
+              <SelectTrigger className="mt-1.5 h-9" aria-label={t("allMakes")}>
+                <SelectValue placeholder={t("allMakes")} />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">{t("allMakes")}</SelectItem>
+                {(meta?.makes ?? []).map((m) => (
+                  <SelectItem key={m} value={m}>{m}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div>
+            <Label className="text-xs text-slate-500">{t("bodyType")}</Label>
+            <div className="mt-1.5 flex flex-wrap gap-1.5">
+              {BODY_TYPES.map((bt) => {
+                const active = filters.bodyType.includes(bt);
+                return (
+                  <button
+                    key={bt}
+                    onClick={() => setFilters(toggleValue(filters, "bodyType", bt))}
+                    className={`rounded-full border px-3 py-1 text-xs font-medium transition-colors cursor-pointer ${
+                      active
+                        ? "border-amber-500 bg-amber-50 text-amber-700"
+                        : "border-slate-200 text-slate-600 hover:border-slate-300"
+                    }`}
+                    aria-pressed={active}
+                  >
+                    {bodyTypeLabels[bt]?.[locale] ?? bt}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        </>
+      )}
 
       <div>
         <Label className="text-xs text-slate-500">{t("priceRange")}</Label>
@@ -171,18 +302,20 @@ export function FiltersPanel({
         </div>
       </div>
 
-      <div className="grid grid-cols-2 gap-2">
-        <div>
-          <Label htmlFor="f-year" className="text-xs text-slate-500">{t("yearMin")}</Label>
-          <Input id="f-year" type="number" min={1990} max={2026} placeholder="2015" value={filters.yearMin}
-            onChange={(e) => set({ yearMin: e.target.value })} className="mt-1.5 h-9" />
+      {filters.category !== "SPARE_PART" && (
+        <div className="grid grid-cols-2 gap-2">
+          <div>
+            <Label htmlFor="f-year" className="text-xs text-slate-500">{t("yearMin")}</Label>
+            <Input id="f-year" type="number" min={1990} max={2026} placeholder="2015" value={filters.yearMin}
+              onChange={(e) => set({ yearMin: e.target.value })} className="mt-1.5 h-9" />
+          </div>
+          <div>
+            <Label htmlFor="f-mi" className="text-xs text-slate-500">{t("mileageMax")}</Label>
+            <Input id="f-mi" type="number" min={0} step={10000} placeholder="150000" value={filters.mileageMax}
+              onChange={(e) => set({ mileageMax: e.target.value })} className="mt-1.5 h-9" />
+          </div>
         </div>
-        <div>
-          <Label htmlFor="f-mi" className="text-xs text-slate-500">{t("mileageMax")}</Label>
-          <Input id="f-mi" type="number" min={0} step={10000} placeholder="150000" value={filters.mileageMax}
-            onChange={(e) => set({ mileageMax: e.target.value })} className="mt-1.5 h-9" />
-        </div>
-      </div>
+      )}
 
       <div>
         <Label className="text-xs text-slate-500">{t("location")}</Label>
@@ -269,6 +402,125 @@ function AdvancedFields({
     </fieldset>
   );
 
+  if (filters.category === "SPARE_PART") {
+    return (
+      <div className="space-y-4" data-testid="advanced-fields">
+        {numberPair("af-pmin", t("priceMin"), "priceMin", "af-pmax", t("priceMax"), "priceMax")}
+
+        <div className="grid gap-3 sm:grid-cols-2">
+          <div>
+            <Label className="text-xs text-slate-500">{t("partConditionLabel")}</Label>
+            <Select value={filters.condition || "any"} onValueChange={(v) => set({ condition: v === "any" ? "" : v })}>
+              <SelectTrigger className="mt-1.5 h-9" aria-label={t("partConditionLabel")}>
+                <SelectValue placeholder={t("anyCondition")} />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="any">{t("anyCondition")}</SelectItem>
+                <SelectItem value="NEW">{partConditionLabels.NEW?.[locale] ?? "New"}</SelectItem>
+                <SelectItem value="LIKE_NEW">{partConditionLabels.LIKE_NEW?.[locale] ?? "Like New"}</SelectItem>
+                <SelectItem value="USED">{partConditionLabels.USED?.[locale] ?? "Used"}</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div>
+            <Label className="text-xs text-slate-500">{t("sellerType")}</Label>
+            <Select value={filters.sellerType || "any"} onValueChange={(v) => set({ sellerType: v === "any" ? "" : v })}>
+              <SelectTrigger className="mt-1.5 h-9" aria-label={t("sellerType")}>
+                <SelectValue placeholder={t("anySeller")} />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="any">{t("anySeller")}</SelectItem>
+                <SelectItem value="PRIVATE">{t("privateSeller")}</SelectItem>
+                <SelectItem value="DEALER">{t("dealer")}</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+        </div>
+
+        <div className="grid gap-2 sm:grid-cols-2">
+          <div className="flex items-center justify-between rounded-lg border border-slate-200 p-3">
+            <Label htmlFor="af-verified" className="text-xs font-medium text-slate-600 cursor-pointer">{t("verifiedOnly")}</Label>
+            <Switch id="af-verified" checked={filters.sellerVerified} onCheckedChange={(v) => set({ sellerVerified: v })} />
+          </div>
+          <div className="flex items-center justify-between rounded-lg border border-slate-200 p-3">
+            <Label htmlFor="af-featured" className="text-xs font-medium text-slate-600 cursor-pointer">{t("featuredOnly")}</Label>
+            <Switch id="af-featured" checked={filters.featured} onCheckedChange={(v) => set({ featured: v })} />
+          </div>
+        </div>
+
+        <Button variant="ghost" size="sm" onClick={onClear} className="w-full text-slate-500 hover:text-slate-700">
+          {t("clearFilters")}
+        </Button>
+      </div>
+    );
+  }
+
+  if (filters.category === "MOTOR") {
+    return (
+      <div className="space-y-4" data-testid="advanced-fields">
+        {numberPair("af-pmin", t("priceMin"), "priceMin", "af-pmax", t("priceMax"), "priceMax")}
+        {numberPair("af-ymin", t("yearMin"), "yearMin", "af-ymax", t("advYearMax"), "yearMax")}
+        {numberPair("af-kmin", t("advMileageMin"), "mileageMin", "af-kmax", t("mileageMax"), "mileageMax")}
+
+        <div className="grid gap-4 sm:grid-cols-2">
+          {checkGroup(t("fuelType"), "fuel", FUELS, fuelLabels)}
+          {checkGroup(t("transmission"), "transmission", TRANSMISSIONS, transmissionLabels)}
+          {checkGroup(t("motorBodyType"), "bodyType", MOTOR_BODY_TYPES, motorBodyTypeLabels as any)}
+        </div>
+
+        <div className="grid gap-3 sm:grid-cols-2">
+          <div>
+            <Label className="text-xs text-slate-500">{t("formCondition")}</Label>
+            <Select value={filters.condition || "any"} onValueChange={(v) => set({ condition: v === "any" ? "" : v })}>
+              <SelectTrigger className="mt-1.5 h-9" aria-label={t("formCondition")}>
+                <SelectValue placeholder={t("anyCondition")} />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="any">{t("anyCondition")}</SelectItem>
+                {CONDITIONS.map((c) => (
+                  <SelectItem key={c} value={c}>{t(`cond${c}` as never)}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div>
+            <Label className="text-xs text-slate-500">{t("sellerType")}</Label>
+            <Select value={filters.sellerType || "any"} onValueChange={(v) => set({ sellerType: v === "any" ? "" : v })}>
+              <SelectTrigger className="mt-1.5 h-9" aria-label={t("sellerType")}>
+                <SelectValue placeholder={t("anySeller")} />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="any">{t("anySeller")}</SelectItem>
+                <SelectItem value="PRIVATE">{t("privateSeller")}</SelectItem>
+                <SelectItem value="DEALER">{t("dealer")}</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+        </div>
+
+        <div className="grid gap-2 sm:grid-cols-3">
+          <div className="flex items-center justify-between rounded-lg border border-slate-200 p-3">
+            <Label htmlFor="af-verified" className="text-xs font-medium text-slate-600 cursor-pointer">{t("verifiedOnly")}</Label>
+            <Switch id="af-verified" checked={filters.sellerVerified} onCheckedChange={(v) => set({ sellerVerified: v })} />
+          </div>
+          <div className="flex items-center justify-between rounded-lg border border-slate-200 p-3">
+            <Label htmlFor="af-featured" className="text-xs font-medium text-slate-600 cursor-pointer">{t("featuredOnly")}</Label>
+            <Switch id="af-featured" checked={filters.featured} onCheckedChange={(v) => set({ featured: v })} />
+          </div>
+          <div className="flex items-center justify-between rounded-lg border border-slate-200 p-3">
+            <Label htmlFor="af-report" className="text-xs font-medium text-slate-600 cursor-pointer">{t("hasReport")}</Label>
+            <Switch id="af-report" checked={filters.hasReport} onCheckedChange={(v) => set({ hasReport: v })} />
+          </div>
+        </div>
+
+        <Button variant="ghost" size="sm" onClick={onClear} className="w-full text-slate-500 hover:text-slate-700">
+          {t("clearFilters")}
+        </Button>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-4" data-testid="advanced-fields">
       {numberPair("af-pmin", t("priceMin"), "priceMin", "af-pmax", t("priceMax"), "priceMax")}
@@ -336,7 +588,19 @@ function AdvancedFields({
 
 // ---------------- browse view ----------------
 
-export function BrowseView({ initial }: { initial?: { q?: string; make?: string; bodyType?: string; sort?: SortOption } }) {
+export function BrowseView({
+  initial,
+}: {
+  initial?: {
+    q?: string;
+    make?: string;
+    bodyType?: string;
+    sort?: SortOption;
+    category?: "ALL" | "CAR" | "MOTOR" | "SPARE_PART";
+    partTarget?: string;
+    partCategory?: string;
+  };
+}) {
   const t = useT();
   const locale = useAppStore((s) => s.locale);
   const navigate = useAppStore((s) => s.navigate);
@@ -347,6 +611,9 @@ export function BrowseView({ initial }: { initial?: { q?: string; make?: string;
     q: initial?.q ?? "",
     make: initial?.make ?? "",
     bodyType: initial?.bodyType ? [initial.bodyType] : [],
+    category: initial?.category ?? "ALL",
+    partTarget: initial?.partTarget ?? "",
+    partCategory: initial?.partCategory ?? "",
   }));
   const [sort, setSort] = useState<SortOption>(initial?.sort ?? "newest");
   const [page, setPage] = useState(1); // 1-based
@@ -364,6 +631,7 @@ export function BrowseView({ initial }: { initial?: { q?: string; make?: string;
   }, [applied, sort, page]);
 
   const { data, loading, error } = useFetch<PagedVehiclesResponseDTO>(query);
+  const { data: meta } = useFetch<MetaDTO>("/api/meta");
 
   // Save search: params without pagination (sort kept)
   const saveQuery = useMemo(() => {
@@ -409,9 +677,34 @@ export function BrowseView({ initial }: { initial?: { q?: string; make?: string;
   // ---- active filter chips ----
   const chips = useMemo(() => {
     const list: { key: string; label: string }[] = [];
+    if (applied.category && applied.category !== "ALL") {
+      const catLabel =
+        applied.category === "CAR"
+          ? t("categoryCars")
+          : applied.category === "MOTOR"
+          ? t("categoryMotors")
+          : applied.partTarget === "CAR"
+          ? t("categoryCarParts")
+          : applied.partTarget === "MOTOR"
+          ? t("categoryMotorParts")
+          : t("categorySpareParts");
+      list.push({ key: "category", label: `${t("categoryAll")}: ${catLabel}` });
+    }
+    if (applied.partTarget) {
+      list.push({
+        key: "partTarget",
+        label: `${t("partTarget")}: ${partTargetLabels[applied.partTarget]?.[locale] ?? applied.partTarget}`,
+      });
+    }
+    if (applied.partCategory) {
+      list.push({
+        key: "partCategory",
+        label: `${t("partCategoryLabel")}: ${partCategoryLabels[applied.partCategory]?.[locale] ?? applied.partCategory}`,
+      });
+    }
     if (applied.q.trim()) list.push({ key: "q", label: `“${applied.q.trim()}”` });
     if (applied.make) list.push({ key: "make", label: `${t("formMake")}: ${applied.make}` });
-    applied.bodyType.forEach((v) => list.push({ key: `bodyType:${v}`, label: bodyTypeLabels[v]?.[locale] ?? v }));
+    applied.bodyType.forEach((v) => list.push({ key: `bodyType:${v}`, label: motorBodyTypeLabels[v]?.[locale] ?? bodyTypeLabels[v]?.[locale] ?? v }));
     applied.fuel.forEach((v) => list.push({ key: `fuel:${v}`, label: fuelLabels[v]?.[locale] ?? v }));
     applied.transmission.forEach((v) => list.push({ key: `transmission:${v}`, label: transmissionLabels[v]?.[locale] ?? v }));
     applied.drivetrain.forEach((v) => list.push({ key: `drivetrain:${v}`, label: drivetrainLabels[v]?.[locale] ?? v }));
@@ -436,6 +729,12 @@ export function BrowseView({ initial }: { initial?: { q?: string; make?: string;
       const [field, val] = key.split(":");
       const f = field as "bodyType" | "fuel" | "transmission" | "drivetrain";
       next[f] = next[f].filter((x) => x !== val);
+    } else if (key === "category") {
+      next.category = "ALL";
+      next.partTarget = "";
+      next.partCategory = "";
+    } else if (key === "partTarget" || key === "partCategory") {
+      next[key] = "";
     } else if (key === "sellerVerified" || key === "featured" || key === "hasReport") {
       next[key] = false;
     } else {
@@ -529,6 +828,69 @@ export function BrowseView({ initial }: { initial?: { q?: string; make?: string;
             </SelectContent>
           </Select>
         </div>
+      </div>
+
+      {/* 5-Way Category switcher pills */}
+      <div className="mt-4 flex items-center gap-2 overflow-x-auto pb-1 no-scrollbar" role="tablist">
+        {[
+          { id: "ALL", label: t("categoryAll"), icon: null, count: meta?.categoryCounts?.total },
+          { id: "CAR", label: t("categoryCars"), icon: CarFront, count: meta?.categoryCounts?.car },
+          { id: "MOTOR", label: t("categoryMotors"), icon: Bike, count: meta?.categoryCounts?.motor },
+          { id: "CAR_PART", label: t("categoryCarParts"), icon: Wrench, count: meta?.categoryCounts?.carPart },
+          { id: "MOTOR_PART", label: t("categoryMotorParts"), icon: Wrench, count: meta?.categoryCounts?.motorPart },
+        ].map((cat) => {
+          const Icon = cat.icon;
+          const active =
+            cat.id === "ALL"
+              ? !applied.category || applied.category === "ALL"
+              : cat.id === "CAR"
+              ? applied.category === "CAR"
+              : cat.id === "MOTOR"
+              ? applied.category === "MOTOR"
+              : cat.id === "CAR_PART"
+              ? applied.category === "SPARE_PART" && (applied.partTarget === "CAR" || !applied.partTarget)
+              : applied.category === "SPARE_PART" && applied.partTarget === "MOTOR";
+
+          return (
+            <button
+              key={cat.id}
+              role="tab"
+              aria-selected={active}
+              onClick={() => {
+                if (cat.id === "ALL") {
+                  applyFilters({ ...applied, category: "ALL", partCategory: "", partTarget: "" });
+                } else if (cat.id === "CAR") {
+                  applyFilters({ ...applied, category: "CAR", partCategory: "", partTarget: "" });
+                } else if (cat.id === "MOTOR") {
+                  applyFilters({ ...applied, category: "MOTOR", partCategory: "", partTarget: "" });
+                } else if (cat.id === "CAR_PART") {
+                  applyFilters({ ...applied, category: "SPARE_PART", partTarget: "CAR" });
+                } else if (cat.id === "MOTOR_PART") {
+                  applyFilters({ ...applied, category: "SPARE_PART", partTarget: "MOTOR" });
+                }
+              }}
+              className={cn(
+                "inline-flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold transition-all shadow-xs cursor-pointer whitespace-nowrap",
+                active
+                  ? "bg-slate-900 text-white shadow-md shadow-slate-900/10"
+                  : "bg-white border border-slate-200 text-slate-600 hover:border-slate-300 hover:text-slate-900",
+              )}
+            >
+              {Icon && <Icon className={cn("h-4 w-4", active ? "text-amber-400" : "text-slate-500")} />}
+              <span>{cat.label}</span>
+              {cat.count != null && (
+                <span
+                  className={cn(
+                    "ml-1 rounded-full px-2 py-0.5 text-[11px] font-bold",
+                    active ? "bg-amber-500 text-slate-950" : "bg-slate-100 text-slate-600",
+                  )}
+                >
+                  {cat.count}
+                </span>
+              )}
+            </button>
+          );
+        })}
       </div>
 
       {/* Active filter chips */}

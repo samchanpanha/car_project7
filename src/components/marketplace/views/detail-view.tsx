@@ -17,13 +17,22 @@ import { Textarea } from "@/components/ui/textarea";
 import { ReportStatusBadge } from "@/components/marketplace/status-badge";
 import { SellerTelegramButtons } from "@/components/marketplace/seller-telegram-buttons";
 import {
-  ArrowLeft, BadgeCheck, CalendarClock, CarFront, ChevronLeft, ChevronRight, Eye, FileCheck2, FileText, FileX2,
-  Flag, Gauge, Handshake, Heart, Loader2, MapPin, MessageSquare, Phone, RefreshCw, Send, ShieldCheck,
-  ShieldAlert, Star, Timer, TriangleAlert, Users,
+  ArrowLeft, BadgeCheck, Bike, CalendarClock, CarFront, ChevronLeft, ChevronRight, Eye, FileCheck2, FileText, FileX2,
+  Flag, Gauge, Handshake, Heart, Loader2, MapPin, MessageSquare, Phone, PhoneCall, RefreshCw, Send, ShieldCheck,
+  ShieldAlert, Star, Timer, TriangleAlert, Users, Wrench,
 } from "lucide-react";
 import { useState } from "react";
 import { formatKhr, formatMileage, formatUsd, timeAgo } from "@/lib/format";
-import { bodyTypeLabels, drivetrainLabels, fuelLabels, transmissionLabels } from "@/lib/i18n";
+import {
+  bodyTypeLabels,
+  drivetrainLabels,
+  fuelLabels,
+  motorBodyTypeLabels,
+  partCategoryLabels,
+  partConditionLabels,
+  partTargetLabels,
+  transmissionLabels,
+} from "@/lib/i18n";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 
@@ -92,7 +101,10 @@ export function DetailView({ vehicleId }: { vehicleId: string }) {
 
   const v = data.vehicle;
   const isFav = favorites.includes(v.id);
-  const title = `${v.make} ${v.model} ${v.variant ?? ""} ${v.year}`.trim();
+  const title =
+    v.listingCategory === "SPARE_PART"
+      ? `${v.make} ${v.model} ${v.partNumber ? `(${v.partNumber})` : ""}`.trim()
+      : `${v.make} ${v.model} ${v.variant ?? ""} ${v.year}`.trim();
   const sellerName = v.sellerFull.shopName || v.sellerFull.name;
   const desc = locale === "km" && v.descriptionKm ? v.descriptionKm : v.description;
   const isOwner = Boolean(
@@ -203,21 +215,49 @@ export function DetailView({ vehicleId }: { vehicleId: string }) {
     }
   };
 
-  const specs: Array<{ label: string; value: string }> = [
-    { label: t("specYear"), value: String(v.year) },
-    { label: t("specMileage"), value: formatMileage(v.mileageKm, locale) },
-    { label: t("specTransmission"), value: transmissionLabels[v.transmission]?.[locale] ?? v.transmission },
-    { label: t("specFuel"), value: fuelLabels[v.fuel]?.[locale] ?? v.fuel },
-    ...(v.engineCc ? [{ label: t("specEngine"), value: `${v.engineCc} cc` }] : []),
-    ...(v.drivetrain ? [{ label: t("specDrivetrain"), value: drivetrainLabels[v.drivetrain]?.[locale] ?? v.drivetrain }] : []),
-    { label: t("specBody"), value: bodyTypeLabels[v.bodyType]?.[locale] ?? v.bodyType },
-    ...(v.exteriorColor ? [{ label: t("specColor"), value: v.exteriorColor }] : []),
-    ...(v.ownershipCount != null ? [{ label: t("specOwnerCount"), value: String(v.ownershipCount) }] : []),
-    ...(v.importOrigin ? [{ label: t("specImport"), value: v.importOrigin }] : []),
-    { label: t("specAccident"), value: t(`accident${v.accidentDeclared}` as never) },
-    ...(v.plateNo ? [{ label: t("specPlate"), value: v.plateNo }] : []),
-    ...(v.vinLast6 ? [{ label: t("specVin"), value: `•••${v.vinLast6}` }] : []),
-  ];
+  const specs: Array<{ label: string; value: string }> =
+    v.listingCategory === "SPARE_PART"
+      ? [
+          { label: t("categoryAll"), value: t("categorySpareParts") },
+          { label: t("partTarget"), value: partTargetLabels[v.partTarget ?? "UNIVERSAL"]?.[locale] ?? v.partTarget ?? "Universal" },
+          { label: t("partCategoryLabel"), value: partCategoryLabels[v.partCategory ?? "OTHER"]?.[locale] ?? v.partCategory ?? "Other" },
+          { label: t("partConditionLabel"), value: partConditionLabels[v.partCondition ?? "NEW"]?.[locale] ?? v.partCondition ?? "New" },
+          { label: locale === "km" ? "ម៉ាក" : "Brand / Make", value: v.make },
+          { label: locale === "km" ? "ឈ្មោះគ្រឿងបន្លាស់" : "Part / Model", value: v.model },
+          ...(v.partNumber ? [{ label: t("partNumberLabel"), value: v.partNumber }] : []),
+          ...(v.compatibleModels ? [{ label: t("compatibleModelsLabel"), value: v.compatibleModels }] : []),
+        ]
+      : v.listingCategory === "MOTOR"
+      ? [
+          { label: t("categoryAll"), value: t("categoryMotors") },
+          { label: t("specYear"), value: String(v.year) },
+          { label: t("specMileage"), value: formatMileage(v.mileageKm, locale) },
+          { label: t("motorBodyType"), value: motorBodyTypeLabels[v.bodyType]?.[locale] ?? bodyTypeLabels[v.bodyType]?.[locale] ?? v.bodyType },
+          ...(v.engineCc ? [{ label: t("engineDisplacement"), value: `${v.engineCc} cc` }] : []),
+          { label: t("specTransmission"), value: transmissionLabels[v.transmission]?.[locale] ?? v.transmission },
+          { label: t("specFuel"), value: fuelLabels[v.fuel]?.[locale] ?? v.fuel },
+          ...(v.exteriorColor ? [{ label: t("specColor"), value: v.exteriorColor }] : []),
+          { label: t("specAccident"), value: t(`accident${v.accidentDeclared}` as never) },
+          ...(v.plateNo ? [{ label: t("specPlate"), value: v.plateNo }] : []),
+        ]
+      : [
+          { label: t("specYear"), value: String(v.year) },
+          { label: t("specMileage"), value: formatMileage(v.mileageKm, locale) },
+          { label: t("specTransmission"), value: transmissionLabels[v.transmission]?.[locale] ?? v.transmission },
+          { label: t("specFuel"), value: fuelLabels[v.fuel]?.[locale] ?? v.fuel },
+          ...(v.engineCc ? [{ label: t("specEngine"), value: `${v.engineCc} cc` }] : []),
+          ...(v.drivetrain ? [{ label: t("specDrivetrain"), value: drivetrainLabels[v.drivetrain]?.[locale] ?? v.drivetrain }] : []),
+          { label: t("specBody"), value: bodyTypeLabels[v.bodyType]?.[locale] ?? v.bodyType },
+          ...(v.seats != null ? [{ label: t("specSeats"), value: `${v.seats} ${t("seatsUnit")}` }] : []),
+          ...(v.interiorColor ? [{ label: t("specInteriorColor"), value: v.interiorColor }] : []),
+          ...(v.fuelEconomy ? [{ label: t("specFuelEconomy"), value: v.fuelEconomy }] : []),
+          ...(v.exteriorColor ? [{ label: t("specColor"), value: v.exteriorColor }] : []),
+          ...(v.ownershipCount != null ? [{ label: t("specOwnerCount"), value: String(v.ownershipCount) }] : []),
+          ...(v.importOrigin ? [{ label: t("specImport"), value: v.importOrigin }] : []),
+          { label: t("specAccident"), value: t(`accident${v.accidentDeclared}` as never) },
+          ...(v.plateNo ? [{ label: t("specPlate"), value: v.plateNo }] : []),
+          ...(v.vinLast6 ? [{ label: t("specVin"), value: `•••${v.vinLast6}` }] : []),
+        ];
 
   const docIcon = (status: string) =>
     status === "VERIFIED" ? (
@@ -261,7 +301,13 @@ export function DetailView({ vehicleId }: { vehicleId: string }) {
               />
             ) : (
               <div className="flex h-full items-center justify-center text-slate-300">
-                <CarFront className="h-16 w-16" aria-hidden />
+                {v.listingCategory === "MOTOR" ? (
+                  <Bike className="h-16 w-16" aria-hidden />
+                ) : v.listingCategory === "SPARE_PART" ? (
+                  <Wrench className="h-16 w-16" aria-hidden />
+                ) : (
+                  <CarFront className="h-16 w-16" aria-hidden />
+                )}
               </div>
             )}
             {v.images.length > 1 && (
@@ -376,11 +422,78 @@ export function DetailView({ vehicleId }: { vehicleId: string }) {
         {/* ------- Right: price, seller, safety, AI report ------- */}
         <div className="space-y-4">
           <div className="rounded-xl border border-slate-200 bg-white p-5">
+            {(v.listingCategory === "MOTOR" || v.listingCategory === "SPARE_PART") && (
+              <div className="flex flex-wrap items-center gap-2 mb-2">
+                {v.listingCategory === "MOTOR" && (
+                  <span className="inline-flex items-center gap-1.5 rounded-full bg-sky-50 border border-sky-200 text-sky-700 font-semibold px-2.5 py-0.5 text-xs">
+                    <Bike className="h-3.5 w-3.5" />
+                    {t("categoryMotors")}
+                  </span>
+                )}
+                {v.listingCategory === "SPARE_PART" && (
+                  <span className="inline-flex items-center gap-1.5 rounded-full bg-amber-50 border border-amber-300 text-amber-800 font-semibold px-2.5 py-0.5 text-xs">
+                    <Wrench className="h-3.5 w-3.5" />
+                    {t("categorySpareParts")}
+                    {v.partTarget && (
+                      <span className="opacity-75 font-normal">
+                        · {partTargetLabels[v.partTarget]?.[locale] ?? v.partTarget}
+                      </span>
+                    )}
+                  </span>
+                )}
+              </div>
+            )}
             <h1 className="text-lg sm:text-xl font-bold leading-snug text-slate-900">{title}</h1>
-            <p className="mt-2 flex flex-wrap items-baseline gap-x-3">
-              <span className="text-2xl sm:text-3xl font-bold text-amber-600">{formatUsd(v.priceUsd)}</span>
-              <span className="text-sm text-slate-400">{formatKhr(v.priceUsd)}</span>
-            </p>
+            {v.priceMasked ? (
+              <div className="mt-3 p-4 rounded-xl border border-amber-300 bg-gradient-to-r from-amber-50 via-orange-50 to-amber-50/50">
+                <div className="flex items-center gap-2.5">
+                  <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-amber-500 text-slate-950 font-bold shadow-xs shrink-0">
+                    <PhoneCall className="h-4 w-4" />
+                  </span>
+                  <div>
+                    <h3 className="text-base font-bold text-slate-900">{t("contactForPrice")}</h3>
+                    <p className="text-xs text-slate-500">{t("contactForPriceHint")}</p>
+                  </div>
+                </div>
+
+                {/* Instant inquiry channels: Telegram, Phone Call, In-App Chat */}
+                <div className="mt-3 flex flex-wrap items-center gap-2">
+                  {v.sellerFull.telegram && (
+                    <a
+                      href={`https://t.me/${v.sellerFull.telegram.replace(/^@/, "")}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-1.5 rounded-lg bg-sky-500 hover:bg-sky-600 text-white px-3 py-1.5 text-xs font-semibold shadow-xs transition-colors"
+                    >
+                      <Send className="h-3.5 w-3.5" />
+                      Telegram
+                    </a>
+                  )}
+                  {v.sellerFull.phone && (
+                    <a
+                      href={`tel:${v.sellerFull.phone}`}
+                      className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-1.5 text-xs font-semibold shadow-xs transition-colors"
+                    >
+                      <Phone className="h-3.5 w-3.5" />
+                      {t("callSeller")}
+                    </a>
+                  )}
+                  <Button
+                    size="sm"
+                    onClick={openAuthedDialog(() => setContactOpen(true))}
+                    className="h-8 bg-amber-500 hover:bg-amber-400 text-slate-950 font-semibold text-xs cursor-pointer"
+                  >
+                    <MessageSquare className="h-3.5 w-3.5 mr-1" />
+                    {t("askPriceChat")}
+                  </Button>
+                </div>
+              </div>
+            ) : (
+              <p className="mt-2 flex flex-wrap items-baseline gap-x-3">
+                <span className="text-2xl sm:text-3xl font-bold text-amber-600">{formatUsd(v.priceUsd)}</span>
+                <span className="text-sm text-slate-400">{formatKhr(v.priceUsd)}</span>
+              </p>
+            )}
             <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-slate-500">
               <span className="flex items-center gap-1">
                 <MapPin className="h-3.5 w-3.5" aria-hidden />
@@ -422,7 +535,7 @@ export function DetailView({ vehicleId }: { vehicleId: string }) {
                   className="bg-amber-500 hover:bg-amber-400 text-slate-950 font-semibold h-11"
                 >
                   <CarFront className="h-4 w-4 mr-2" aria-hidden />
-                  {locale === "km" ? "គ្រប់គ្រងឡានរបស់អ្នក" : "Your Listing (Manage)"}
+                  {locale === "km" ? "គ្រប់គ្រងការផ្សព្វផ្សាយ" : "Your Listing (Manage)"}
                 </Button>
               ) : (
                 <Button
@@ -447,7 +560,7 @@ export function DetailView({ vehicleId }: { vehicleId: string }) {
                 {t("buyRequestBtn")}
               </Button>
             )}
-            {v.status === "PUBLISHED" && (
+            {v.status === "PUBLISHED" && v.listingCategory !== "SPARE_PART" && (
               <Button
                 onClick={openAuthedDialog(() => setTdOpen(true))}
                 variant="outline"
@@ -570,7 +683,13 @@ export function DetailView({ vehicleId }: { vehicleId: string }) {
       {/* Similar */}
       {data.similar.length > 0 && (
         <section className="mt-10" aria-labelledby="similar-title">
-          <h2 id="similar-title" className="text-lg font-bold text-slate-900">{t("similarCars")}</h2>
+          <h2 id="similar-title" className="text-lg font-bold text-slate-900">
+            {v.listingCategory === "MOTOR"
+              ? (locale === "km" ? "ម៉ូតូស្រដៀងគ្នា" : "Similar Motorcycles")
+              : v.listingCategory === "SPARE_PART"
+              ? (locale === "km" ? "គ្រឿងបន្លាស់ស្រដៀងគ្នា" : "Similar Spare Parts")
+              : t("similarCars")}
+          </h2>
           <div className="mt-4 grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-4">
             {data.similar.map((sv) => (
               <VehicleCard key={sv.id} vehicle={sv} showCompare={false} />

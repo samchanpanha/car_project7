@@ -457,12 +457,13 @@ function RegistrationSubscriptionStep({
   const priceKhr = Math.round((priceUsd * khrRate) / 100) * 100;
 
   const qrSrcUsd =
-    manual?.khqrImageUsd ??
     (billingCycle === "YEARLY" ? manual?.khqrImageYearly : manual?.khqrImageMonthly) ??
+    manual?.khqrImageUsd ??
     manual?.khqrImage ??
     (billingCycle === "YEARLY" ? "/khqr/khqr-yearly.jpg" : "/khqr/khqr-monthly.jpg");
 
   const qrSrcKhr =
+    (billingCycle === "YEARLY" ? manual?.khqrImageYearlyKhr : manual?.khqrImageMonthlyKhr) ??
     manual?.khqrImageKhr ??
     (billingCycle === "YEARLY" ? manual?.khqrImageYearly : manual?.khqrImageMonthly) ??
     manual?.khqrImage ??

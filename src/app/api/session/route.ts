@@ -106,7 +106,22 @@ async function buildSessionFor(userId: string): Promise<SessionDTO> {
   if (user.role === "SELLER" || user.role === "DEALER") {
     const settings = await readPlatformSettings();
     const realSub = membership?.tenant?.subscription;
-    if (realSub && realSub.status === "ACTIVE" && realSub.plan !== "FREE") {
+    if (membership && realSub) {
+      // Any staff member or owner of a dealership inherits the parent dealership's subscription.
+      // If the parent subscription is expired, past due, or canceled, staff status cascades to EXPIRED.
+      let isActive = realSub.status === "ACTIVE";
+      if (isActive && realSub.plan === "FREE") {
+        const { getManualPaymentConfig } = await import("@/lib/api/payments");
+        const manualCfg = await getManualPaymentConfig();
+        isActive = manualCfg.freePlan.enabled !== false;
+      }
+      subscription = {
+        plan: realSub.plan,
+        status: isActive ? "ACTIVE" : "EXPIRED",
+        isTrial: false,
+        currentPeriodEnd: realSub.currentPeriodEnd.toISOString(),
+      };
+    } else if (realSub && realSub.status === "ACTIVE" && realSub.plan !== "FREE") {
       subscription = {
         plan: realSub.plan,
         status: "ACTIVE",

@@ -227,6 +227,8 @@ public class PaymentDTO {
         private String khqrImageYearly;
         private String khqrImageUsd;
         private String khqrImageKhr;
+        private String khqrImageMonthlyKhr;
+        private String khqrImageYearlyKhr;
         private Double khrExchangeRate;
         private Boolean skipMerchantCheck;
         private String telegramBotToken;

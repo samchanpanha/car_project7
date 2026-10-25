@@ -66,13 +66,20 @@ export async function GET(req: Request) {
         take: limit,
       });
 
-      const items: MyListingRowDTO[] = rows.map((v) => ({
+      const items: MyListingRowDTO[] = rows.map((v: any) => ({
         id: v.id,
+        listingCategory: v.listingCategory ?? "CAR",
+        partCategory: v.partCategory ?? null,
+        partTarget: v.partTarget ?? null,
+        partCondition: v.partCondition ?? null,
+        compatibleModels: v.compatibleModels ?? null,
+        partNumber: v.partNumber ?? null,
         make: v.make,
         model: v.model,
         variant: v.variant,
         year: v.year,
         priceUsd: v.priceUsd,
+        priceMasked: Boolean(v.priceMasked),
         mileageKm: v.mileageKm,
         status: v.status as MyListingRowDTO["status"],
         featured: v.featured,
@@ -98,13 +105,20 @@ export async function GET(req: Request) {
       take: 500,
     });
 
-    const items: MyListingRowDTO[] = rows.map((v) => ({
+    const items: MyListingRowDTO[] = rows.map((v: any) => ({
       id: v.id,
+      listingCategory: v.listingCategory ?? "CAR",
+      partCategory: v.partCategory ?? null,
+      partTarget: v.partTarget ?? null,
+      partCondition: v.partCondition ?? null,
+      compatibleModels: v.compatibleModels ?? null,
+      partNumber: v.partNumber ?? null,
       make: v.make,
       model: v.model,
       variant: v.variant,
       year: v.year,
       priceUsd: v.priceUsd,
+      priceMasked: Boolean(v.priceMasked),
       mileageKm: v.mileageKm,
       status: v.status as MyListingRowDTO["status"],
       featured: v.featured,

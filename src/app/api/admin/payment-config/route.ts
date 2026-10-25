@@ -27,12 +27,20 @@ export async function GET() {
 
 const limitField = z.coerce.number().int().min(0).max(9999);
 
-/** data URL of an uploaded image (QR photo / screenshot) — hard size cap ~1.2 MB binary */
-const imageDataUrl = z
+/** Image (data URL or uploaded URL) — hard size cap ~1.5 MB */
+const imageVal = z
   .string()
   .trim()
-  .max(1_600_000, "Image is too large (max ~1.2 MB)")
-  .regex(/^data:image\/(png|jpe?g|webp|gif);base64,[A-Za-z0-9+/=]+$/, "Must be a base64 image data URL")
+  .max(1_600_000, "Image is too large (max ~1.5 MB)")
+  .refine(
+    (v) =>
+      v === "" ||
+      /^https?:\/\/.+/.test(v) ||
+      /^\/api\/uploads\/.+/.test(v) ||
+      /^\/khqr\/.+/.test(v) ||
+      /^data:image\/(png|jpe?g|webp|gif);base64,[A-Za-z0-9+/=]+$/.test(v),
+    "Must be a valid image URL or base64 data URL"
+  )
   .nullable()
   .or(z.literal(""));
 
@@ -41,11 +49,13 @@ const putSchema = z.object({
   accountName: z.string().trim().max(80).nullable(),
   khqrPayload: z.string().trim().max(600).nullable(),
   khqrImageUrl: z.string().trim().url().max(500).nullable().or(z.literal("")),
-  khqrImage: imageDataUrl,
-  khqrImageMonthly: imageDataUrl,
-  khqrImageYearly: imageDataUrl,
-  khqrImageUsd: imageDataUrl,
-  khqrImageKhr: imageDataUrl,
+  khqrImage: imageVal.optional(),
+  khqrImageMonthly: imageVal.optional(),
+  khqrImageYearly: imageVal.optional(),
+  khqrImageUsd: imageVal.optional(),
+  khqrImageKhr: imageVal.optional(),
+  khqrImageMonthlyKhr: imageVal.optional(),
+  khqrImageYearlyKhr: imageVal.optional(),
   khrExchangeRate: z.coerce.number().min(1000).max(20000).default(4100),
   maxTrxAgeHours: z.coerce.number().min(1).max(720).default(72),
   skipMerchantCheck: z.boolean().default(true),
@@ -73,6 +83,8 @@ function clean(input: z.infer<typeof putSchema>): ManualPaymentConfig {
     khqrImageYearly: input.khqrImageYearly || null,
     khqrImageUsd: input.khqrImageUsd || null,
     khqrImageKhr: input.khqrImageKhr || null,
+    khqrImageMonthlyKhr: input.khqrImageMonthlyKhr || null,
+    khqrImageYearlyKhr: input.khqrImageYearlyKhr || null,
     khrExchangeRate: input.khrExchangeRate || 4100,
     maxTrxAgeHours: input.maxTrxAgeHours || 72,
     skipMerchantCheck: typeof input.skipMerchantCheck === "boolean" ? input.skipMerchantCheck : true,

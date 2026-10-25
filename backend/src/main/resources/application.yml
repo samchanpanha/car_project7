@@ -45,14 +45,16 @@ spring:
       max-file-size: 20MB
       max-request-size: 25MB
 
-# MinIO S3 Object Storage Configuration
+# MinIO / Cloudflare R2 S3 Object Storage Configuration
 minio:
-  endpoint: ${MINIO_ENDPOINT:http://localhost:9000}
-  access-key: ${MINIO_ACCESS_KEY:minioadmin}
-  secret-key: ${MINIO_SECRET_KEY:minioadmin}
+  endpoint: ${CLOUDFLARE_R2_ENDPOINT:${MINIO_ENDPOINT:http://localhost:9000}}
+  access-key: ${CLOUDFLARE_R2_ACCESS_KEY_ID:${MINIO_ACCESS_KEY:minioadmin}}
+  secret-key: ${CLOUDFLARE_R2_SECRET_ACCESS_KEY:${MINIO_SECRET_KEY:minioadmin}}
+  region: ${CLOUDFLARE_R2_REGION:auto}
   bucket:
-    public: khlan-public
-    private: khlan-private
+    public: ${CLOUDFLARE_R2_BUCKET:cars-storage}
+    private: ${CLOUDFLARE_R2_PRIVATE_BUCKET:cars-storage}
+  public-url: ${CLOUDFLARE_R2_PUBLIC_URL:}
 
 # JWT Security Configuration
 jwt:

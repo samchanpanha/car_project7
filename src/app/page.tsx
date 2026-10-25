@@ -175,7 +175,7 @@ function CurrentView() {
     case "home":
       return <HomeView />;
     case "browse":
-      return <BrowseView key={`${view.q ?? ""}|${view.make ?? ""}|${view.bodyType ?? ""}|${view.sort ?? ""}`} initial={view} />;
+      return <BrowseView key={`${view.q ?? ""}|${view.make ?? ""}|${view.bodyType ?? ""}|${view.sort ?? ""}|${view.category ?? ""}`} initial={view} />;
     case "detail":
       return <DetailView key={view.vehicleId} vehicleId={view.vehicleId} />;
     case "report":

@@ -4,11 +4,12 @@
 
 import { useAppStore } from "@/lib/store";
 import { useT } from "@/hooks/use-t";
+import { partConditionLabels } from "@/lib/i18n";
 import { useFetch, apiSend, qs } from "@/lib/client-hooks";
 import { formatUsd, timeAgo } from "@/lib/format";
 import type {
   SessionDTO, TenantDashboardDTO, TenantVehicleRowDTO, TenantLeadDTO, TenantAppointmentDTO,
-  TenantMemberDTO, PlanDTO, SubscriptionDTO,
+  TenantMemberDTO, TenantStaffResponseDTO, PlanDTO, SubscriptionDTO,
 } from "@/lib/dashboard-types";
 import type { VehicleStatus } from "@/lib/types";
 import { DashboardShell, type DashboardTabDef } from "./shell";
@@ -39,8 +40,8 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Badge } from "@/components/ui/badge";
 import {
-  CalendarDays, Car, CheckCircle2, ChevronDown, CreditCard, Eye, Heart, Hourglass, LayoutDashboard, Loader2,
-  MapPin, MessageSquare, MoreHorizontal, Plus, Search, Settings, Star, Store, TriangleAlert, UserPlus, Users, X,
+  Bike, CalendarDays, Car, CheckCircle2, ChevronDown, CreditCard, Eye, Heart, Hourglass, LayoutDashboard, Loader2,
+  MapPin, MessageSquare, MoreHorizontal, Package, Plus, Search, Settings, Star, Store, Trash2, TriangleAlert, UserPlus, Users, Wrench, X,
 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
@@ -56,14 +57,17 @@ export function DealerDashboard({ me }: { me: SessionDTO }) {
   const active = (view.name === "dashboard" && view.tab) || "overview";
   const setTab = (tab: string) => navigate({ name: "dashboard", tab });
 
+  const myRole = me.tenant?.myRole ?? "OWNER";
+  const isManagerOrOwner = myRole === "OWNER" || myRole === "MANAGER";
+
   const tabs: DashboardTabDef[] = [
     { id: "overview", label: t("tabOverview"), icon: LayoutDashboard },
     { id: "inventory", label: t("tabInventory"), icon: Car },
     { id: "branches", label: "Branches", icon: Store },
     { id: "leads", label: t("tabLeads"), icon: MessageSquare },
     { id: "appointments", label: t("tabAppointments"), icon: CalendarDays },
-    { id: "staff", label: t("tabStaff"), icon: Users },
-    { id: "subscription", label: t("tabSubscription"), icon: CreditCard },
+    ...(isManagerOrOwner ? [{ id: "staff", label: t("tabStaff"), icon: Users }] : []),
+    ...(isManagerOrOwner ? [{ id: "subscription", label: t("tabSubscription"), icon: CreditCard }] : []),
     { id: "settings", label: t("tabSettings"), icon: Settings },
   ];
 
@@ -82,12 +86,31 @@ export function DealerDashboard({ me }: { me: SessionDTO }) {
       onTab={setTab}
     >
       {(!me.subscription || me.subscription.status !== "ACTIVE") && (
-        <SubscriptionPaywallCard
-          role="DEALER"
-          onActivated={() => {
-            window.location.reload();
-          }}
-        />
+        isManagerOrOwner ? (
+          <SubscriptionPaywallCard
+            role="DEALER"
+            onActivated={() => {
+              window.location.reload();
+            }}
+          />
+        ) : (
+          <div className="rounded-2xl border border-amber-300 bg-gradient-to-r from-amber-50 to-orange-50 p-5 shadow-sm">
+            <div className="flex items-start gap-3">
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-amber-500 text-white shadow-sm">
+                <TriangleAlert className="h-5 w-5" />
+              </div>
+              <div className="flex-1">
+                <h3 className="text-base font-bold text-amber-950">
+                  {t("parentSubExpiredStaffNotice")}
+                </h3>
+                <p className="mt-1 text-xs text-amber-800">
+                  {me.tenant?.name ? `${me.tenant.name} · ` : ""}
+                  Your account is registered as a team member. Only the Dealership Owner or Manager can renew the subscription plan.
+                </p>
+              </div>
+            </div>
+          </div>
+        )
       )}
       {active === "overview" && <DealerOverview />}
       {active === "inventory" && (
@@ -112,8 +135,8 @@ export function DealerDashboard({ me }: { me: SessionDTO }) {
         )
       )}
       {active === "appointments" && <DealerAppointments />}
-      {active === "staff" && <DealerStaff />}
-      {active === "subscription" && <DealerSubscription />}
+      {active === "staff" && isManagerOrOwner && <DealerStaff />}
+      {active === "subscription" && isManagerOrOwner && <DealerSubscription />}
       {active === "settings" && <DealerSettings />}
     </DashboardShell>
   );
@@ -240,7 +263,9 @@ const INVENTORY_PAGE_SIZE = 8;
 
 function DealerInventory() {
   const t = useT();
+  const locale = useAppStore((s) => s.locale);
   const navigate = useAppStore((s) => s.navigate);
+  const [category, setCategory] = useState<"ALL" | "CAR" | "MOTOR" | "SPARE_PART">("ALL");
   const [filters, setFilters] = useState<AdvancedFilterValues>({
     q: "",
     status: "ALL",
@@ -267,6 +292,7 @@ function DealerInventory() {
   }));
 
   const url = `/api/tenant/inventory${qs({
+    category: category === "ALL" ? undefined : category,
     status: filters.status === "ALL" ? undefined : filters.status,
     branchId: filters.branchId === "ALL" ? undefined : filters.branchId,
     q: filters.q || undefined,
@@ -310,10 +336,66 @@ function DealerInventory() {
           <Car className="h-5 w-5 text-amber-600" />
           Dealership Inventory ({totalRows})
         </h2>
-        <Button size="sm" onClick={() => navigate({ name: "sell" })} className="bg-amber-500 hover:bg-amber-400 text-slate-950 font-semibold">
+        <Button size="sm" onClick={() => navigate({ name: "sell" })} className="bg-amber-500 hover:bg-amber-400 text-slate-950 font-semibold shadow-sm">
           <Plus className="h-4 w-4 mr-1.5" aria-hidden />
           {t("addListing")}
         </Button>
+      </div>
+
+      {/* Category Filter Switcher Tabs */}
+      <div className="flex flex-wrap items-center gap-1.5 p-1 bg-slate-100 rounded-xl w-fit border border-slate-200/60 shadow-xs">
+        <button
+          type="button"
+          onClick={() => { setCategory("ALL"); setPage(1); }}
+          className={cn(
+            "flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg transition-all",
+            category === "ALL"
+              ? "bg-white text-slate-900 shadow-sm"
+              : "text-slate-600 hover:text-slate-900"
+          )}
+        >
+          <LayoutDashboard className="h-3.5 w-3.5 text-slate-500" />
+          All Inventory
+        </button>
+        <button
+          type="button"
+          onClick={() => { setCategory("CAR"); setPage(1); }}
+          className={cn(
+            "flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg transition-all",
+            category === "CAR"
+              ? "bg-white text-amber-700 shadow-sm font-bold"
+              : "text-slate-600 hover:text-slate-900"
+          )}
+        >
+          <Car className="h-3.5 w-3.5 text-amber-600" />
+          {t("categoryCars")}
+        </button>
+        <button
+          type="button"
+          onClick={() => { setCategory("MOTOR"); setPage(1); }}
+          className={cn(
+            "flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg transition-all",
+            category === "MOTOR"
+              ? "bg-white text-emerald-700 shadow-sm font-bold"
+              : "text-slate-600 hover:text-slate-900"
+          )}
+        >
+          <Bike className="h-3.5 w-3.5 text-emerald-600" />
+          {t("categoryMotors")}
+        </button>
+        <button
+          type="button"
+          onClick={() => { setCategory("SPARE_PART"); setPage(1); }}
+          className={cn(
+            "flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg transition-all",
+            category === "SPARE_PART"
+              ? "bg-white text-blue-700 shadow-sm font-bold"
+              : "text-slate-600 hover:text-slate-900"
+          )}
+        >
+          <Wrench className="h-3.5 w-3.5 text-blue-600" />
+          {t("categorySpareParts")}
+        </button>
       </div>
 
       <AdvancedFilterToolbar
@@ -324,7 +406,7 @@ function DealerInventory() {
         }}
         statusOptions={statusOptions}
         branchOptions={branchOptions}
-        searchPlaceholder="Filter make, model, VIN, plate number..."
+        searchPlaceholder={category === "SPARE_PART" ? "Filter part name, OEM number, models..." : "Filter make, model, VIN, plate number..."}
         totalResults={totalRows}
       />
 
@@ -333,35 +415,83 @@ function DealerInventory() {
       ) : error && !data ? (
         <FetchErrorState message={error} onRetry={refetch} />
       ) : !data || data.length === 0 ? (
-        <EmptyState icon={Car} text={t("inventoryEmpty")} />
+        <EmptyState
+          icon={category === "MOTOR" ? Bike : category === "SPARE_PART" ? Wrench : Car}
+          text={
+            category === "MOTOR"
+              ? "No motorcycles found in inventory"
+              : category === "SPARE_PART"
+              ? "No spare parts found in inventory"
+              : t("inventoryEmpty")
+          }
+        />
       ) : (
         <div className="space-y-2.5">
           {rows.map((v) => (
-            <div key={v.id} className="flex items-center gap-3 rounded-xl border border-slate-200 bg-white p-3">
-              <div className="h-14 w-20 shrink-0 overflow-hidden rounded-lg bg-slate-100">
+            <div key={v.id} className="flex items-center gap-3 rounded-xl border border-slate-200 bg-white p-3 hover:border-slate-300 transition-colors shadow-xs">
+              <div className="h-14 w-20 shrink-0 overflow-hidden rounded-lg bg-slate-100 flex items-center justify-center">
                 {v.images[0] ? (
                   <img src={v.images[0]} alt="" className="h-full w-full object-cover" />
+                ) : v.listingCategory === "MOTOR" ? (
+                  <Bike className="mx-auto h-6 w-6 text-slate-300" aria-hidden />
+                ) : v.listingCategory === "SPARE_PART" ? (
+                  <Wrench className="mx-auto h-6 w-6 text-slate-300" aria-hidden />
                 ) : (
                   <Car className="mx-auto h-6 w-6 text-slate-300" aria-hidden />
                 )}
               </div>
               <div className="min-w-0 flex-1">
-                <p className="truncate text-sm font-medium text-slate-900">
-                  {v.make} {v.model} {v.variant ?? ""} {v.year}
-                </p>
-                <div className="mt-0.5 flex flex-wrap items-center gap-2 text-[11px] text-slate-400">
-                  <span>{formatUsd(v.priceUsd)}</span>
-                  <span>·</span>
-                  <span className="flex items-center gap-0.5">
-                    <Eye className="inline h-3 w-3" aria-hidden /> {v.views}
-                  </span>
-                  {v.branchName && (
-                    <span className="flex items-center gap-1 rounded-md bg-amber-50 border border-amber-200/70 px-1.5 py-0.2 text-[10px] font-semibold text-amber-900">
-                      <MapPin className="h-3 w-3 text-amber-600" />
-                      {v.branchName}
+                <div className="flex flex-wrap items-center gap-1.5">
+                  <p className="truncate text-sm font-semibold text-slate-900">
+                    {v.make} {v.model} {v.variant ?? ""} {v.year}
+                  </p>
+                  {v.listingCategory === "MOTOR" && (
+                    <span className="inline-flex items-center gap-1 rounded-md bg-emerald-50 border border-emerald-200 px-1.5 py-0.2 text-[10px] font-semibold text-emerald-800">
+                      <Bike className="h-3 w-3 text-emerald-600" />
+                      {t("categoryMotors")}
+                    </span>
+                  )}
+                  {v.listingCategory === "SPARE_PART" && (
+                    <span className="inline-flex items-center gap-1 rounded-md bg-blue-50 border border-blue-200 px-1.5 py-0.2 text-[10px] font-semibold text-blue-800">
+                      <Wrench className="h-3 w-3 text-blue-600" />
+                      {t("categorySpareParts")}
                     </span>
                   )}
                 </div>
+
+                {v.listingCategory === "SPARE_PART" ? (
+                  <div className="mt-0.5 flex flex-wrap items-center gap-2 text-[11px] text-slate-500">
+                    <span className="font-semibold text-slate-900">{formatUsd(v.priceUsd)}</span>
+                    {v.partNumber && (
+                      <span className="inline-flex items-center gap-1">
+                        · OEM: <code className="rounded bg-slate-100 px-1 py-0.2 text-[10px] font-mono text-slate-700">{v.partNumber}</code>
+                      </span>
+                    )}
+                    {v.partCondition && (
+                      <span>· {partConditionLabels[v.partCondition]?.[locale] ?? v.partCondition}</span>
+                    )}
+                    {v.compatibleModels && (
+                      <span className="truncate max-w-[200px] text-slate-400" title={v.compatibleModels}>
+                        · {v.compatibleModels}
+                      </span>
+                    )}
+                  </div>
+                ) : (
+                  <div className="mt-0.5 flex flex-wrap items-center gap-2 text-[11px] text-slate-400">
+                    <span className="font-semibold text-slate-900">{formatUsd(v.priceUsd)}</span>
+                    <span>·</span>
+                    <span className="flex items-center gap-0.5">
+                      <Eye className="inline h-3 w-3" aria-hidden /> {v.views}
+                    </span>
+                    {v.branchName && (
+                      <span className="flex items-center gap-1 rounded-md bg-amber-50 border border-amber-200/70 px-1.5 py-0.2 text-[10px] font-semibold text-amber-900">
+                        <MapPin className="h-3 w-3 text-amber-600" />
+                        {v.branchName}
+                      </span>
+                    )}
+                  </div>
+                )}
+
                 <div className="mt-1.5 flex items-center gap-2">
                   <VehicleStatusBadge status={v.status} />
                   {v.featured && <Star className="h-3.5 w-3.5 fill-amber-400 text-amber-400" aria-label={t("actFeature")} />}
@@ -766,13 +896,22 @@ function DealerAppointments() {
 
 function DealerStaff() {
   const t = useT();
-  const { data, loading, error, refetch } = useFetch<TenantMemberDTO[]>("/api/tenant/staff");
+  const navigate = useAppStore((s) => s.navigate);
+  const { data, loading, error, refetch } = useFetch<TenantStaffResponseDTO | TenantMemberDTO[]>("/api/tenant/staff");
   const [busyId, setBusyId] = useState<string | null>(null);
   const [inviteOpen, setInviteOpen] = useState(false);
   const [invName, setInvName] = useState("");
   const [invPhone, setInvPhone] = useState("");
   const [invRole, setInvRole] = useState<(typeof STAFF_ROLES)[number]>("SALES_STAFF");
   const [inviting, setInviting] = useState(false);
+
+  const members: TenantMemberDTO[] = Array.isArray(data) ? data : (data?.members ?? []);
+  const seatsLimit: number = Array.isArray(data) ? Math.max(1, members.length) : (data?.seatsLimit ?? 1);
+  const seatsUsed: number = Array.isArray(data)
+    ? members.filter((m) => m.status === "ACTIVE").length
+    : (data?.seatsUsed ?? members.filter((m) => m.status === "ACTIVE").length);
+  const plan: string = Array.isArray(data) ? "FREE" : (data?.plan ?? "FREE");
+  const isSeatsFull = seatsUsed >= seatsLimit;
 
   const patch = async (memberId: string, body: Record<string, string>) => {
     setBusyId(memberId);
@@ -787,8 +926,26 @@ function DealerStaff() {
     }
   };
 
+  const removeStaff = async (memberId: string) => {
+    if (!window.confirm(t("confirmRemoveStaff"))) return;
+    setBusyId(memberId);
+    try {
+      await apiSend(`/api/tenant/staff/${memberId}`, "DELETE");
+      toast.success(t("toastDeleted"));
+      refetch();
+    } catch (e) {
+      toast.error(isForbidden(e) ? t("toastForbidden") : errorText(e));
+    } finally {
+      setBusyId(null);
+    }
+  };
+
   const invite = async () => {
     if (!invName.trim() || !invPhone.trim()) return;
+    if (isSeatsFull) {
+      toast.error(t("seatLimitFullDesc", { plan, limit: seatsLimit }));
+      return;
+    }
     setInviting(true);
     try {
       await apiSend("/api/tenant/staff", "POST", { name: invName.trim(), phone: invPhone.trim(), role: invRole });
@@ -807,8 +964,79 @@ function DealerStaff() {
 
   return (
     <div className="space-y-4">
+      {/* Team Seats Utilization Card */}
+      <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-xs space-y-3">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div className="flex items-center gap-2">
+            <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-amber-500/10 text-amber-700">
+              <Users className="h-4 w-4" />
+            </span>
+            <div>
+              <h4 className="text-sm font-bold text-slate-900">
+                {t("teamSeatsUtilization", { used: seatsUsed, limit: seatsLimit })}
+              </h4>
+              <p className="text-xs text-slate-500">
+                {t("seatsUsedProgress", { used: seatsUsed, limit: seatsLimit })}
+              </p>
+            </div>
+          </div>
+          <div className="flex items-center gap-2">
+            <span className="rounded-full border border-slate-200 bg-slate-50 px-2.5 py-0.5 text-xs font-semibold text-slate-700">
+              {plan} Plan
+            </span>
+            {isSeatsFull ? (
+              <span className="rounded-full border border-rose-200 bg-rose-50 px-2.5 py-0.5 text-xs font-bold text-rose-700">
+                {t("seatsFullBadge")}
+              </span>
+            ) : (
+              <span className="rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-0.5 text-xs font-semibold text-emerald-700">
+                {seatsLimit - seatsUsed} {seatsLimit - seatsUsed === 1 ? "seat left" : "seats left"}
+              </span>
+            )}
+          </div>
+        </div>
+
+        <div className="space-y-1">
+          <Progress
+            value={Math.min(100, Math.round((seatsUsed / Math.max(1, seatsLimit)) * 100))}
+            className="h-2"
+          />
+        </div>
+
+        {isSeatsFull && (
+          <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-amber-200 bg-amber-50/70 p-3 text-xs text-amber-900">
+            <p className="font-medium">
+              {t("seatLimitFullDesc", { plan, limit: seatsLimit })}
+            </p>
+            <Button
+              size="sm"
+              onClick={() => navigate({ name: "dashboard", tab: "subscription" })}
+              className="bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold"
+            >
+              {t("upgradeForMoreSeats")}
+            </Button>
+          </div>
+        )}
+      </div>
+
       <div className="flex justify-end">
-        <Button size="sm" onClick={() => setInviteOpen(true)} className="bg-amber-500 hover:bg-amber-400 text-slate-950 font-semibold">
+        <Button
+          size="sm"
+          onClick={() => {
+            if (isSeatsFull) {
+              toast.error(t("seatLimitFullDesc", { plan, limit: seatsLimit }));
+            } else {
+              setInviteOpen(true);
+            }
+          }}
+          disabled={isSeatsFull}
+          className={cn(
+            "font-semibold text-slate-950",
+            isSeatsFull
+              ? "bg-slate-200 text-slate-400 cursor-not-allowed hover:bg-slate-200"
+              : "bg-amber-500 hover:bg-amber-400"
+          )}
+        >
           <UserPlus className="h-4 w-4 mr-1.5" aria-hidden />
           {t("actInviteMember")}
         </Button>
@@ -818,11 +1046,11 @@ function DealerStaff() {
         <div className="space-y-3">{Array.from({ length: 3 }).map((_, i) => <Skeleton key={i} className="h-16 w-full rounded-xl" />)}</div>
       ) : error && !data ? (
         <FetchErrorState message={error} onRetry={refetch} />
-      ) : !data || data.length === 0 ? (
+      ) : members.length === 0 ? (
         <EmptyState icon={Users} text={t("staffEmpty")} />
       ) : (
         <div className="space-y-2.5">
-          {data.map((m) => (
+          {members.map((m) => (
             <div key={m.id} className="flex flex-wrap items-center gap-3 rounded-xl border border-slate-200 bg-white p-3">
               <AvatarCircle name={m.name} />
               <div className="min-w-0 flex-1">
@@ -836,31 +1064,44 @@ function DealerStaff() {
                 <p className="mt-0.5 truncate text-[11px] text-slate-400"><span className="font-mono">{m.phone}</span></p>
               </div>
               <div className="flex shrink-0 items-center gap-2">
-                <DropdownMenu>
-                  <DropdownMenuTrigger asChild>
-                    <Button variant="outline" size="sm" disabled={busyId === m.id} aria-label={`${t("actChangeRole")} ${m.name}`}>
-                      {busyId === m.id ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : t("actChangeRole")}
-                      <ChevronDown className="h-3 w-3 opacity-60" aria-hidden />
+                {m.role !== "OWNER" && (
+                  <>
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button variant="outline" size="sm" disabled={busyId === m.id} aria-label={`${t("actChangeRole")} ${m.name}`}>
+                          {busyId === m.id ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : t("actChangeRole")}
+                          <ChevronDown className="h-3 w-3 opacity-60" aria-hidden />
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end">
+                        <DropdownMenuLabel>{t("inviteRole")}</DropdownMenuLabel>
+                        <DropdownMenuSeparator />
+                        {STAFF_ROLES.map((r) => (
+                          <DropdownMenuItem key={r} disabled={r === m.role} onClick={() => patch(m.id, { role: r })}>
+                            {t(`trole${r}` as never)}
+                          </DropdownMenuItem>
+                        ))}
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                    <Button
+                      variant="ghost" size="sm"
+                      disabled={busyId === m.id}
+                      onClick={() => patch(m.id, { status: m.status === "ACTIVE" ? "SUSPENDED" : "ACTIVE" })}
+                      className={m.status === "ACTIVE" ? "text-rose-600 hover:bg-rose-50 hover:text-rose-700" : "text-emerald-700 hover:bg-emerald-50"}
+                    >
+                      {m.status === "ACTIVE" ? t("actSuspend") : t("actActivate")}
                     </Button>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent align="end">
-                    <DropdownMenuLabel>{t("inviteRole")}</DropdownMenuLabel>
-                    <DropdownMenuSeparator />
-                    {STAFF_ROLES.map((r) => (
-                      <DropdownMenuItem key={r} disabled={r === m.role} onClick={() => patch(m.id, { role: r })}>
-                        {t(`trole${r}` as never)}
-                      </DropdownMenuItem>
-                    ))}
-                  </DropdownMenuContent>
-                </DropdownMenu>
-                <Button
-                  variant="ghost" size="sm"
-                  disabled={busyId === m.id}
-                  onClick={() => patch(m.id, { status: m.status === "ACTIVE" ? "SUSPENDED" : "ACTIVE" })}
-                  className={m.status === "ACTIVE" ? "text-rose-600 hover:bg-rose-50 hover:text-rose-700" : "text-emerald-700 hover:bg-emerald-50"}
-                >
-                  {m.status === "ACTIVE" ? t("actSuspend") : t("actActivate")}
-                </Button>
+                    <Button
+                      variant="ghost" size="sm"
+                      disabled={busyId === m.id}
+                      onClick={() => removeStaff(m.id)}
+                      className="text-rose-600 hover:bg-rose-50 hover:text-rose-700"
+                      title={t("actRemoveStaff")}
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
+                  </>
+                )}
               </div>
             </div>
           ))}
@@ -954,10 +1195,10 @@ function DealerSubscription() {
 
   if (loading && !data) return <Skeleton className="h-72 w-full rounded-xl" />;
   if (error && !data) return <FetchErrorState message={error} onRetry={refetch} />;
-  const plans = data?.plans ?? [];
+  const freeDisabled = data?.freePlanEnabled === false;
+  const plans = (data?.plans ?? []).filter((p) => !(p.plan === "FREE" && freeDisabled));
   const current = data?.subscription ?? null;
   const expired = current?.status === "EXPIRED";
-  const freeDisabled = data?.freePlanEnabled === false;
   const paymentsDisabled = data?.paymentsEnabled === false;
 
   return (

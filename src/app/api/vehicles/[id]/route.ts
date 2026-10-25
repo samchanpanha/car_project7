@@ -72,10 +72,11 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
       // Similar listings are a public-page concern; skip the extra query for managers.
       manage
         ? Promise.resolve([])
-        : db.vehicle.findMany({
+        : (db.vehicle.findMany as any)({
             where: {
               status: "PUBLISHED",
               id: { not: id },
+              listingCategory: (vehicle as any).listingCategory ?? "CAR",
               OR: [{ bodyType: vehicle.bodyType }, { make: vehicle.make }],
             },
             orderBy: { createdAt: "desc" },
@@ -120,17 +121,27 @@ const patchSchema = z
     model: z.string().min(1).max(80),
     variant: z.string().max(80).optional().nullable(),
     year: z.number().int().min(1990).max(2026),
-    priceUsd: z.number().positive(),
+    priceUsd: z.number().min(0),
+    priceMasked: z.boolean().optional(),
     mileageKm: z.number().int().min(0),
     transmission: z.enum(["AUTOMATIC", "MANUAL"]),
     fuel: z.enum(["PETROL", "DIESEL", "HYBRID", "ELECTRIC"]),
     engineCc: z.number().int().min(0).optional().nullable(),
     drivetrain: z.enum(["FWD", "RWD", "AWD", "4WD"]).optional().nullable(),
-    bodyType: z.enum(["SUV", "SEDAN", "PICKUP", "HATCHBACK", "VAN", "COUPE"]),
+    bodyType: z.string().max(40).optional(),
     exteriorColor: z.string().max(40).optional().nullable(),
+    seats: z.number().int().min(1).max(30).optional().nullable(),
+    interiorColor: z.string().max(40).optional().nullable(),
+    fuelEconomy: z.string().max(60).optional().nullable(),
     city: z.string().min(1).max(60),
     district: z.string().max(60).optional().nullable(),
     condition: z.enum(["LIKE_NEW", "USED"]),
+    listingCategory: z.enum(["CAR", "MOTOR", "SPARE_PART"]).optional(),
+    partCategory: z.string().max(80).optional().nullable(),
+    partTarget: z.enum(["CAR", "MOTOR", "UNIVERSAL"]).optional().nullable(),
+    partCondition: z.enum(["BRAND_NEW", "USED_GENUINE", "AFTERMARKET"]).optional().nullable(),
+    compatibleModels: z.string().max(255).optional().nullable(),
+    partNumber: z.string().max(80).optional().nullable(),
     accidentDeclared: z.enum(["NONE_DECLARED", "MINOR_DECLARED", "MAJOR_DECLARED", "UNKNOWN"]),
     ownershipCount: z.number().int().min(0).optional().nullable(),
     vinLast6: z.string().max(6).optional().nullable(),
@@ -185,13 +196,39 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
     }
 
     const data = parsed.data;
+
+    // Spare parts plan gating: Free and Basic plans can only sell complete vehicles (Cars & Motors).
+    if (data.listingCategory === "SPARE_PART" && actor.role !== "ADMIN" && actor.role !== "SUPER_ADMIN") {
+      const membership = await db.tenantMember.findFirst({
+        where: { userId: actor.id, status: "ACTIVE" },
+        include: { tenant: { include: { subscription: true } } },
+      });
+      const tenantSub = membership?.tenant?.subscription;
+      const canSellParts = Boolean(
+        tenantSub &&
+        tenantSub.status === "ACTIVE" &&
+        (tenantSub.plan === "PRO" || tenantSub.plan === "ENTERPRISE"),
+      );
+      if (!canSellParts) {
+        return NextResponse.json(
+          {
+            error: "Selling spare parts requires a Pro or Enterprise plan. Please upgrade your subscription to list spare parts.",
+            code: "SPARE_PARTS_PLAN_REQUIRED",
+          },
+          { status: 403 },
+        );
+      }
+    }
+
     const changed: string[] = [];
 
     // Scalar fields — only touch the ones present in the payload.
     const scalar: Record<string, unknown> = {};
     const SCALAR_KEYS = [
-      "make", "model", "variant", "year", "priceUsd", "mileageKm", "transmission", "fuel",
-      "engineCc", "drivetrain", "bodyType", "exteriorColor", "city", "district", "condition",
+      "make", "model", "variant", "year", "priceUsd", "priceMasked", "mileageKm", "transmission", "fuel",
+      "engineCc", "drivetrain", "bodyType", "exteriorColor", "seats", "interiorColor", "fuelEconomy",
+      "city", "district", "condition", "listingCategory", "partCategory", "partTarget", "partCondition",
+      "compatibleModels", "partNumber",
       "accidentDeclared", "ownershipCount", "vinLast6", "plateNo", "importOrigin",
       "description", "descriptionKm", "status", "branchId",
     ] as const;

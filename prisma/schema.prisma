@@ -382,6 +382,10 @@ model Vehicle {
   drivetrain      String? // FWD | RWD | AWD
   bodyType        String // SUV | SEDAN | PICKUP | HATCHBACK | VAN | COUPE
   exteriorColor   String?
+  seats           Int? // optional seats count (e.g. 5, 7)
+  interiorColor   String? // optional interior color (e.g. Beige, Black)
+  fuelEconomy     String? // optional fuel economy / EV range
+  priceMasked     Boolean  @default(false) // Contact for Price / Hide Price
   condition       String  @default("USED") // LIKE_NEW | USED
   city            String  @default("Phnom Penh")
   district        String?
@@ -395,6 +399,12 @@ model Vehicle {
   ownershipCount  Int?
   accidentDeclared String @default("UNKNOWN") // NONE_DECLARED | MINOR_DECLARED | MAJOR_DECLARED | UNKNOWN
   importOrigin    String? // USA | KOREA | JAPAN | THAILAND | DUBAI | LOCAL
+  listingCategory String  @default("CAR") // CAR | MOTOR | SPARE_PART
+  partCategory    String? // TIRES_WHEELS | BRAKES_SUSPENSION | BATTERY_ELECTRICAL | ENGINE_TRANSMISSION | LIGHTS_BULBS | BODY_MIRRORS | OILS_LUBRICANTS | ACCESSORIES
+  partTarget      String? // CAR | MOTOR | UNIVERSAL
+  partCondition   String? // BRAND_NEW | USED_GENUINE | AFTERMARKET
+  compatibleModels String? // e.g. "Toyota Prius 2004-2009", "Honda Dream 125, Scoopy"
+  partNumber      String? // optional OEM / manufacturer part number
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
 
@@ -410,6 +420,10 @@ model Vehicle {
   tenant        Tenant?          @relation(fields: [tenantId], references: [id])
   branchId      String?
   branch        TenantBranch?    @relation(fields: [branchId], references: [id], onDelete: SetNull)
+
+  @@index([listingCategory])
+  @@index([partCategory])
+  @@index([partTarget])
 }
 
 model VehicleImage {
@@ -528,6 +542,20 @@ model FraudAlert {
 
   @@index([userId])
   @@index([tenantId])
+  @@index([status])
+}
+
+model PendingStorageSync {
+  id        String    @id @default(cuid())
+  fileName  String    @unique
+  mimeType  String
+  byteSize  Int
+  source    String    @default("MINIO") // MINIO | LOCAL
+  status    String    @default("PENDING") // PENDING | SYNCED | FAILED
+  error     String?
+  createdAt DateTime  @default(now())
+  syncedAt  DateTime?
+
   @@index([status])
 }
 

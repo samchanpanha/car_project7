@@ -43,7 +43,7 @@ import {
   BadgeCheck, Car, ChevronDown, CreditCard, DollarSign, FileCheck2, Gauge, Hourglass, Image as ImageIcon,
   LayoutDashboard, Loader2, MessageSquare, MoreHorizontal, ScrollText, Send, Settings, ShieldCheck, Sparkles,
   Star, Store, TriangleAlert, Upload, Users, Wallet, RefreshCw, Link2, Search, Check, CheckCircle2,
-  Calendar, Clock, Copy, Repeat, Trash2,
+  Calendar, Clock, Copy, Repeat, Trash2, Cloud, CloudUpload, HardDrive, Database,
 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
@@ -77,6 +77,7 @@ export function AdminDashboard({ me }: { me: SessionDTO }) {
     { id: "payments", label: t("tabPayments"), icon: CreditCard },
     { id: "ai", label: t("tabAi"), icon: Sparkles },
     { id: "settings", label: t("tabSettings"), icon: Settings },
+    { id: "storage", label: t("storageSyncTitle"), icon: HardDrive },
     { id: "audit", label: t("tabAudit"), icon: ScrollText },
   ];
 
@@ -96,6 +97,7 @@ export function AdminDashboard({ me }: { me: SessionDTO }) {
       {active === "payments" && <AdminPayments />}
       {active === "ai" && <AdminAi />}
       {active === "settings" && <AdminSettings />}
+      {active === "storage" && <AdminStorageResilience />}
       {active === "audit" && <AdminAudit />}
     </DashboardShell>
   );
@@ -798,6 +800,7 @@ function AdminSettings() {
 
       <AdminPaymentConfig />
       <AdminPlanPricing />
+      <AdminStorageResilience />
     </div>
   );
 }
@@ -2067,6 +2070,8 @@ interface ManualConfig {
   khqrImageYearly?: string | null;
   khqrImageUsd?: string | null;
   khqrImageKhr?: string | null;
+  khqrImageMonthlyKhr?: string | null;
+  khqrImageYearlyKhr?: string | null;
   khrExchangeRate?: number;
   maxTrxAgeHours?: number;
   skipMerchantCheck?: boolean;
@@ -2087,13 +2092,17 @@ function AdminPaymentConfig() {
   const [saving, setSaving] = useState(false);
   const [readingQr, setReadingQr] = useState(false);
   const [readingMonthly, setReadingMonthly] = useState(false);
+  const [readingMonthlyKhr, setReadingMonthlyKhr] = useState(false);
   const [readingYearly, setReadingYearly] = useState(false);
+  const [readingYearlyKhr, setReadingYearlyKhr] = useState(false);
   const [readingUsd, setReadingUsd] = useState(false);
   const [readingKhr, setReadingKhr] = useState(false);
   const [testingTg, setTestingTg] = useState(false);
   const qrInput = useRef<HTMLInputElement>(null);
   const qrInputMonthly = useRef<HTMLInputElement>(null);
+  const qrInputMonthlyKhr = useRef<HTMLInputElement>(null);
   const qrInputYearly = useRef<HTMLInputElement>(null);
+  const qrInputYearlyKhr = useRef<HTMLInputElement>(null);
   const qrInputUsd = useRef<HTMLInputElement>(null);
   const qrInputKhr = useRef<HTMLInputElement>(null);
 
@@ -2115,6 +2124,8 @@ function AdminPaymentConfig() {
         khqrImageYearly: form.khqrImageYearly || null,
         khqrImageUsd: form.khqrImageUsd || null,
         khqrImageKhr: form.khqrImageKhr || null,
+        khqrImageMonthlyKhr: form.khqrImageMonthlyKhr || null,
+        khqrImageYearlyKhr: form.khqrImageYearlyKhr || null,
         khrExchangeRate: Number(form.khrExchangeRate) || 4100,
         maxTrxAgeHours: Number(form.maxTrxAgeHours) || 72,
         skipMerchantCheck: form.skipMerchantCheck ?? true,
@@ -2196,6 +2207,20 @@ function AdminPaymentConfig() {
     }
   };
 
+  const pickQrMonthlyKhr = async (file: File | undefined) => {
+    if (!file) return;
+    setReadingMonthlyKhr(true);
+    try {
+      const dataUrl = await fileToDataUrl(file, 720, 0.9);
+      setForm((f) => (f ? { ...f, khqrImageMonthlyKhr: dataUrl } : f));
+    } catch {
+      toast.error(t("errorGeneric"));
+    } finally {
+      setReadingMonthlyKhr(false);
+      if (qrInputMonthlyKhr.current) qrInputMonthlyKhr.current.value = "";
+    }
+  };
+
   const pickQrYearly = async (file: File | undefined) => {
     if (!file) return;
     setReadingYearly(true);
@@ -2207,6 +2232,20 @@ function AdminPaymentConfig() {
     } finally {
       setReadingYearly(false);
       if (qrInputYearly.current) qrInputYearly.current.value = "";
+    }
+  };
+
+  const pickQrYearlyKhr = async (file: File | undefined) => {
+    if (!file) return;
+    setReadingYearlyKhr(true);
+    try {
+      const dataUrl = await fileToDataUrl(file, 720, 0.9);
+      setForm((f) => (f ? { ...f, khqrImageYearlyKhr: dataUrl } : f));
+    } catch {
+      toast.error(t("errorGeneric"));
+    } finally {
+      setReadingYearlyKhr(false);
+      if (qrInputYearlyKhr.current) qrInputYearlyKhr.current.value = "";
     }
   };
 
@@ -2257,34 +2296,49 @@ function AdminPaymentConfig() {
           <Input id="pc-tg" value={form.telegram ?? ""} onChange={(e) => setForm({ ...form, telegram: e.target.value })} placeholder="@khlan_admin" className="mt-1.5 h-9" />
         </div>
 
-        {/* Per-plan KHQR image uploads (Monthly & Yearly) */}
-        <div className="sm:col-span-2 space-y-3 rounded-xl border border-slate-200 bg-slate-50/70 p-3.5">
-          <div>
-            <Label className="text-xs font-semibold text-slate-800">KHQR Payment Images by Billing Cycle</Label>
-            <p className="mt-0.5 text-[11px] text-slate-500">
-              Upload custom QR codes for 1-Month and 1-Year plans. Sellers will see the matching QR code when selecting each plan.
-            </p>
+        {/* 2x2 KHQR Payment Images Matrix (Billing Cycle & Currency) */}
+        <div className="sm:col-span-2 space-y-4 rounded-xl border border-indigo-200 dark:border-indigo-800/60 bg-gradient-to-br from-indigo-50/40 via-white to-amber-50/30 dark:from-slate-900 dark:via-slate-900/90 dark:to-indigo-950/20 p-4 shadow-xs">
+          <div className="flex items-center justify-between flex-wrap gap-2">
+            <div>
+              <div className="flex items-center gap-2">
+                <span className="flex h-6 w-6 items-center justify-center rounded-lg bg-indigo-600 text-white font-bold text-xs shadow-xs">
+                  2×2
+                </span>
+                <Label className="text-sm font-bold text-slate-800 dark:text-slate-100">
+                  {t("payConfigQrMatrixTitle")}
+                </Label>
+              </div>
+              <p className="mt-1 text-xs text-slate-500 dark:text-slate-400 max-w-2xl">
+                {t("payConfigQrMatrixSubtitle")}
+              </p>
+            </div>
+            <div className="flex items-center gap-1.5 text-[11px] font-medium text-indigo-700 dark:text-indigo-300 bg-indigo-50 dark:bg-indigo-950/60 border border-indigo-200 dark:border-indigo-800 rounded-md px-2.5 py-1">
+              <span>Auto-switches by cycle & currency</span>
+            </div>
           </div>
 
-          <div className="grid gap-3 sm:grid-cols-2">
-            {/* Monthly QR */}
-            <div className="rounded-lg border border-slate-200 bg-white p-3 shadow-xs">
-              <div className="flex items-center justify-between mb-2">
-                <span className="text-xs font-semibold text-slate-700">1-Month Plan KHQR</span>
-                <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-bold text-amber-900">Monthly</span>
+          <div className="grid gap-3.5 sm:grid-cols-2">
+            {/* 1. Monthly USD */}
+            <div className="rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/80 p-3.5 shadow-xs transition-all hover:border-sky-300 dark:hover:border-sky-700">
+              <div className="flex items-center justify-between mb-2.5">
+                <span className="text-xs font-bold text-slate-800 dark:text-slate-200">{t("payConfigQrMonthlyUsd")}</span>
+                <div className="flex items-center gap-1">
+                  <span className="rounded-md bg-amber-100 dark:bg-amber-950/60 text-amber-900 dark:text-amber-300 font-semibold px-1.5 py-0.5 text-[10px]">1 Month</span>
+                  <span className="rounded-md bg-sky-100 dark:bg-sky-950/60 text-sky-900 dark:text-sky-300 font-bold px-1.5 py-0.5 text-[10px]">USD ($)</span>
+                </div>
               </div>
               {form.khqrImageMonthly ? (
                 <div className="flex items-center gap-3">
-                  <img src={form.khqrImageMonthly} alt="Monthly KHQR" className="h-24 w-24 rounded-lg border border-slate-200 object-contain p-1" />
+                  <img src={form.khqrImageMonthly} alt="Monthly USD KHQR" className="h-24 w-24 rounded-lg border border-slate-200 dark:border-slate-700 object-contain p-1 bg-slate-50 dark:bg-slate-800/50" />
                   <div className="flex flex-col gap-1.5">
-                    <p className="flex items-center gap-1 text-[11px] font-medium text-emerald-700">
+                    <p className="flex items-center gap-1 text-[11px] font-semibold text-emerald-700 dark:text-emerald-400">
                       <ImageIcon className="h-3.5 w-3.5" aria-hidden />
-                      Uploaded
+                      {t("payConfigQrUploaded")}
                     </p>
                     <Button type="button" variant="outline" size="sm" className="h-7 text-[11px]" onClick={() => qrInputMonthly.current?.click()}>
                       {t("payUploadChange")}
                     </Button>
-                    <Button type="button" variant="ghost" size="sm" className="h-7 text-[11px] text-rose-600 hover:bg-rose-50"
+                    <Button type="button" variant="ghost" size="sm" className="h-7 text-[11px] text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/30"
                       onClick={() => setForm({ ...form, khqrImageMonthly: null })}>
                       {t("payConfigQrRemove")}
                     </Button>
@@ -2296,34 +2350,79 @@ function AdminPaymentConfig() {
                   onClick={() => qrInputMonthly.current?.click()}
                   disabled={readingMonthly}
                   className={cn(
-                    "flex min-h-[44px] w-full cursor-pointer items-center justify-center gap-2 rounded-lg border border-dashed border-slate-300 bg-slate-50 px-3 py-2.5 text-xs font-medium text-slate-600 transition-colors hover:border-amber-400 hover:bg-amber-50/50",
+                    "flex min-h-[52px] w-full cursor-pointer items-center justify-center gap-2 rounded-lg border border-dashed border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/40 px-3 py-2.5 text-xs font-medium text-slate-600 dark:text-slate-300 transition-colors hover:border-sky-400 hover:bg-sky-50/50 dark:hover:bg-sky-950/20",
                     readingMonthly && "opacity-60",
                   )}
                 >
-                  {readingMonthly ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : <Upload className="h-4 w-4 text-slate-400" aria-hidden />}
-                  Upload 1-Month KHQR
+                  {readingMonthly ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : <Upload className="h-4 w-4 text-sky-500" aria-hidden />}
+                  {t("payConfigQrUploadMonthlyUsd")}
                 </button>
               )}
             </div>
 
-            {/* Yearly QR */}
-            <div className="rounded-lg border border-slate-200 bg-white p-3 shadow-xs">
-              <div className="flex items-center justify-between mb-2">
-                <span className="text-xs font-semibold text-slate-700">1-Year Plan KHQR</span>
-                <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-bold text-emerald-900">Yearly (12 Mo)</span>
+            {/* 2. Monthly KHR */}
+            <div className="rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/80 p-3.5 shadow-xs transition-all hover:border-amber-300 dark:hover:border-amber-700">
+              <div className="flex items-center justify-between mb-2.5">
+                <span className="text-xs font-bold text-slate-800 dark:text-slate-200">{t("payConfigQrMonthlyKhr")}</span>
+                <div className="flex items-center gap-1">
+                  <span className="rounded-md bg-amber-100 dark:bg-amber-950/60 text-amber-900 dark:text-amber-300 font-semibold px-1.5 py-0.5 text-[10px]">1 Month</span>
+                  <span className="rounded-md bg-amber-100 dark:bg-amber-950/60 text-amber-900 dark:text-amber-300 font-bold px-1.5 py-0.5 text-[10px]">KHR (៛)</span>
+                </div>
+              </div>
+              {form.khqrImageMonthlyKhr ? (
+                <div className="flex items-center gap-3">
+                  <img src={form.khqrImageMonthlyKhr} alt="Monthly KHR KHQR" className="h-24 w-24 rounded-lg border border-slate-200 dark:border-slate-700 object-contain p-1 bg-slate-50 dark:bg-slate-800/50" />
+                  <div className="flex flex-col gap-1.5">
+                    <p className="flex items-center gap-1 text-[11px] font-semibold text-emerald-700 dark:text-emerald-400">
+                      <ImageIcon className="h-3.5 w-3.5" aria-hidden />
+                      {t("payConfigQrUploaded")}
+                    </p>
+                    <Button type="button" variant="outline" size="sm" className="h-7 text-[11px]" onClick={() => qrInputMonthlyKhr.current?.click()}>
+                      {t("payUploadChange")}
+                    </Button>
+                    <Button type="button" variant="ghost" size="sm" className="h-7 text-[11px] text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/30"
+                      onClick={() => setForm({ ...form, khqrImageMonthlyKhr: null })}>
+                      {t("payConfigQrRemove")}
+                    </Button>
+                  </div>
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => qrInputMonthlyKhr.current?.click()}
+                  disabled={readingMonthlyKhr}
+                  className={cn(
+                    "flex min-h-[52px] w-full cursor-pointer items-center justify-center gap-2 rounded-lg border border-dashed border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/40 px-3 py-2.5 text-xs font-medium text-slate-600 dark:text-slate-300 transition-colors hover:border-amber-400 hover:bg-amber-50/50 dark:hover:bg-amber-950/20",
+                    readingMonthlyKhr && "opacity-60",
+                  )}
+                >
+                  {readingMonthlyKhr ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : <Upload className="h-4 w-4 text-amber-500" aria-hidden />}
+                  {t("payConfigQrUploadMonthlyKhr")}
+                </button>
+              )}
+            </div>
+
+            {/* 3. Yearly USD */}
+            <div className="rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/80 p-3.5 shadow-xs transition-all hover:border-emerald-300 dark:hover:border-emerald-700">
+              <div className="flex items-center justify-between mb-2.5">
+                <span className="text-xs font-bold text-slate-800 dark:text-slate-200">{t("payConfigQrYearlyUsd")}</span>
+                <div className="flex items-center gap-1">
+                  <span className="rounded-md bg-emerald-100 dark:bg-emerald-950/60 text-emerald-900 dark:text-emerald-300 font-semibold px-1.5 py-0.5 text-[10px]">1 Year</span>
+                  <span className="rounded-md bg-sky-100 dark:bg-sky-950/60 text-sky-900 dark:text-sky-300 font-bold px-1.5 py-0.5 text-[10px]">USD ($)</span>
+                </div>
               </div>
               {form.khqrImageYearly ? (
                 <div className="flex items-center gap-3">
-                  <img src={form.khqrImageYearly} alt="Yearly KHQR" className="h-24 w-24 rounded-lg border border-slate-200 object-contain p-1" />
+                  <img src={form.khqrImageYearly} alt="Yearly USD KHQR" className="h-24 w-24 rounded-lg border border-slate-200 dark:border-slate-700 object-contain p-1 bg-slate-50 dark:bg-slate-800/50" />
                   <div className="flex flex-col gap-1.5">
-                    <p className="flex items-center gap-1 text-[11px] font-medium text-emerald-700">
+                    <p className="flex items-center gap-1 text-[11px] font-semibold text-emerald-700 dark:text-emerald-400">
                       <ImageIcon className="h-3.5 w-3.5" aria-hidden />
-                      Uploaded
+                      {t("payConfigQrUploaded")}
                     </p>
                     <Button type="button" variant="outline" size="sm" className="h-7 text-[11px]" onClick={() => qrInputYearly.current?.click()}>
                       {t("payUploadChange")}
                     </Button>
-                    <Button type="button" variant="ghost" size="sm" className="h-7 text-[11px] text-rose-600 hover:bg-rose-50"
+                    <Button type="button" variant="ghost" size="sm" className="h-7 text-[11px] text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/30"
                       onClick={() => setForm({ ...form, khqrImageYearly: null })}>
                       {t("payConfigQrRemove")}
                     </Button>
@@ -2335,133 +2434,153 @@ function AdminPaymentConfig() {
                   onClick={() => qrInputYearly.current?.click()}
                   disabled={readingYearly}
                   className={cn(
-                    "flex min-h-[44px] w-full cursor-pointer items-center justify-center gap-2 rounded-lg border border-dashed border-slate-300 bg-slate-50 px-3 py-2.5 text-xs font-medium text-slate-600 transition-colors hover:border-amber-400 hover:bg-amber-50/50",
+                    "flex min-h-[52px] w-full cursor-pointer items-center justify-center gap-2 rounded-lg border border-dashed border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/40 px-3 py-2.5 text-xs font-medium text-slate-600 dark:text-slate-300 transition-colors hover:border-emerald-400 hover:bg-emerald-50/50 dark:hover:bg-emerald-950/20",
                     readingYearly && "opacity-60",
                   )}
                 >
-                  {readingYearly ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : <Upload className="h-4 w-4 text-slate-400" aria-hidden />}
-                  Upload 1-Year KHQR
+                  {readingYearly ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : <Upload className="h-4 w-4 text-emerald-500" aria-hidden />}
+                  {t("payConfigQrUploadYearlyUsd")}
+                </button>
+              )}
+            </div>
+
+            {/* 4. Yearly KHR (The requested new feature!) */}
+            <div className="rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/80 p-3.5 shadow-xs transition-all hover:border-amber-400 dark:hover:border-amber-600 ring-1 ring-amber-400/30">
+              <div className="flex items-center justify-between mb-2.5">
+                <span className="text-xs font-bold text-slate-800 dark:text-slate-200 flex items-center gap-1.5">
+                  {t("payConfigQrYearlyKhr")}
+                  <span className="rounded-full bg-amber-500/10 text-amber-700 dark:text-amber-400 text-[9px] font-extrabold px-1.5 py-0.2 border border-amber-500/30">New</span>
+                </span>
+                <div className="flex items-center gap-1">
+                  <span className="rounded-md bg-emerald-100 dark:bg-emerald-950/60 text-emerald-900 dark:text-emerald-300 font-semibold px-1.5 py-0.5 text-[10px]">1 Year</span>
+                  <span className="rounded-md bg-amber-100 dark:bg-amber-950/60 text-amber-900 dark:text-amber-300 font-bold px-1.5 py-0.5 text-[10px]">KHR (៛)</span>
+                </div>
+              </div>
+              {form.khqrImageYearlyKhr ? (
+                <div className="flex items-center gap-3">
+                  <img src={form.khqrImageYearlyKhr} alt="Yearly KHR KHQR" className="h-24 w-24 rounded-lg border border-slate-200 dark:border-slate-700 object-contain p-1 bg-slate-50 dark:bg-slate-800/50" />
+                  <div className="flex flex-col gap-1.5">
+                    <p className="flex items-center gap-1 text-[11px] font-semibold text-emerald-700 dark:text-emerald-400">
+                      <ImageIcon className="h-3.5 w-3.5" aria-hidden />
+                      {t("payConfigQrUploaded")}
+                    </p>
+                    <Button type="button" variant="outline" size="sm" className="h-7 text-[11px]" onClick={() => qrInputYearlyKhr.current?.click()}>
+                      {t("payUploadChange")}
+                    </Button>
+                    <Button type="button" variant="ghost" size="sm" className="h-7 text-[11px] text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/30"
+                      onClick={() => setForm({ ...form, khqrImageYearlyKhr: null })}>
+                      {t("payConfigQrRemove")}
+                    </Button>
+                  </div>
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => qrInputYearlyKhr.current?.click()}
+                  disabled={readingYearlyKhr}
+                  className={cn(
+                    "flex min-h-[52px] w-full cursor-pointer items-center justify-center gap-2 rounded-lg border border-dashed border-amber-300 dark:border-amber-700/80 bg-amber-50/40 dark:bg-amber-950/20 px-3 py-2.5 text-xs font-semibold text-amber-800 dark:text-amber-300 transition-colors hover:border-amber-500 hover:bg-amber-50 dark:hover:bg-amber-950/40",
+                    readingYearlyKhr && "opacity-60",
+                  )}
+                >
+                  {readingYearlyKhr ? <Loader2 className="h-4 w-4 animate-spin text-amber-600" aria-hidden /> : <Upload className="h-4 w-4 text-amber-600" aria-hidden />}
+                  {t("payConfigQrUploadYearlyKhr")}
                 </button>
               )}
             </div>
           </div>
 
-          {/* Hidden inputs */}
+          {/* Secondary Fallbacks: Generic Currency QR codes (USD / KHR) */}
+          <div className="pt-2 border-t border-slate-200/80 dark:border-slate-800">
+            <details className="group">
+              <summary className="flex items-center justify-between cursor-pointer list-none text-[11px] font-semibold text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200">
+                <span className="flex items-center gap-1.5">
+                  <span>General Fallback QR Codes (Currency-Wide)</span>
+                  <span className="rounded bg-slate-200 dark:bg-slate-800 text-[10px] px-1 py-0.2 font-normal text-slate-500">Optional</span>
+                </span>
+                <ChevronDown className="h-3.5 w-3.5 transition-transform group-open:rotate-180" />
+              </summary>
+              <div className="grid gap-3 sm:grid-cols-2 pt-3">
+                {/* Fallback USD QR */}
+                <div className="rounded-lg border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-2.5">
+                  <div className="flex items-center justify-between mb-1.5">
+                    <span className="text-[11px] font-medium text-slate-600 dark:text-slate-300">Default USD QR</span>
+                    <span className="text-[10px] text-sky-600 font-semibold">USD</span>
+                  </div>
+                  {form.khqrImageUsd ? (
+                    <div className="flex items-center gap-2">
+                      <img src={form.khqrImageUsd} alt="USD QR" className="h-16 w-16 rounded object-contain border p-0.5" />
+                      <div className="flex flex-col gap-1">
+                        <Button type="button" variant="outline" size="sm" className="h-6 text-[10px]" onClick={() => qrInputUsd.current?.click()}>Change</Button>
+                        <Button type="button" variant="ghost" size="sm" className="h-6 text-[10px] text-rose-600" onClick={() => setForm({ ...form, khqrImageUsd: null })}>Remove</Button>
+                      </div>
+                    </div>
+                  ) : (
+                    <Button type="button" variant="outline" size="sm" className="w-full h-8 text-[11px]" onClick={() => qrInputUsd.current?.click()} disabled={readingUsd}>
+                      {readingUsd ? <Loader2 className="h-3.5 w-3.5 animate-spin mr-1" /> : <Upload className="h-3.5 w-3.5 mr-1" />}
+                      Upload Fallback USD QR
+                    </Button>
+                  )}
+                </div>
+
+                {/* Fallback KHR QR */}
+                <div className="rounded-lg border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-2.5">
+                  <div className="flex items-center justify-between mb-1.5">
+                    <span className="text-[11px] font-medium text-slate-600 dark:text-slate-300">Default KHR QR</span>
+                    <span className="text-[10px] text-amber-600 font-semibold">KHR</span>
+                  </div>
+                  {form.khqrImageKhr ? (
+                    <div className="flex items-center gap-2">
+                      <img src={form.khqrImageKhr} alt="KHR QR" className="h-16 w-16 rounded object-contain border p-0.5" />
+                      <div className="flex flex-col gap-1">
+                        <Button type="button" variant="outline" size="sm" className="h-6 text-[10px]" onClick={() => qrInputKhr.current?.click()}>Change</Button>
+                        <Button type="button" variant="ghost" size="sm" className="h-6 text-[10px] text-rose-600" onClick={() => setForm({ ...form, khqrImageKhr: null })}>Remove</Button>
+                      </div>
+                    </div>
+                  ) : (
+                    <Button type="button" variant="outline" size="sm" className="w-full h-8 text-[11px]" onClick={() => qrInputKhr.current?.click()} disabled={readingKhr}>
+                      {readingKhr ? <Loader2 className="h-3.5 w-3.5 animate-spin mr-1" /> : <Upload className="h-3.5 w-3.5 mr-1" />}
+                      Upload Fallback KHR QR
+                    </Button>
+                  )}
+                </div>
+              </div>
+            </details>
+          </div>
+
+          {/* Hidden inputs for the 2x2 matrix and fallbacks */}
           <input
             ref={qrInputMonthly}
             type="file"
             accept="image/*"
             className="hidden"
-            aria-label="Upload Monthly KHQR"
+            aria-label="Upload Monthly USD KHQR"
             onChange={(e) => pickQrMonthly(e.target.files?.[0])}
+          />
+          <input
+            ref={qrInputMonthlyKhr}
+            type="file"
+            accept="image/*"
+            className="hidden"
+            aria-label="Upload Monthly KHR KHQR"
+            onChange={(e) => pickQrMonthlyKhr(e.target.files?.[0])}
           />
           <input
             ref={qrInputYearly}
             type="file"
             accept="image/*"
             className="hidden"
-            aria-label="Upload Yearly KHQR"
+            aria-label="Upload Yearly USD KHQR"
             onChange={(e) => pickQrYearly(e.target.files?.[0])}
           />
-        </div>
-
-        {/* Currency KHQR image uploads (USD & KHR) */}
-        <div className="sm:col-span-2 space-y-3 rounded-xl border border-emerald-200 dark:border-emerald-800 bg-emerald-50/50 dark:bg-emerald-950/20 p-3.5">
-          <div>
-            <div className="flex items-center gap-2">
-              <span className="flex h-5 w-5 items-center justify-center rounded-md bg-emerald-600 text-white font-bold text-[10px]">
-                ៛/$
-              </span>
-              <Label className="text-xs font-bold text-slate-800 dark:text-slate-200">
-                KHQR Payment Images by Currency (USD vs KHR)
-              </Label>
-            </div>
-            <p className="mt-0.5 text-[11px] text-slate-500">
-              Configure currency-specific QR codes. When a seller selects USD or KHR at checkout, the matching currency QR code is displayed immediately.
-            </p>
-          </div>
-
-          <div className="grid gap-3 sm:grid-cols-2">
-            {/* USD KHQR */}
-            <div className="rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-3 shadow-xs">
-              <div className="flex items-center justify-between mb-2">
-                <span className="text-xs font-semibold text-slate-700 dark:text-slate-300">USD KHQR Image</span>
-                <span className="rounded-full bg-sky-100 text-sky-900 border border-sky-300 px-2 py-0.5 text-[10px] font-bold">USD ($)</span>
-              </div>
-              {form.khqrImageUsd ? (
-                <div className="flex items-center gap-3">
-                  <img src={form.khqrImageUsd} alt="USD KHQR" className="h-24 w-24 rounded-lg border border-slate-200 object-contain p-1" />
-                  <div className="flex flex-col gap-1.5">
-                    <p className="flex items-center gap-1 text-[11px] font-medium text-emerald-700 dark:text-emerald-400">
-                      <ImageIcon className="h-3.5 w-3.5" aria-hidden />
-                      Uploaded
-                    </p>
-                    <Button type="button" variant="outline" size="sm" className="h-7 text-[11px]" onClick={() => qrInputUsd.current?.click()}>
-                      {t("payUploadChange")}
-                    </Button>
-                    <Button type="button" variant="ghost" size="sm" className="h-7 text-[11px] text-rose-600 hover:bg-rose-50"
-                      onClick={() => setForm({ ...form, khqrImageUsd: null })}>
-                      {t("payConfigQrRemove")}
-                    </Button>
-                  </div>
-                </div>
-              ) : (
-                <button
-                  type="button"
-                  onClick={() => qrInputUsd.current?.click()}
-                  disabled={readingUsd}
-                  className={cn(
-                    "flex min-h-[44px] w-full cursor-pointer items-center justify-center gap-2 rounded-lg border border-dashed border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/50 px-3 py-2.5 text-xs font-medium text-slate-600 dark:text-slate-300 transition-colors hover:border-emerald-500 hover:bg-emerald-50/50",
-                    readingUsd && "opacity-60",
-                  )}
-                >
-                  {readingUsd ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : <Upload className="h-4 w-4 text-slate-400" aria-hidden />}
-                  Upload USD KHQR ($)
-                </button>
-              )}
-            </div>
-
-            {/* KHR KHQR */}
-            <div className="rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-3 shadow-xs">
-              <div className="flex items-center justify-between mb-2">
-                <span className="text-xs font-semibold text-slate-700 dark:text-slate-300">KHR KHQR Image</span>
-                <span className="rounded-full bg-amber-100 text-amber-900 border border-amber-300 px-2 py-0.5 text-[10px] font-bold">KHR (៛)</span>
-              </div>
-              {form.khqrImageKhr ? (
-                <div className="flex items-center gap-3">
-                  <img src={form.khqrImageKhr} alt="KHR KHQR" className="h-24 w-24 rounded-lg border border-slate-200 object-contain p-1" />
-                  <div className="flex flex-col gap-1.5">
-                    <p className="flex items-center gap-1 text-[11px] font-medium text-emerald-700 dark:text-emerald-400">
-                      <ImageIcon className="h-3.5 w-3.5" aria-hidden />
-                      Uploaded
-                    </p>
-                    <Button type="button" variant="outline" size="sm" className="h-7 text-[11px]" onClick={() => qrInputKhr.current?.click()}>
-                      {t("payUploadChange")}
-                    </Button>
-                    <Button type="button" variant="ghost" size="sm" className="h-7 text-[11px] text-rose-600 hover:bg-rose-50"
-                      onClick={() => setForm({ ...form, khqrImageKhr: null })}>
-                      {t("payConfigQrRemove")}
-                    </Button>
-                  </div>
-                </div>
-              ) : (
-                <button
-                  type="button"
-                  onClick={() => qrInputKhr.current?.click()}
-                  disabled={readingKhr}
-                  className={cn(
-                    "flex min-h-[44px] w-full cursor-pointer items-center justify-center gap-2 rounded-lg border border-dashed border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/50 px-3 py-2.5 text-xs font-medium text-slate-600 dark:text-slate-300 transition-colors hover:border-amber-500 hover:bg-amber-50/50",
-                    readingKhr && "opacity-60",
-                  )}
-                >
-                  {readingKhr ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : <Upload className="h-4 w-4 text-slate-400" aria-hidden />}
-                  Upload KHR KHQR (៛)
-                </button>
-              )}
-            </div>
-          </div>
-
-          {/* Hidden inputs for USD and KHR */}
+          <input
+            ref={qrInputYearlyKhr}
+            type="file"
+            accept="image/*"
+            className="hidden"
+            aria-label="Upload Yearly KHR KHQR"
+            onChange={(e) => pickQrYearlyKhr(e.target.files?.[0])}
+          />
           <input
             ref={qrInputUsd}
             type="file"
@@ -2948,3 +3067,182 @@ function AdminPlanPricing() {
     </SectionCard>
   );
 }
+
+// ---------------- Storage Resilience & Cloudflare R2 Sync ----------------
+
+function AdminStorageResilience() {
+  const t = useT();
+  const { data, loading, error, refetch } = useFetch<{
+    r2Configured: boolean;
+    r2Healthy: boolean;
+    minioConfigured: boolean;
+    minioHealthy: boolean;
+    pendingCount: number;
+    pendingFiles: Array<{
+      id: string;
+      fileName: string;
+      byteSize: number;
+      mimeType: string;
+      source: string;
+      createdAt: string;
+    }>;
+  }>("/api/admin/storage/status");
+
+  const [syncing, setSyncing] = useState(false);
+
+  const handleSync = async () => {
+    setSyncing(true);
+    try {
+      const res = await apiSend<{ total: number; synced: number; failed: number; errors: string[] }>(
+        "/api/admin/storage/sync-r2",
+        "POST"
+      );
+      if (res.failed > 0) {
+        toast.warning(`Synced ${res.synced} files, but ${res.failed} failed: ${res.errors.join(", ")}`);
+      } else {
+        toast.success(t("syncSuccess", { n: res.synced }));
+      }
+      refetch();
+    } catch (e) {
+      toast.error(errorText(e));
+    } finally {
+      setSyncing(false);
+    }
+  };
+
+  if (loading && !data) return <Skeleton className="h-72 w-full rounded-xl" />;
+  if (error && !data) return <FetchErrorState message={error} onRetry={refetch} />;
+
+  const pendingCount = data?.pendingCount ?? 0;
+
+  return (
+    <SectionCard title={t("storageSyncTitle")}>
+      <p className="text-xs text-slate-500 mb-4 -mt-1 leading-relaxed">
+        {t("storageSyncDesc")}
+      </p>
+      <div className="grid gap-4 sm:grid-cols-2">
+        {/* Cloudflare R2 Card */}
+        <div className="rounded-xl border border-slate-200 bg-gradient-to-br from-amber-50/40 via-white to-orange-50/30 p-4">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2.5">
+              <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-amber-500/10 text-amber-600 font-bold">
+                <Cloud className="h-5 w-5" />
+              </div>
+              <div>
+                <h4 className="text-sm font-bold text-slate-900">Cloudflare R2 Storage</h4>
+                <p className="text-[11px] text-slate-500">Primary Global CDN & Bucket</p>
+              </div>
+            </div>
+            <Badge
+              className={cn(
+                "text-[10px] font-bold px-2 py-0.5",
+                data?.r2Healthy
+                  ? "bg-emerald-500/15 text-emerald-700 border-emerald-300"
+                  : "bg-rose-500/15 text-rose-700 border-rose-300"
+              )}
+            >
+              {data?.r2Healthy ? t("r2StatusHealthy") : t("r2StatusDegraded")}
+            </Badge>
+          </div>
+          <div className="mt-3.5 space-y-1.5 text-xs text-slate-600 border-t border-slate-100 pt-3">
+            <div className="flex justify-between">
+              <span className="text-slate-400">Target Bucket:</span>
+              <span className="font-mono text-slate-700 font-medium">cars-storage</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-slate-400">CDN Acceleration:</span>
+              <span className="text-emerald-700 font-medium">Enabled (Direct Serving)</span>
+            </div>
+          </div>
+        </div>
+
+        {/* MinIO Reserved Storage Card */}
+        <div className="rounded-xl border border-slate-200 bg-gradient-to-br from-teal-50/40 via-white to-emerald-50/30 p-4">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2.5">
+              <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-teal-500/10 text-teal-600 font-bold">
+                <HardDrive className="h-5 w-5" />
+              </div>
+              <div>
+                <h4 className="text-sm font-bold text-slate-900">MinIO Reserved Storage</h4>
+                <p className="text-[11px] text-slate-500">Zero-Downtime Standby Backup</p>
+              </div>
+            </div>
+            <Badge
+              className={cn(
+                "text-[10px] font-bold px-2 py-0.5",
+                data?.minioHealthy
+                  ? "bg-emerald-500/15 text-emerald-700 border-emerald-300"
+                  : "bg-amber-500/15 text-amber-700 border-amber-300"
+              )}
+            >
+              {data?.minioHealthy ? t("minioStatusHealthy") : "MinIO: Standby"}
+            </Badge>
+          </div>
+          <div className="mt-3.5 space-y-1.5 text-xs text-slate-600 border-t border-slate-100 pt-3">
+            <div className="flex justify-between">
+              <span className="text-slate-400">Failover Mode:</span>
+              <span className="text-teal-700 font-medium">Automatic on R2 Disruption</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-slate-400">Local Persistence:</span>
+              <span className="font-mono text-slate-700 font-medium">Docker Volume</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Sync Action Area */}
+      <div className="mt-5 rounded-xl border border-slate-200 bg-slate-50/70 p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+        <div>
+          <div className="flex items-center gap-2">
+            <span className={cn(
+              "flex h-2.5 w-2.5 rounded-full",
+              pendingCount > 0 ? "bg-amber-500 animate-pulse" : "bg-emerald-500"
+            )} />
+            <h5 className="text-sm font-bold text-slate-900">
+              {pendingCount > 0 ? t("pendingSyncCount", { n: pendingCount }) : t("noPendingSync")}
+            </h5>
+          </div>
+          <p className="mt-1 text-xs text-slate-500">
+            {pendingCount > 0
+              ? `${pendingCount} reserved file(s) are ready to be pushed to Cloudflare R2.`
+              : "All photos and document uploads are fully synchronized with Cloudflare R2."}
+          </p>
+        </div>
+
+        <div className="flex items-center gap-2.5 shrink-0">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => refetch()}
+            disabled={syncing}
+            className="h-9 text-xs"
+          >
+            <RefreshCw className={cn("h-3.5 w-3.5 mr-1.5", syncing && "animate-spin")} />
+            {t("regenerate")}
+          </Button>
+
+          <Button
+            onClick={handleSync}
+            disabled={syncing || pendingCount === 0}
+            className="h-9 bg-amber-500 hover:bg-amber-400 text-slate-950 font-semibold text-xs"
+          >
+            {syncing ? (
+              <>
+                <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" />
+                {t("syncingR2")}
+              </>
+            ) : (
+              <>
+                <CloudUpload className="h-3.5 w-3.5 mr-1.5" />
+                {t("syncToR2")}
+              </>
+            )}
+          </Button>
+        </div>
+      </div>
+    </SectionCard>
+  );
+}
+

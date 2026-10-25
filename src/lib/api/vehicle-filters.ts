@@ -108,6 +108,26 @@ export function buildVehicleWhere(sp: URLSearchParams): Prisma.VehicleWhereInput
   if (sp.get("featured") === "true") where.featured = true;
   if (sp.get("hasReport") === "true") where.reports = { some: { status: "COMPLETE" } };
 
+  const category = sp.get("category") || sp.get("listingCategory");
+  if (category && category.trim().toUpperCase() !== "ALL") {
+    (where as any).listingCategory = category.trim().toUpperCase();
+  }
+
+  const partCategory = sp.get("partCategory");
+  if (partCategory && partCategory.trim().toUpperCase() !== "ALL") {
+    (where as any).partCategory = partCategory.trim().toUpperCase();
+  }
+
+  const partTarget = sp.get("partTarget");
+  if (partTarget && partTarget.trim().toUpperCase() !== "ALL") {
+    (where as any).partTarget = partTarget.trim().toUpperCase();
+  }
+
+  const partCondition = sp.get("partCondition") || (category === "SPARE_PART" ? sp.get("condition") : null);
+  if (partCondition && partCondition.trim().toUpperCase() !== "ALL" && partCondition.trim().toUpperCase() !== "ANY") {
+    (where as any).partCondition = partCondition.trim().toUpperCase();
+  }
+
   return where;
 }
 
@@ -135,8 +155,8 @@ export async function listVehicles(sp: URLSearchParams): Promise<PagedVehiclesRe
 
   // q needs case-insensitive matching, which SQLite + Prisma does not support.
   const filtered = q
-    ? matches.filter((v) => {
-        const text = `${v.make} ${v.model} ${v.variant ?? ""} ${v.city ?? ""} ${v.year} ${v.seller?.name ?? ""} ${v.seller?.sellerProfile?.shopName ?? ""}`.toLowerCase();
+    ? matches.filter((v: any) => {
+        const text = `${v.make} ${v.model} ${v.variant ?? ""} ${v.city ?? ""} ${v.year} ${v.partNumber ?? ""} ${v.compatibleModels ?? ""} ${v.partCategory ?? ""} ${v.seller?.name ?? ""} ${v.seller?.sellerProfile?.shopName ?? ""}`.toLowerCase();
         return text.includes(q);
       })
     : matches;

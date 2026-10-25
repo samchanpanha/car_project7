@@ -12,6 +12,19 @@ export type SellerType = "PRIVATE" | "DEALER";
 export type VehicleStatus = "DRAFT" | "PENDING_REVIEW" | "PUBLISHED" | "REJECTED" | "SOLD" | "ARCHIVED";
 export type SortOption = "newest" | "price_asc" | "price_desc" | "year_desc" | "mileage_asc";
 
+export type ListingCategory = "CAR" | "MOTOR" | "SPARE_PART";
+export type PartTarget = "CAR" | "MOTOR" | "UNIVERSAL";
+export type PartCategory =
+  | "TIRES_WHEELS"
+  | "BRAKES_SUSPENSION"
+  | "BATTERY_ELECTRICAL"
+  | "ENGINE_TRANSMISSION"
+  | "LIGHTS_BULBS"
+  | "BODY_MIRRORS"
+  | "OILS_LUBRICANTS"
+  | "ACCESSORIES";
+export type PartCondition = "BRAND_NEW" | "USED_GENUINE" | "AFTERMARKET";
+
 export interface SellerSummaryDTO {
   id: string; // userId
   name: string;
@@ -36,11 +49,19 @@ export interface SellerTelegramLinksDTO {
 
 export interface VehicleCardDTO {
   id: string;
+  listingCategory?: ListingCategory;
+  partCategory?: string | null;
+  partTarget?: string | null;
+  partCondition?: string | null;
+  compatibleModels?: string | null;
+  partNumber?: string | null;
+  engineCc?: number | null;
   make: string;
   model: string;
   variant?: string | null;
   year: number;
   priceUsd: number;
+  priceMasked?: boolean;
   mileageKm: number;
   transmission: string; // AUTOMATIC | MANUAL
   fuel: string; // PETROL | DIESEL | HYBRID | ELECTRIC
@@ -72,6 +93,9 @@ export interface VehicleDetailDTO extends VehicleCardDTO {
   engineCc?: number | null;
   drivetrain?: string | null;
   exteriorColor?: string | null;
+  seats?: number | null;
+  interiorColor?: string | null;
+  fuelEconomy?: string | null;
   vinLast6?: string | null;
   plateNo?: string | null;
   ownershipCount?: number | null;
@@ -165,6 +189,13 @@ export interface MetaDTO {
   yearMin: number;
   yearMax: number;
   sellers?: SellerOptionDTO[];
+  categoryCounts?: {
+    car: number;
+    motor: number;
+    carPart: number;
+    motorPart: number;
+    total: number;
+  };
 }
 
 export interface VehiclesResponseDTO {
