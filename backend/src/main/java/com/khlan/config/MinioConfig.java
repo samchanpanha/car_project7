@@ -8,13 +8,13 @@ import org.springframework.context.annotation.Configuration;
 @Configuration
 public class MinioConfig {
 
-    @Value("${minio.endpoint:http://localhost:9000}")
+    @Value("${CLOUDFLARE_R2_ENDPOINT:${MINIO_ENDPOINT:http://localhost:9000}}")
     private String endpoint;
 
-    @Value("${minio.access-key:minioadmin}")
+    @Value("${CLOUDFLARE_R2_ACCESS_KEY_ID:${MINIO_ACCESS_KEY:minioadmin}}")
     private String accessKey;
 
-    @Value("${minio.secret-key:minioadmin}")
+    @Value("${CLOUDFLARE_R2_SECRET_ACCESS_KEY:${MINIO_SECRET_KEY:minioadmin}}")
     private String secretKey;
 
     @Value("${minio.region:auto}")

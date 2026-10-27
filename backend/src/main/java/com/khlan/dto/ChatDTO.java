@@ -17,6 +17,9 @@ public class ChatDTO {
         private String id;
         private ConversationVehicleDTO vehicle;
         private String sellerName;
+        private String contactName;
+        private String role;
+        private String myRole;
         private MessageItemDTO lastMessage;
         private String updatedAt;
     }
@@ -50,10 +53,23 @@ public class ChatDTO {
     @NoArgsConstructor
     @AllArgsConstructor
     @Builder
+    public static class BuyerSummaryDTO {
+        private String id;
+        private String name;
+        private String avatarUrl;
+    }
+
+    @Data
+    @NoArgsConstructor
+    @AllArgsConstructor
+    @Builder
     public static class ConversationDetailDTO {
         private String id;
         private ConversationVehicleDTO vehicle;
         private VehicleDTO.SellerSummaryDTO seller;
+        private BuyerSummaryDTO buyer;
+        private String myRole;
+        private String contactName;
         private List<MessageItemDTO> messages;
     }
 

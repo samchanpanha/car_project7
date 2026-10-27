@@ -1,6 +1,7 @@
 package com.khlan.service;
 
 import com.khlan.config.DualAuthFilter;
+import com.khlan.dto.AdminDTO;
 import com.khlan.dto.AuthDTO;
 import com.khlan.dto.SessionDTO;
 import com.khlan.entity.*;
@@ -28,6 +29,7 @@ public class SessionService {
     private final SubscriptionRepository subscriptionRepository;
     private final DualAuthFilter dualAuthFilter;
     private final SessionTokenService sessionTokenService;
+    private final AdminService adminService;
 
     public static final String DEMO_BUYER_ID = "usr_demo_buyer";
 
@@ -81,6 +83,38 @@ public class SessionService {
                 isAuthed = true;
             }
         }
+        if (!isAuthed && request.getHeader("Authorization") != null) {
+            String authHeader = request.getHeader("Authorization");
+            if (authHeader.startsWith("Bearer ")) {
+                String token = authHeader.substring(7).trim();
+                if (sessionTokenService.verifySessionToken(token) != null || sessionTokenService.verifyJwt(token) != null) {
+                    isAuthed = true;
+                }
+            }
+        }
+
+        AdminDTO.PlatformSettingsDTO settings = adminService.getPlatformSettings();
+        boolean demoModeEnabled = settings.isDemoModeEnabled();
+        boolean adminOnlyLogin = settings.isAdminOnlyLogin();
+
+        // Check active persona requested
+        boolean personaActive = false;
+        if (demoModeEnabled) {
+            if (cookies != null) {
+                for (Cookie c : cookies) {
+                    if (DualAuthFilter.PERSONA_COOKIE.equals(c.getName()) && DualAuthFilter.ALLOWED_PERSONA_IDS.contains(c.getValue())) {
+                        personaActive = true;
+                        break;
+                    }
+                }
+            }
+            if (!personaActive && request.getHeader(DualAuthFilter.PERSONA_HEADER) != null) {
+                if (DualAuthFilter.ALLOWED_PERSONA_IDS.contains(request.getHeader(DualAuthFilter.PERSONA_HEADER).trim())) {
+                    personaActive = true;
+                }
+            }
+        }
+        boolean demoPersona = !isAuthed && personaActive;
 
         // Fallback to demo buyer if none resolved
         if (activeUserId == null) {
@@ -93,23 +127,27 @@ public class SessionService {
 
         // Build Personas list
         List<SessionDTO.PersonaDTO> personas = new ArrayList<>();
-        List<UserEntity> personaUsers = userRepository.findAllById(DualAuthFilter.ALLOWED_PERSONA_IDS);
-        Map<String, UserEntity> personaUserMap = new HashMap<>();
-        for (UserEntity u : personaUsers) {
-            personaUserMap.put(u.getId(), u);
-        }
+        boolean canSeePersonas = demoModeEnabled || (isAuthed && user != null && ("SUPER_ADMIN".equals(user.getRole()) || "ADMIN".equals(user.getRole())));
 
-        for (String pid : DualAuthFilter.ALLOWED_PERSONA_IDS) {
-            UserEntity pu = personaUserMap.get(pid);
-            PersonaMeta meta = PERSONA_META.get(pid);
-            if (pu != null && meta != null) {
-                personas.add(SessionDTO.PersonaDTO.builder()
-                        .id(pu.getId())
-                        .name(pu.getName())
-                        .role(pu.getRole())
-                        .label(meta.labels())
-                        .tag(meta.tag())
-                        .build());
+        if (canSeePersonas) {
+            List<UserEntity> personaUsers = userRepository.findAllById(DualAuthFilter.ALLOWED_PERSONA_IDS);
+            Map<String, UserEntity> personaUserMap = new HashMap<>();
+            for (UserEntity u : personaUsers) {
+                personaUserMap.put(u.getId(), u);
+            }
+
+            for (String pid : DualAuthFilter.ALLOWED_PERSONA_IDS) {
+                UserEntity pu = personaUserMap.get(pid);
+                PersonaMeta meta = PERSONA_META.get(pid);
+                if (pu != null && meta != null) {
+                    personas.add(SessionDTO.PersonaDTO.builder()
+                            .id(pu.getId())
+                            .name(pu.getName())
+                            .role(pu.getRole())
+                            .label(meta.labels())
+                            .tag(meta.tag())
+                            .build());
+                }
             }
         }
 
@@ -123,6 +161,9 @@ public class SessionService {
                     .phoneVerified(false)
                     .personas(personas)
                     .subscription(null)
+                    .demoPersona(demoPersona)
+                    .demoModeEnabled(demoModeEnabled)
+                    .adminOnlyLogin(adminOnlyLogin)
                     .build();
         }
 
@@ -179,6 +220,9 @@ public class SessionService {
                 .phoneVerified(Boolean.TRUE.equals(user.getPhoneVerified()))
                 .personas(personas)
                 .subscription(subSummary)
+                .demoPersona(demoPersona)
+                .demoModeEnabled(demoModeEnabled)
+                .adminOnlyLogin(adminOnlyLogin)
                 .build();
     }
 
@@ -191,5 +235,11 @@ public class SessionService {
         cookie.setMaxAge(30 * 24 * 60 * 60);
         cookie.setHttpOnly(false);
         response.addCookie(cookie);
+
+        // Leaving the real account: clear real auth cookie on persona switch
+        Cookie deadAuth = new Cookie(DualAuthFilter.AUTH_COOKIE, "");
+        deadAuth.setPath("/");
+        deadAuth.setMaxAge(0);
+        response.addCookie(deadAuth);
     }
 }

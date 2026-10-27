@@ -65,7 +65,7 @@ export function DashboardView() {
   if (me.user.role === "SUPER_ADMIN" || me.user.role === "ADMIN") {
     return <AdminDashboard me={me} />;
   }
-  if (me.user.role === "DEALER") {
+  if (me.user.role === "DEALER" && me.tenant) {
     return <DealerDashboard me={me} />;
   }
   return <CustomerDashboard me={me} />;

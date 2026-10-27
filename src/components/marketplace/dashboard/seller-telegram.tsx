@@ -32,7 +32,7 @@ import { cn } from "@/lib/utils";
 /** t.me links (channel/group) — Telegram apps open these natively. */
 const TME_RE = /^https:\/\/(t\.me|telegram\.me)\/\S+$/i;
 
-type FormState = { miniAppUrl: string; channelUrl: string; groupUrl: string };
+type FormState = { miniAppUrl: string; channelUrl: string; groupUrl: string; chatId: string };
 type FormErrors = Partial<Record<keyof FormState, string>>;
 type TFn = (key: DictKey, vars?: Record<string, string | number>) => string;
 
@@ -46,6 +46,9 @@ function validateForm(form: FormState, t: TFn): FormErrors {
   }
   if (form.channelUrl && !TME_RE.test(form.channelUrl)) errors.channelUrl = t("tgErrTme");
   if (form.groupUrl && !TME_RE.test(form.groupUrl)) errors.groupUrl = t("tgErrTme");
+  if (form.chatId && form.chatId.trim().length > 64) {
+    errors.chatId = "Chat ID must be 64 characters or less";
+  }
   return errors;
 }
 
@@ -54,10 +57,11 @@ export function SellerTelegram() {
   const { data, loading, error, refetch } = useFetch<SellerTelegramDTO>("/api/seller/telegram");
 
   // form + dirty tracking
-  const [form, setForm] = useState<FormState>({ miniAppUrl: "", channelUrl: "", groupUrl: "" });
+  const [form, setForm] = useState<FormState>({ miniAppUrl: "", channelUrl: "", groupUrl: "", chatId: "" });
   const [formErrors, setFormErrors] = useState<FormErrors>({});
   const [hydrated, setHydrated] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [testingBot, setTestingBot] = useState(false);
   // refreshed hub payload returned by PUT (wins over the fetch until refetch)
   const [saved, setSaved] = useState<SellerTelegramDTO | null>(null);
   const [qrLink, setQrLink] = useState<string | null>(null);
@@ -75,6 +79,7 @@ export function SellerTelegram() {
         miniAppUrl: data.miniAppUrl ?? "",
         channelUrl: data.channelUrl ?? "",
         groupUrl: data.groupUrl ?? "",
+        chatId: data.chatId ?? "",
       });
       setHydrated(true);
     }
@@ -115,12 +120,14 @@ export function SellerTelegram() {
         miniAppUrl: form.miniAppUrl.trim() || null,
         channelUrl: form.channelUrl.trim() || null,
         groupUrl: form.groupUrl.trim() || null,
+        chatId: form.chatId.trim() || null,
       });
       setSaved(res);
       setForm({
         miniAppUrl: res.miniAppUrl ?? "",
         channelUrl: res.channelUrl ?? "",
         groupUrl: res.groupUrl ?? "",
+        chatId: res.chatId ?? "",
       });
       toast.success(t("tgSavedToast"));
       refetch();
@@ -128,6 +135,29 @@ export function SellerTelegram() {
       toast.error(e instanceof Error ? e.message : t("errorGeneric"));
     } finally {
       setSaving(false);
+    }
+  };
+
+  const testBotNotification = async () => {
+    const targetChatId = form.chatId.trim();
+    if (!targetChatId) {
+      toast.error(t("tgSellerChatIdHint"));
+      return;
+    }
+    setTestingBot(true);
+    try {
+      const res = await apiSend<{ success: boolean; message: string; chatId: string }>("/api/seller/telegram/test", "POST", {
+        chatId: targetChatId,
+      });
+      if (res.success) {
+        toast.success(t("tgTestBotSuccess"));
+      } else {
+        toast.error(res.message || t("tgTestBotFail"));
+      }
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : t("tgTestBotFail"));
+    } finally {
+      setTestingBot(false);
     }
   };
 
@@ -169,7 +199,13 @@ export function SellerTelegram() {
     channel: `${origin}/api/tg/${dto.inviteCode}?d=CHANNEL`,
     miniApp: `${origin}/api/tg/${dto.inviteCode}?d=MINIAPP`,
   };
-  const maxTrend = Math.max(1, ...dto.stats.last14.map((d) => d.count));
+  const stats = dto.stats ?? {
+    total: 0,
+    byDest: { GROUP: 0, CHANNEL: 0, MINIAPP: 0 },
+    last14: [],
+  };
+  const last14 = stats.last14 ?? [];
+  const maxTrend = Math.max(1, ...last14.map((d) => d.count));
 
   return (
     <>
@@ -245,18 +281,83 @@ export function SellerTelegram() {
             </p>
           </div>
         </div>
+
+        {/* Telegram Bot Lead Notification Chat ID */}
+        <div className="mt-4 pt-4 border-t border-slate-100">
+          <div className="space-y-1.5">
+            <div className="flex items-center justify-between">
+              <Label htmlFor="tg-chatid" className="flex items-center gap-1.5 text-xs font-semibold text-slate-800">
+                <Send className="h-3.5 w-3.5 text-sky-600" aria-hidden />
+                {t("tgSellerChatIdLabel")}
+              </Label>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="h-7 text-xs border-sky-300 text-sky-700 hover:bg-sky-50"
+                onClick={testBotNotification}
+                disabled={testingBot || !form.chatId.trim()}
+              >
+                {testingBot ? (
+                  <Loader2 className="h-3 w-3 mr-1.5 animate-spin" aria-hidden />
+                ) : (
+                  <Send className="h-3 w-3 mr-1.5" aria-hidden />
+                )}
+                {testingBot ? t("tgTestingBot") : t("tgTestBotBtn")}
+              </Button>
+            </div>
+            <Input
+              id="tg-chatid"
+              type="text"
+              placeholder={t("tgChatIdPlaceholder")}
+              value={form.chatId}
+              onChange={(e) => setField("chatId", e.target.value)}
+              aria-invalid={Boolean(formErrors.chatId)}
+              className={cn("h-9 text-xs font-mono", formErrors.chatId && "border-rose-400 focus-visible:ring-rose-200")}
+            />
+            <p className={cn("text-[11px] leading-snug", formErrors.chatId ? "text-rose-600" : "text-slate-400")}>
+              {formErrors.chatId ?? t("tgSellerChatIdHint")}
+            </p>
+          </div>
+        </div>
       </SectionCard>
 
       {/* ---------- 2. tracked invite links ---------- */}
-      <SectionCard title={t("tgLinksTitle")}>
+      <SectionCard
+        title={
+          <div className="flex items-center gap-2">
+            <span>{t("tgLinksTitle")}</span>
+            <span
+              className={cn(
+                "rounded px-2 py-0.5 text-[10px] font-medium border",
+                configured
+                  ? "bg-emerald-50 text-emerald-700 border-emerald-200"
+                  : "bg-amber-50 text-amber-700 border-amber-200"
+              )}
+            >
+              {configured ? t("tgStatusActive") : t("tgStatusDisabled")}
+            </span>
+          </div>
+        }
+      >
         <p className="mb-4 text-xs leading-relaxed text-slate-500">{t("tgLinksHint", { code: dto.inviteCode })}</p>
 
-        <div className="space-y-2.5">
+        {!configured && (
+          <div className="mb-4 rounded-lg bg-amber-50 border border-amber-200 p-3 text-xs leading-relaxed text-amber-900 flex items-start gap-2.5">
+            <span className="text-base leading-none">⚠️</span>
+            <div>
+              <p className="font-semibold">{t("tgStatusDisabled")}</p>
+              <p className="text-[11px] text-amber-800 mt-0.5">{t("tgLinksDisabledNotice")}</p>
+            </div>
+          </div>
+        )}
+
+        <div className={cn("space-y-2.5", !configured && "opacity-60")}>
           <LinkRow
             icon={<Link2 className="h-3.5 w-3.5 text-sky-600" aria-hidden />}
             label={t("tgLinkUniversal")}
             link={links.universal}
-            ready={Boolean(origin)}
+            ready={Boolean(origin) && configured}
             copied={copiedKey === "universal"}
             onCopy={() => copy("universal", links.universal)}
             onShare={() => shareOnTelegram(links.universal)}
@@ -266,7 +367,7 @@ export function SellerTelegram() {
             icon={<UsersRound className="h-3.5 w-3.5 text-sky-600" aria-hidden />}
             label={t("tgLinkGroup")}
             link={links.group}
-            ready={Boolean(origin) && Boolean(dto.groupUrl)}
+            ready={Boolean(origin) && configured && Boolean(dto.groupUrl)}
             copied={copiedKey === "group"}
             onCopy={() => copy("group", links.group)}
             onShare={() => shareOnTelegram(links.group)}
@@ -275,7 +376,7 @@ export function SellerTelegram() {
             icon={<Megaphone className="h-3.5 w-3.5 text-sky-600" aria-hidden />}
             label={t("tgLinkChannel")}
             link={links.channel}
-            ready={Boolean(origin) && Boolean(dto.channelUrl)}
+            ready={Boolean(origin) && configured && Boolean(dto.channelUrl)}
             copied={copiedKey === "channel"}
             onCopy={() => copy("channel", links.channel)}
             onShare={() => shareOnTelegram(links.channel)}
@@ -284,37 +385,31 @@ export function SellerTelegram() {
             icon={<Bot className="h-3.5 w-3.5 text-sky-600" aria-hidden />}
             label={t("tgLinkMiniApp")}
             link={links.miniApp}
-            ready={Boolean(origin) && Boolean(dto.miniAppUrl)}
+            ready={Boolean(origin) && configured && Boolean(dto.miniAppUrl)}
             copied={copiedKey === "miniApp"}
             onCopy={() => copy("miniApp", links.miniApp)}
             onShare={() => shareOnTelegram(links.miniApp)}
           />
         </div>
-
-        {!configured && (
-          <p className="mt-3 rounded-lg bg-amber-50 border border-amber-200 px-3 py-2 text-[11px] leading-relaxed text-amber-800">
-            {t("tgNeedConfigFirst")}
-          </p>
-        )}
       </SectionCard>
 
       {/* ---------- 3. click stats ---------- */}
       <SectionCard title={t("tgStatsTitle")}>
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-          <StatCard icon={MousePointerClick} label={t("tgStatTotal")} value={dto.stats.total} />
-          <StatCard icon={UsersRound} label={t("tgStatGroup")} value={dto.stats.byDest.GROUP} />
-          <StatCard icon={Megaphone} label={t("tgStatChannel")} value={dto.stats.byDest.CHANNEL} />
-          <StatCard icon={Bot} label={t("tgStatMiniapp")} value={dto.stats.byDest.MINIAPP} />
+          <StatCard icon={MousePointerClick} label={t("tgStatTotal")} value={stats.total ?? 0} />
+          <StatCard icon={UsersRound} label={t("tgStatGroup")} value={stats.byDest?.GROUP ?? 0} />
+          <StatCard icon={Megaphone} label={t("tgStatChannel")} value={stats.byDest?.CHANNEL ?? 0} />
+          <StatCard icon={Bot} label={t("tgStatMiniapp")} value={stats.byDest?.MINIAPP ?? 0} />
         </div>
 
         <div className="mt-5">
           <p className="mb-2 text-xs font-medium text-slate-600">{t("tgTrendTitle")}</p>
-          {dto.stats.total === 0 ? (
+          {(stats.total ?? 0) === 0 ? (
             <EmptyState icon={MousePointerClick} text={t("tgNoClicks")} hint={t("tgNoClicksHint")} className="p-6" />
           ) : (
             <>
               <div className="flex h-24 items-end gap-1" role="img" aria-label={t("tgTrendTitle")}>
-                {dto.stats.last14.map((d) => (
+                {last14.map((d) => (
                   <div key={d.date} className="flex h-full flex-1 flex-col justify-end">
                     <div
                       className={cn("w-full rounded-t", d.count > 0 ? "bg-sky-500" : "bg-slate-100")}
@@ -325,13 +420,13 @@ export function SellerTelegram() {
                 ))}
               </div>
               <div className="mt-1.5 flex justify-between text-[10px] text-slate-400">
-                <span>{dto.stats.last14[0]?.date.slice(5)}</span>
-                <span>{dto.stats.last14[dto.stats.last14.length - 1]?.date.slice(5)}</span>
+                <span>{last14[0]?.date ? last14[0].date.slice(5) : ""}</span>
+                <span>{last14[last14.length - 1]?.date ? last14[last14.length - 1].date.slice(5) : ""}</span>
               </div>
               <div className="mt-4 space-y-2 border-t border-slate-100 pt-4">
-                <HBar label={t("tgLinkGroup")} value={dto.stats.byDest.GROUP} total={Math.max(1, dto.stats.total)} colorClass="bg-sky-500" />
-                <HBar label={t("tgLinkChannel")} value={dto.stats.byDest.CHANNEL} total={Math.max(1, dto.stats.total)} colorClass="bg-teal-500" />
-                <HBar label={t("tgLinkMiniApp")} value={dto.stats.byDest.MINIAPP} total={Math.max(1, dto.stats.total)} colorClass="bg-amber-500" />
+                <HBar label={t("tgLinkGroup")} value={stats.byDest?.GROUP ?? 0} total={Math.max(1, stats.total ?? 0)} colorClass="bg-sky-500" />
+                <HBar label={t("tgLinkChannel")} value={stats.byDest?.CHANNEL ?? 0} total={Math.max(1, stats.total ?? 0)} colorClass="bg-teal-500" />
+                <HBar label={t("tgLinkMiniApp")} value={stats.byDest?.MINIAPP ?? 0} total={Math.max(1, stats.total ?? 0)} colorClass="bg-amber-500" />
               </div>
             </>
           )}
@@ -389,14 +484,21 @@ function LinkRow({
 }) {
   const t = useT();
   return (
-    <div className="rounded-lg border border-slate-200 bg-slate-50/60 p-2.5">
-      <div className="mb-1.5 flex items-center gap-1.5 text-xs font-medium text-slate-700">
-        {icon}
-        {label}
+    <div className={cn("rounded-lg border border-slate-200 bg-slate-50/60 p-2.5 transition-all", !ready && "opacity-75")}>
+      <div className="mb-1.5 flex items-center justify-between text-xs font-medium text-slate-700">
+        <div className="flex items-center gap-1.5">
+          {icon}
+          {label}
+        </div>
+        {!ready && (
+          <span className="text-[10px] font-normal text-amber-700 bg-amber-50 border border-amber-200 px-1.5 py-0.5 rounded">
+            {t("tgStatusDisabled")}
+          </span>
+        )}
       </div>
       <div className="flex flex-wrap items-center gap-1.5">
-        <code className="min-w-0 flex-1 truncate rounded-md border border-slate-200 bg-white px-2 py-1.5 text-[11px] text-slate-600">
-          {ready ? link : "—"}
+        <code className={cn("min-w-0 flex-1 truncate rounded-md border border-slate-200 bg-white px-2 py-1.5 text-[11px]", ready ? "text-slate-600 font-mono" : "text-slate-400 italic")}>
+          {ready ? link : "Disabled — set up destination above"}
         </code>
         <Button variant="outline" size="sm" className="h-8 shrink-0" disabled={!ready} onClick={onCopy}>
           {copied

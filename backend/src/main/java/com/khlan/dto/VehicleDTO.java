@@ -241,10 +241,16 @@ public class VehicleDTO {
     @AllArgsConstructor
     @Builder
     public static class PagedVehiclesResponseDTO {
+        /** Array of vehicle cards matching Next.js VehiclesResponseDTO { items } */
+        private List<VehicleCardDTO> items;
+        /** Alias for items for backward compatibility */
         private List<VehicleCardDTO> vehicles;
         private long total;
         private int page;
+        private int pageSize;
         private int limit;
+        private int pageCount;
+        private String nextCursor;
         private boolean hasMore;
     }
 }

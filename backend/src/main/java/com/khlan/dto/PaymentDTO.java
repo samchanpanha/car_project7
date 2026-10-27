@@ -60,6 +60,11 @@ public class PaymentDTO {
         private String currency;
         private String manualRef;
         private String note;
+        private String evidenceImage;
+        private String evidenceUrl;
+        private String paymentDate;
+        private Boolean submitForReview;
+        private Object ocrData;
     }
 
     @Data
@@ -76,6 +81,7 @@ public class PaymentDTO {
     @Builder
     @NoArgsConstructor
     @AllArgsConstructor
+    @JsonInclude(JsonInclude.Include.NON_NULL)
     public static class CheckRefResponse {
         private boolean valid;
         private boolean exists;
@@ -84,6 +90,13 @@ public class PaymentDTO {
         private String normalizedRef;
         private String bankCode;
         private String source;
+        private String trxId;
+        private String transactionDateFormatted;
+        private String transactionDateRaw;
+        private Boolean isNotCurrentDate;
+        private Boolean isOld;
+        private String telegramAdmin;
+        private String telegramAdminLink;
     }
 
     @Data
@@ -287,8 +300,41 @@ public class PaymentDTO {
     @Builder
     @NoArgsConstructor
     @AllArgsConstructor
+    public static class AbaDailyStatDTO {
+        private String date;
+        private int count;
+        private double totalKhr;
+        private double totalUsd;
+        private int matchedCount;
+        private int unmatchedCount;
+        private int underpaidCount;
+        private int duplicateCount;
+        private int collisionCount;
+    }
+
+    @Data
+    @Builder
+    @NoArgsConstructor
+    @AllArgsConstructor
+    public static class AbaSummaryDTO {
+        private long totalCount;
+        private long unmatchedCount;
+        private long matchedCount;
+        private long underpaidCount;
+        private long duplicateCount;
+        private long collisionCount;
+        private double totalKhr;
+        private double totalUsd;
+    }
+
+    @Data
+    @Builder
+    @NoArgsConstructor
+    @AllArgsConstructor
     public static class AbaTransactionsResponse {
         private List<AbaTransactionDTO> transactions;
+        private List<AbaDailyStatDTO> dailyBreakdown;
+        private AbaSummaryDTO summary;
         private long total;
         private long unmatched;
         private long matched;

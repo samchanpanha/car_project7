@@ -17,7 +17,6 @@ public class AuthDTO {
         private String phone;
         @NotBlank(message = "password is required")
         private String password;
-        @NotBlank(message = "captchaToken is required")
         private String captchaToken;
     }
 
@@ -36,7 +35,6 @@ public class AuthDTO {
         private String role = "BUYER";
         @Builder.Default
         private String locale = "km";
-        @NotBlank(message = "captchaToken is required")
         private String captchaToken;
     }
 
@@ -69,8 +67,13 @@ public class AuthDTO {
     public static class CaptchaVerifyRequest {
         @NotBlank(message = "id is required")
         private String id;
-        @NotBlank(message = "order is required")
         private String order;
+        private String sequence;
+
+        public String getEffectiveOrder() {
+            if (sequence != null && !sequence.isBlank()) return sequence;
+            return order;
+        }
     }
 
     @Data

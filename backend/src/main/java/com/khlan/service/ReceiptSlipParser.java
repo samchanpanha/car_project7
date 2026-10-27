@@ -10,6 +10,11 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
 import java.nio.charset.StandardCharsets;
+import javax.imageio.ImageIO;
+import java.awt.image.BufferedImage;
+import java.io.ByteArrayInputStream;
+import net.sourceforge.tess4j.ITesseract;
+import net.sourceforge.tess4j.Tesseract;
 import java.security.MessageDigest;
 import java.time.OffsetDateTime;
 import java.time.format.DateTimeFormatter;
@@ -27,7 +32,7 @@ public class ReceiptSlipParser {
 
     private static final Pattern SVG_TEXT_PATTERN = Pattern.compile("<text[^>]*>([^<]+)</text>", Pattern.CASE_INSENSITIVE);
     private static final Pattern TRX_REF_PATTERN = Pattern.compile(
-            "(?:Reference(?:\\s*(?:No\\.?|ID|#|Number))?|\\bRef(?:\\s*(?:No\\.?|ID|#|Number))?|Trx\\.?\\s*(?:ID|No\\.?|#)?|Transaction\\s*(?:ID|No\\.?|Ref|Hash|Number)?|Txn\\s*(?:ID|No\\.?|#)?|Bank\\s*Ref(?:\\s*No\\.?)?)[:\\s#]+([0-9A-Za-z]{6,32})",
+            "(?:Reference(?:\\s*(?:No\\.?|ID|#|Number))?|\\bRef(?:\\s*(?:No\\.?|ID|#|Number))?|Trx\\.?\\s*(?:ID|No\\.?|#)?|Txn\\.?\\s*(?:ID|No\\.?|#)?|Transaction\\s*(?:ID|No\\.?|Ref|Hash|Number)?|Bank\\s*Ref(?:\\s*No\\.?)?)[:\\s#\\.]+([0-9A-Za-z]{6,32})",
             Pattern.CASE_INSENSITIVE
     );
     private static final Pattern STANDALONE_15_PATTERN = Pattern.compile("\\b(17\\d{13}|\\d{15})\\b");
@@ -56,14 +61,14 @@ public class ReceiptSlipParser {
             String enteredRef,
             String previewUrl,
             PaymentDTO.PaymentConfigDTO paymentConfig) {
+        String reqImage = dataUrl;
 
         String imageHash = computeSha256(imageBytes);
-
         // 1. Extract raw text from receipt
         String rawText = extractRawText(imageBytes, dataUrl);
 
         // 2. Parse receipt fields
-        PaymentDTO.ParsedReceiptDTO receiptData = parseReceiptFields(rawText, plan, cycle, currency, enteredRef);
+        PaymentDTO.ParsedReceiptDTO receiptData = parseReceiptFields(rawText, plan, cycle, currency, enteredRef, dataUrl, previewUrl);
 
         // 3. Cross-reference with bank transactions (e.g. ABA PayWay)
         boolean isUnderpaid = false;
@@ -181,7 +186,34 @@ public class ReceiptSlipParser {
             if (sb.length() > 0) return sb.toString();
         }
 
-        // If binary JPEG/PNG, extract ASCII printable sequences
+        System.setProperty("jna.library.path",
+                "/opt/homebrew/lib:/usr/local/lib:/usr/lib");
+        // Real OCR for raster images (JPEG/PNG screenshots).
+        try {
+            BufferedImage img = ImageIO.read(new ByteArrayInputStream(bytes));
+            if (img != null) {
+                ITesseract tesseract = new Tesseract();
+                String[] candidates = new String[] {
+                    System.getenv("TESSDATA_PREFIX"),
+                    "/usr/share/tessdata",
+                    "/usr/share/tesseract-ocr/tessdata",
+                    "/usr/share/tesseract-ocr/5/tessdata",
+                    "/opt/homebrew/share/tessdata"
+                };
+                for (String c : candidates) {
+                    if (c == null) continue;
+                    java.io.File f = new java.io.File(c);
+                    if (f.exists() && f.isDirectory()) { tesseract.setDatapath(f.getAbsolutePath()); break; }
+                }
+                tesseract.setLanguage("eng");
+                String ocr = tesseract.doOCR(img);
+                if (ocr != null && !ocr.isBlank()) return ocr;
+            }
+        } catch (Throwable ex) {
+            log.warn("[OCR] Tesseract failed: {}", ex.getMessage());
+        }
+
+        // Fallback: extract ASCII printable sequences
         StringBuilder currentWord = new StringBuilder();
         for (byte b : bytes) {
             if ((b >= 32 && b <= 126) || b == '\n' || b == '\r') {
@@ -199,7 +231,8 @@ public class ReceiptSlipParser {
     }
 
     private PaymentDTO.ParsedReceiptDTO parseReceiptFields(
-            String text, String plan, String cycle, String currency, String enteredRef) {
+            String text, String plan, String cycle, String currency, String enteredRef,
+            String dataUrl, String previewUrl) {
 
         String trxId = null;
         String externalRef = null;
@@ -217,39 +250,69 @@ public class ReceiptSlipParser {
         }
 
         // 2. Trx ID
-        Matcher trxMatcher = TRX_REF_PATTERN.matcher(text);
-        if (trxMatcher.find()) {
-            trxId = trxMatcher.group(1).trim();
-        } else if (externalRef != null) {
-            trxId = externalRef;
-        } else {
-            Matcher s15Matcher = STANDALONE_15_PATTERN.matcher(text);
-            if (s15Matcher.find()) {
-                trxId = s15Matcher.group(1).trim();
+        String upper = text.toUpperCase();
+        // Dynamic extraction that works for bank slips (SVG sample or real receipts).
+        String[] textLines = text.split("\r?\n");
+
+        if (trxId == null) {
+            for (int i = 0; i < textLines.length && trxId == null; i++) {
+                String up = textLines[i].toUpperCase();
+                if (!(up.contains("TRX") || up.contains("REF") || up.contains("TXN"))) continue;
+                Matcher same = Pattern.compile("[:.#\\-]\\s*([A-Za-z0-9][A-Za-z0-9\\-]{5,31})").matcher(textLines[i]);
+                while (same.find()) {
+                    String cand = same.group(1).toUpperCase().replace("-", "").replaceAll("[^A-Z0-9]", "");
+                    if (isValidExtractedRef(cand)) { trxId = cand; break; }
+                }
+                if (trxId != null) break;
+                for (int j = i + 1; j < textLines.length && j <= i + 2; j++) {
+                    String nxt = textLines[j].trim();
+                    if (nxt.isEmpty()) continue;
+                    String cand = nxt.toUpperCase().replaceAll("[^A-Z0-9]", "");
+                    if (isValidExtractedRef(cand)) { trxId = cand; break; }
+                    break;
+                }
             }
         }
 
-        // If not found in text, use enteredRef or generate plausible ABA candidate
-        if (trxId == null && enteredRef != null && !enteredRef.isBlank()) {
-            trxId = enteredRef.trim();
-        }
         if (trxId == null) {
-            trxId = "17" + (System.currentTimeMillis() + "").substring(0, 13);
+            Matcher s15 = STANDALONE_15_PATTERN.matcher(text);
+            while (s15.find()) {
+                String cand = s15.group(1).trim().toUpperCase();
+                if (isValidExtractedRef(cand)) { trxId = cand; break; }
+            }
         }
 
+        if (trxId == null) {
+            Matcher ftm = Pattern.compile("\\b(FT[A-Z0-9]{8,})\\b").matcher(upper);
+            if (ftm.find()) trxId = ftm.group(1);
+        }
+
+        if (trxId == null && externalRef != null) {
+            String extCand = externalRef.trim().toUpperCase().replaceAll("[^A-Z0-9]", "");
+            if (isValidExtractedRef(extCand)) trxId = extCand;
+        }
+
+        if (trxId == null && enteredRef != null && enteredRef.trim().toUpperCase().matches("FT[A-Z0-9]{8,}")) {
+            trxId = enteredRef.trim().toUpperCase();
+        }
+
+        if (trxId != null) {
+            trxId = trxId.toUpperCase().replaceAll("[^A-Z0-9]", "");
+        }
         // 3. APV
         Matcher apvMatcher = APV_PATTERN.matcher(text);
         if (apvMatcher.find()) {
             apv = apvMatcher.group(1).trim();
-        } else {
-            apv = "135160";
         }
 
         // 4. Amount
+        String detectedCurrency = "USD";
+        double detectedAmountKhr = 0.0;
         Matcher usdMatcher = USD_AMOUNT_PATTERN.matcher(text);
         if (usdMatcher.find()) {
             try {
                 amount = Double.parseDouble(usdMatcher.group(1));
+                detectedCurrency = "USD";
             } catch (Exception ignored) {}
         }
         if (amount == null) {
@@ -258,6 +321,8 @@ public class ReceiptSlipParser {
                 try {
                     double khr = Double.parseDouble(khrMatcher.group(1).replace(",", ""));
                     amount = Math.round((khr / 4100.0) * 100.0) / 100.0;
+                    detectedAmountKhr = khr;
+                    detectedCurrency = "KHR";
                 } catch (Exception ignored) {}
             }
         }
@@ -266,7 +331,9 @@ public class ReceiptSlipParser {
         }
 
         double amountUsd = amount;
-        double amountKhr = amount * 4100.0;
+        double amountKhr = detectedCurrency.equals("KHR") && detectedAmountKhr > 0
+                ? detectedAmountKhr
+                : amount * 4100.0;
 
         // 5. Payee
         Matcher payeeMatcher = PAYEE_PATTERN.matcher(text);
@@ -305,7 +372,7 @@ public class ReceiptSlipParser {
                 .externalRef(externalRef)
                 .apv(apv)
                 .amount(amount)
-                .currency("USD")
+                .currency(detectedCurrency)
                 .amountUsd(amountUsd)
                 .amountKhr(amountKhr)
                 .paidAt(OffsetDateTime.now().format(DateTimeFormatter.ISO_OFFSET_DATE_TIME))
@@ -320,6 +387,16 @@ public class ReceiptSlipParser {
                 .confidence(95.0)
                 .rawText(text.length() > 200 ? text.substring(0, 200) + "..." : text)
                 .build();
+    }
+
+
+    private boolean isValidExtractedRef(String cand) {
+        if (cand == null || cand.isBlank()) return false;
+        if (cand.length() < 6 || cand.length() > 32) return false;
+        // Reject obvious UI/document words that the OCR labelled as a "reference".
+        String[] bad = new String[] {"CONFIRMATION","REFERENCE","TRANSACTION","NUMBER","COPY","RECEIPT","PAYMENT","SUCCESSFUL","MERCHANT","ACCOUNT","AMOUNT","CURRENCY","KHQR","BAKONG","MOBILE","PAYWAY","TRXID"};
+        for (String b : bad) if (cand.equals(b)) return false;
+        return true;
     }
 
     private double resolveExpectedUsd(String plan, boolean yearly) {

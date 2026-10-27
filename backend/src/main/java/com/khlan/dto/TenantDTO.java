@@ -61,10 +61,19 @@ public class TenantDTO {
     @Builder
     public static class PlanDTO {
         private String id;
+        private String plan;
         private String name;
         private double priceUsd;
+        private Double priceUsdMonthly;
+        private Double priceUsdYearly;
+        private Double priceKhrMonthly;
+        private Double priceKhrYearly;
         private int featuredSlots;
         private int branchSlots;
+        private Integer listingsLimit;
+        private Integer featuredLimit;
+        private Integer seats;
+        private Boolean enabled;
         private List<String> features;
     }
 

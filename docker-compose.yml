@@ -114,11 +114,20 @@ services:
       CLOUDFLARE_R2_ACCESS_KEY_ID: ${CLOUDFLARE_R2_ACCESS_KEY_ID:-}
       CLOUDFLARE_R2_SECRET_ACCESS_KEY: ${CLOUDFLARE_R2_SECRET_ACCESS_KEY:-}
       CLOUDFLARE_R2_BUCKET: ${CLOUDFLARE_R2_BUCKET:-cars-storage}
-      CLOUDFLARE_R2_PREFIX: ${CLOUDFLARE_R2_PREFIX:-car_list/}
+      CLOUDFLARE_R2_PREFIX: ${CLOUDFLARE_R2_PREFIX:-}
       CLOUDFLARE_R2_PUBLIC_URL: ${CLOUDFLARE_R2_PUBLIC_URL:-}
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-8961155344:AAEXIEeSWNp4kudB2YQEnpj7hsUkd-ignAc}
+      TELEGRAM_GROUP_CHAT_ID: ${TELEGRAM_GROUP_CHAT_ID:--1004489863210}
+      TELEGRAM_WEBHOOK_SECRET: ${TELEGRAM_WEBHOOK_SECRET:-khlan_webhook_secret_2026}
       NACOS_SERVER_ADDR: nacos:8848
       NACOS_DISCOVERY_ENABLED: "true"
       NACOS_CONFIG_ENABLED: "true"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O - http://127.0.0.1:8080/api/health >/dev/null 2>&1 || curl -fsS http://127.0.0.1:8080/api/health >/dev/null 2>&1 || exit 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 20s
     depends_on:
       postgres:
         condition: service_healthy
@@ -129,7 +138,10 @@ services:
       nacos:
         condition: service_healthy
     networks:
-      - khlan-net
+      khlan-net:
+        aliases:
+          - backend
+          - khlan-backend
 
   # -------------------------------------------------------------
   # Next.js 15 Frontend Web Application
@@ -149,25 +161,32 @@ services:
       PORT: 3000
       HOSTNAME: 0.0.0.0
       BACKEND_URL: http://backend:8080
-      DATABASE_URL: postgresql://khlan:khlan_secret_2026@postgres:5432/khlandb
       NACOS_SERVER_ADDR: nacos:8848
       CLOUDFLARE_R2_ENDPOINT: ${CLOUDFLARE_R2_ENDPOINT:-}
       CLOUDFLARE_R2_ACCESS_KEY_ID: ${CLOUDFLARE_R2_ACCESS_KEY_ID:-}
       CLOUDFLARE_R2_SECRET_ACCESS_KEY: ${CLOUDFLARE_R2_SECRET_ACCESS_KEY:-}
       CLOUDFLARE_R2_BUCKET: ${CLOUDFLARE_R2_BUCKET:-cars-storage}
-      CLOUDFLARE_R2_PREFIX: ${CLOUDFLARE_R2_PREFIX:-car_list/}
+      CLOUDFLARE_R2_PREFIX: ${CLOUDFLARE_R2_PREFIX:-}
       CLOUDFLARE_R2_PUBLIC_URL: ${CLOUDFLARE_R2_PUBLIC_URL:-}
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-8961155344:AAEXIEeSWNp4kudB2YQEnpj7hsUkd-ignAc}
+      TELEGRAM_GROUP_CHAT_ID: ${TELEGRAM_GROUP_CHAT_ID:--1004489863210}
+      TELEGRAM_WEBHOOK_SECRET: ${TELEGRAM_WEBHOOK_SECRET:-khlan_webhook_secret_2026}
     depends_on:
-      postgres:
-        condition: service_healthy
       backend:
-        condition: service_started
+        condition: service_healthy
     volumes:
-      - ./db:/app/db
       - ./public:/app/public
     networks:
-      - khlan-net
-
+      khlan-net:
+        aliases:
+          - frontend
+          - khlan-frontend
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:3000 >/dev/null 2>&1 || exit 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 20s
   # -------------------------------------------------------------
   # Reverse Proxy, SSL, & API Gateway: NGINX
   # -------------------------------------------------------------
@@ -180,8 +199,10 @@ services:
     volumes:
       - ./nginx/default.conf:/etc/nginx/conf.d/default.conf:ro
     depends_on:
-      - backend
-      - frontend
+      backend:
+        condition: service_healthy
+      frontend:
+        condition: service_healthy
     networks:
       - khlan-net
 
@@ -246,6 +267,22 @@ services:
     depends_on:
       - prometheus
       - loki
+    networks:
+      - khlan-net
+
+  # -------------------------------------------------------------
+  # Optional local test tunnel (Cloudflare Quick Tunnel -> backend)
+  # Start with: docker compose --profile tunnel up -d cloudflared
+  # -------------------------------------------------------------
+  cloudflared:
+    profiles: ["tunnel"]
+    image: cloudflare/cloudflared:latest
+    container_name: khlan-cloudflared
+    restart: unless-stopped
+    command: ["tunnel", "--url", "http://nginx:80", "--no-autoupdate"]
+    depends_on:
+      nginx:
+        condition: service_started
     networks:
       - khlan-net
 

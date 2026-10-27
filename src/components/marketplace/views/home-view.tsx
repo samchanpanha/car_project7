@@ -156,7 +156,7 @@ export function HomeView() {
   ]);
 
   // Main vehicle listing data (paged)
-  const { data, loading } = useFetch<PagedVehiclesResponseDTO>(
+  const { data, loading, error, refetch } = useFetch<PagedVehiclesResponseDTO>(
     `/api/vehicles${qs(queryObj)}`,
   );
 
@@ -1262,7 +1262,28 @@ export function HomeView() {
 
         {/* 4. Car Grid (Extensive marketplace inventory) */}
         <div className="mt-6">
-          {loading ? (
+          {error ? (
+            <div className="rounded-2xl border border-amber-300 bg-amber-50/80 p-8 text-center max-w-lg mx-auto my-8 shadow-sm">
+              <div className="inline-flex p-3 rounded-full bg-amber-100 text-amber-700 mb-3 animate-pulse">
+                <RotateCcw className="h-6 w-6" />
+              </div>
+              <h3 className="text-lg font-bold text-amber-950">
+                {locale === "km" ? "កំពុងភ្ជាប់ទៅកាន់សេវាប្រព័ន្ធ..." : "Connecting to KhLan Backend Service"}
+              </h3>
+              <p className="mt-2 text-sm text-amber-800">
+                {locale === "km"
+                  ? "ប្រព័ន្ធកំពុងធ្វើសមកាលកម្មទិន្នន័យ ឬចាប់ផ្តើមឡើងវិញ។ សូមចុចសាកល្បងឡើងវិញ។"
+                  : "The backend service is currently synchronizing or restarting. Click retry to reconnect."}
+              </p>
+              <Button
+                onClick={() => refetch()}
+                className="mt-4 bg-amber-600 hover:bg-amber-700 text-white font-semibold shadow-sm"
+              >
+                <RotateCcw className="h-4 w-4 mr-2" />
+                {locale === "km" ? "ព្យាយាមឡើងវិញ" : "Retry Connection"}
+              </Button>
+            </div>
+          ) : loading ? (
             <div className="grid gap-5 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
               {Array.from({ length: 8 }).map((_, i) => (
                 <VehicleCardSkeleton key={i} />

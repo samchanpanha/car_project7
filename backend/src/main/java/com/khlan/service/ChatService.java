@@ -81,6 +81,9 @@ public class ChatService {
                     .createdAt(m.getCreatedAt() != null ? m.getCreatedAt().toString() : null)
                     .build()).orElse(null);
 
+            String role = isSeller ? "SELLER" : "BUYER";
+            String contactName = sellerName;
+
             list.add(ChatDTO.ConversationListItemDTO.builder()
                     .id(c.getId())
                     .vehicle(ChatDTO.ConversationVehicleDTO.builder()
@@ -92,6 +95,9 @@ public class ChatService {
                             .thumbnail(thumb)
                             .build())
                     .sellerName(sellerName)
+                    .contactName(contactName)
+                    .role(role)
+                    .myRole(role)
                     .lastMessage(lastMessage)
                     .updatedAt(c.getUpdatedAt() != null ? c.getUpdatedAt().toString() : null)
                     .build());
@@ -197,6 +203,21 @@ public class ChatService {
 
         VehicleDTO.SellerSummaryDTO sellerSummary = vehicleService.getSellerSummary(vehicle.getSellerId());
 
+        boolean isSeller = vehicle.getSellerId().equals(userId);
+        String myRole = isSeller ? "SELLER" : "BUYER";
+        Optional<UserEntity> buyerUser = userRepository.findById(conv.getBuyerId());
+        ChatDTO.BuyerSummaryDTO buyerSummary = ChatDTO.BuyerSummaryDTO.builder()
+                .id(conv.getBuyerId())
+                .name(buyerUser.map(UserEntity::getName).orElse("Buyer"))
+                .avatarUrl(buyerUser.map(UserEntity::getAvatarUrl).orElse(null))
+                .build();
+
+        String contactName = isSeller
+                ? buyerSummary.getName()
+                : (sellerSummary != null && sellerSummary.getShopName() != null && !sellerSummary.getShopName().isBlank()
+                        ? sellerSummary.getShopName()
+                        : (sellerSummary != null ? sellerSummary.getName() : "Seller"));
+
         ChatDTO.ConversationDetailDTO dto = ChatDTO.ConversationDetailDTO.builder()
                 .id(conv.getId())
                 .vehicle(ChatDTO.ConversationVehicleDTO.builder()
@@ -208,6 +229,9 @@ public class ChatService {
                         .thumbnail(thumb)
                         .build())
                 .seller(sellerSummary)
+                .buyer(buyerSummary)
+                .myRole(myRole)
+                .contactName(contactName)
                 .messages(msgDTOs)
                 .build();
 

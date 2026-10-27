@@ -25,6 +25,7 @@ public class AppointmentService {
     private final TenantMemberRepository tenantMemberRepository;
     private final AuditLogRepository auditLogRepository;
     private final ObjectMapper objectMapper;
+    private final org.springframework.beans.factory.ObjectProvider<TelegramService> telegramServiceProvider;
 
     @Transactional(readOnly = true)
     public List<AppointmentDTO.BuyerAppointmentDTO> getBuyerAppointments(String userId) {
@@ -118,7 +119,18 @@ public class AppointmentService {
         appointmentRepository.save(appt);
 
         String sellerName = userRepository.findById(vehicle.getSellerId()).map(UserEntity::getName).orElse("Seller");
+        String buyerName = userRepository.findById(userId).map(UserEntity::getName).orElse("Interested Buyer");
         String thumb = (vehicle.getImages() != null && !vehicle.getImages().isEmpty()) ? vehicle.getImages().get(0).getUrl() : null;
+
+        try {
+            TelegramService tg = telegramServiceProvider.getIfAvailable();
+            if (tg != null) {
+                String vTitle = vehicle.getYear() + " " + vehicle.getMake() + " " + vehicle.getModel() + " ($" + vehicle.getPriceUsd() + ")";
+                tg.sendSellerLeadNotification(vehicle.getSellerId(), vTitle, buyerName, appt.getScheduledAt().toString(), appt.getNotes());
+            }
+        } catch (Exception e) {
+            log.warn("Failed to notify seller on Telegram: {}", e.getMessage());
+        }
 
         return AppointmentDTO.BuyerAppointmentDTO.builder()
                 .id(appt.getId())

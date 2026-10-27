@@ -142,16 +142,22 @@ public class TenantService {
 
         List<TenantDTO.PlanDTO> plans = List.of(
                 TenantDTO.PlanDTO.builder()
-                        .id("FREE").name("Starter").priceUsd(0.0).featuredSlots(0).branchSlots(1)
+                        .id("FREE").plan("FREE").name("Starter").priceUsd(0.0)
+                        .priceUsdMonthly(0.0).priceUsdYearly(0.0).priceKhrMonthly(0.0).priceKhrYearly(0.0)
+                        .featuredSlots(0).branchSlots(1).listingsLimit(10).featuredLimit(0).seats(1).enabled(true)
                         .features(List.of("10 Active Listings", "1 Branch Location", "Standard Support"))
                         .build(),
                 TenantDTO.PlanDTO.builder()
-                        .id("PRO").name("Professional Dealership").priceUsd(49.0).featuredSlots(5).branchSlots(3)
-                        .features(List.of("Unlimited Listings", "5 Featured Spots", "3 Branch Locations", "AI Vehicle Reports", "Telegram CRM Bot"))
+                        .id("PRO").plan("PRO").name("Professional Dealership").priceUsd(49.0)
+                        .priceUsdMonthly(49.0).priceUsdYearly(490.0).priceKhrMonthly(200900.0).priceKhrYearly(2009000.0)
+                        .featuredSlots(5).branchSlots(3).listingsLimit(50).featuredLimit(5).seats(3).enabled(true)
+                        .features(List.of("50 Car Listings", "5 Featured Spots", "3 Staff Seats", "AI Vehicle Reports", "Telegram CRM Bot"))
                         .build(),
                 TenantDTO.PlanDTO.builder()
-                        .id("ENTERPRISE").name("Enterprise Network").priceUsd(149.0).featuredSlots(20).branchSlots(10)
-                        .features(List.of("Multi-Branch Sync", "20 Featured Spots", "10 Branch Locations", "Priority API Access", "Dedicated Account Manager"))
+                        .id("ENTERPRISE").plan("ENTERPRISE").name("Enterprise Network").priceUsd(149.0)
+                        .priceUsdMonthly(149.0).priceUsdYearly(1490.0).priceKhrMonthly(610900.0).priceKhrYearly(6109000.0)
+                        .featuredSlots(20).branchSlots(10).listingsLimit(999).featuredLimit(20).seats(10).enabled(true)
+                        .features(List.of("Unlimited Listings", "20 Featured Spots", "10 Staff Seats", "Priority API Access", "Dedicated Account Manager"))
                         .build()
         );
 
@@ -331,6 +337,84 @@ public class TenantService {
     }
 
     @Transactional
+    public TenantDTO.TenantBranchDTO updateBranch(String userId, String branchId, TenantDTO.UpdateBranchRequest req) {
+        TenantContext ctx = requireTenantMember(userId);
+        requireCanManage(ctx.member());
+        String tenantId = ctx.tenant().getId();
+
+        TenantBranchEntity branch = tenantBranchRepository.findById(branchId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Branch not found"));
+
+        if (!branch.getTenantId().equals(tenantId)) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Branch not found in your dealership");
+        }
+
+        if (req.getName() != null && !req.getName().isBlank()) {
+            branch.setName(req.getName().trim());
+        }
+        if (req.getNameKm() != null) {
+            branch.setNameKm(req.getNameKm().trim());
+        }
+        if (req.getCity() != null && !req.getCity().isBlank()) {
+            branch.setCity(req.getCity().trim());
+        }
+        if (req.getDistrict() != null) {
+            branch.setDistrict(req.getDistrict().trim());
+        }
+        if (req.getAddress() != null && !req.getAddress().isBlank()) {
+            branch.setAddress(req.getAddress().trim());
+        }
+        if (req.getPhone() != null) {
+            branch.setPhone(req.getPhone().trim());
+        }
+        if (req.getTelegram() != null) {
+            branch.setTelegram(req.getTelegram().trim());
+        }
+        if (req.getStatus() != null && !req.getStatus().isBlank()) {
+            branch.setStatus(req.getStatus().trim());
+        }
+        if (req.getOpeningHours() != null) {
+            branch.setOpeningHours(req.getOpeningHours().trim());
+        }
+        if (req.getImageUrl() != null) {
+            branch.setImageUrl(req.getImageUrl().trim());
+        }
+        if (Boolean.TRUE.equals(req.getIsMain())) {
+            List<TenantBranchEntity> allBranches = tenantBranchRepository.findByTenantId(tenantId);
+            for (TenantBranchEntity b : allBranches) {
+                if (!b.getId().equals(branchId) && Boolean.TRUE.equals(b.getIsMain())) {
+                    b.setIsMain(false);
+                    tenantBranchRepository.save(b);
+                }
+            }
+            branch.setIsMain(true);
+        } else if (Boolean.FALSE.equals(req.getIsMain())) {
+            branch.setIsMain(false);
+        }
+
+        tenantBranchRepository.save(branch);
+
+        long count = vehicleRepository.countByBranchId(branch.getId());
+        return TenantDTO.TenantBranchDTO.builder()
+                .id(branch.getId())
+                .tenantId(branch.getTenantId())
+                .name(branch.getName())
+                .nameKm(branch.getNameKm())
+                .city(branch.getCity())
+                .district(branch.getDistrict())
+                .address(branch.getAddress())
+                .phone(branch.getPhone())
+                .telegram(branch.getTelegram())
+                .isMain(Boolean.TRUE.equals(branch.getIsMain()))
+                .status(branch.getStatus())
+                .openingHours(branch.getOpeningHours())
+                .imageUrl(branch.getImageUrl())
+                .vehicleCount((int) count)
+                .createdAt(branch.getCreatedAt() != null ? branch.getCreatedAt().toString() : null)
+                .build();
+    }
+
+    @Transactional
     public void deleteBranch(String userId, String branchId) {
         TenantContext ctx = requireTenantMember(userId);
         requireCanManage(ctx.member());
@@ -428,6 +512,65 @@ public class TenantService {
                 .build();
     }
 
+    @Transactional
+    public TenantDTO.TenantMemberDTO updateStaff(String userId, String memberId, TenantDTO.UpdateStaffRequest req) {
+        TenantContext ctx = requireTenantMember(userId);
+        requireCanManage(ctx.member());
+        String tenantId = ctx.tenant().getId();
+
+        TenantMemberEntity member = tenantMemberRepository.findById(memberId)
+                .or(() -> tenantMemberRepository.findByTenantIdAndUserId(tenantId, memberId))
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Staff member not found"));
+
+        if (!member.getTenantId().equals(tenantId)) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Staff member not found in your dealership");
+        }
+
+        if ("OWNER".equals(member.getRole()) && req.getRole() != null && !"OWNER".equalsIgnoreCase(req.getRole())) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Cannot change role of dealership owner");
+        }
+
+        if (req.getRole() != null && !req.getRole().isBlank()) {
+            member.setRole(req.getRole().trim());
+        }
+        if (req.getStatus() != null && !req.getStatus().isBlank()) {
+            member.setStatus(req.getStatus().trim());
+        }
+        tenantMemberRepository.save(member);
+
+        Optional<UserEntity> u = userRepository.findById(member.getUserId());
+        return TenantDTO.TenantMemberDTO.builder()
+                .id(member.getId())
+                .userId(member.getUserId())
+                .name(u.map(UserEntity::getName).orElse("Unknown"))
+                .phone(u.map(UserEntity::getPhone).orElse(""))
+                .role(member.getRole())
+                .status(member.getStatus())
+                .createdAt(member.getCreatedAt() != null ? member.getCreatedAt().toString() : null)
+                .build();
+    }
+
+    @Transactional
+    public void removeStaff(String userId, String memberId) {
+        TenantContext ctx = requireTenantMember(userId);
+        requireCanManage(ctx.member());
+        String tenantId = ctx.tenant().getId();
+
+        TenantMemberEntity member = tenantMemberRepository.findById(memberId)
+                .or(() -> tenantMemberRepository.findByTenantIdAndUserId(tenantId, memberId))
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Staff member not found"));
+
+        if (!member.getTenantId().equals(tenantId)) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Staff member not found in your dealership");
+        }
+
+        if ("OWNER".equals(member.getRole())) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Cannot remove dealership owner");
+        }
+
+        tenantMemberRepository.delete(member);
+    }
+
     @Transactional(readOnly = true)
     public List<TenantDTO.TenantLeadDTO> getLeads(String userId) {
         TenantContext ctx = requireTenantMember(userId);
@@ -499,5 +642,33 @@ public class TenantService {
                 .seller(fullDTO)
                 .listings(cards)
                 .build();
+    }
+
+    @Transactional
+    public void downgradeOrSetFreeSubscription(String userId) {
+        TenantContext ctx = requireTenantMember(userId);
+        if (!"OWNER".equals(ctx.member.getRole()) && !"ADMIN".equals(ctx.member.getRole())) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Forbidden: only owners or admins can manage subscriptions");
+        }
+
+        SubscriptionEntity sub = subscriptionRepository.findByTenantId(ctx.tenant.getId())
+                .orElseGet(() -> SubscriptionEntity.builder()
+                        .id("sub_" + UUID.randomUUID().toString().replace("-", "").substring(0, 16))
+                        .tenantId(ctx.tenant.getId())
+                        .build());
+
+        sub.setPlan("FREE");
+        sub.setStatus("ACTIVE");
+        sub.setBillingCycle("MONTHLY");
+        sub.setPriceUsd(0.0);
+        sub.setListingsLimit(10);
+        sub.setFeaturedLimit(0);
+        sub.setSeats(1);
+        sub.setCurrentPeriodEnd(OffsetDateTime.now().plusMonths(1));
+        if (sub.getStartedAt() == null) {
+            sub.setStartedAt(OffsetDateTime.now());
+        }
+
+        subscriptionRepository.save(sub);
     }
 }

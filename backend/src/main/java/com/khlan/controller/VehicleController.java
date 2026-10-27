@@ -29,6 +29,7 @@ public class VehicleController {
     @Operation(summary = "Search and filter published vehicles")
     @GetMapping
     public ResponseEntity<VehicleDTO.PagedVehiclesResponseDTO> searchVehicles(
+            @RequestParam(required = false) String q,
             @RequestParam(required = false) String make,
             @RequestParam(required = false) String model,
             @RequestParam(required = false) String city,
@@ -38,21 +39,33 @@ public class VehicleController {
             @RequestParam(required = false) String drivetrain,
             @RequestParam(required = false) String condition,
             @RequestParam(required = false) Double minPrice,
+            @RequestParam(required = false) Double priceMin,
             @RequestParam(required = false) Double maxPrice,
+            @RequestParam(required = false) Double priceMax,
             @RequestParam(required = false) Integer minYear,
+            @RequestParam(required = false) Integer yearMin,
             @RequestParam(required = false) Integer maxYear,
+            @RequestParam(required = false) Integer yearMax,
             @RequestParam(required = false) Integer minMileage,
             @RequestParam(required = false) Integer maxMileage,
+            @RequestParam(required = false) Integer mileageMax,
             @RequestParam(required = false) Boolean featured,
             @RequestParam(required = false) String sellerId,
+            @RequestParam(required = false) String dealerId,
             @RequestParam(defaultValue = "newest") String sort,
             @RequestParam(defaultValue = "1") int page,
             @RequestParam(defaultValue = "12") int limit
     ) {
+        Double effectiveMinPrice = minPrice != null ? minPrice : priceMin;
+        Double effectiveMaxPrice = maxPrice != null ? maxPrice : priceMax;
+        Integer effectiveMinYear = minYear != null ? minYear : yearMin;
+        Integer effectiveMaxYear = maxYear != null ? maxYear : yearMax;
+        Integer effectiveMaxMileage = maxMileage != null ? maxMileage : mileageMax;
+
         return ResponseEntity.ok(vehicleService.searchVehicles(
-                make, model, city, bodyType, fuel, transmission, drivetrain, condition,
-                minPrice, maxPrice, minYear, maxYear, minMileage, maxMileage,
-                featured, sellerId, sort, page, limit
+                q, make, model, city, bodyType, fuel, transmission, drivetrain, condition,
+                effectiveMinPrice, effectiveMaxPrice, effectiveMinYear, effectiveMaxYear, minMileage, effectiveMaxMileage,
+                featured, sellerId, dealerId, sort, page, limit
         ));
     }
 
@@ -64,7 +77,7 @@ public class VehicleController {
         return ResponseEntity.ok(vehicleService.getMyVehicles(user));
     }
 
-    @Operation(summary = "Get single vehicle details by ID with trust verification and seller profile")
+    @Operation(summary = "Get single vehicle details by ID with trust verification, report, and similar vehicles")
     @GetMapping("/{id}")
     public ResponseEntity<Map<String, Object>> getVehicleById(
             @PathVariable String id,
@@ -73,8 +86,12 @@ public class VehicleController {
         VehicleDTO.VehicleDetailDTO detail = vehicleService.getVehicleById(id, viewer);
         ReportDTO report = vehicleReportService.getReportByVehicleId(id);
         detail.setReport(report);
+        List<VehicleDTO.VehicleCardDTO> similar = vehicleService.getSimilarVehicles(id, detail.getMake(), detail.getBodyType());
 
-        return ResponseEntity.ok(Map.of("vehicle", detail));
+        return ResponseEntity.ok(Map.of(
+                "vehicle", detail,
+                "similar", similar
+        ));
     }
 
     @Operation(summary = "Create a new vehicle listing with images and paperwork")
@@ -91,7 +108,7 @@ public class VehicleController {
     }
 
     @Operation(summary = "Update an existing vehicle listing")
-    @PutMapping("/{id}")
+    @RequestMapping(value = "/{id}", method = {RequestMethod.PUT, RequestMethod.PATCH})
     public ResponseEntity<Map<String, Object>> updateVehicle(
             @PathVariable String id,
             @RequestBody VehicleDTO.UpdateVehicleRequest req,

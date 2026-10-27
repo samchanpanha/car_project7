@@ -10,7 +10,7 @@ import type {
   AdminOverviewDTO,
   AdminTenantDTO,
   AdminVehicleRowDTO,
-  AdminUserDTO,
+  AdminUserDTO, PagedUsersDTO,
   AiStatsDTO,
   AuditEntryDTO,
   PlatformSettingsDTO,
@@ -530,7 +530,8 @@ const USER_ROLES = ["BUYER", "SELLER", "DEALER", "ADMIN", "SUPER_ADMIN"] as cons
 
 function AdminUsers() {
   const t = useT();
-  const { data, loading, error, refetch } = useFetch<AdminUserDTO[]>("/api/admin/users");
+  const [page, setPage] = useState(0);
+  const { data, loading, error, refetch } = useFetch<PagedUsersDTO>(`/api/admin/users?page=${page}&size=20`);
   const [busyId, setBusyId] = useState<string | null>(null);
 
   const patchRole = async (id: string, role: string) => {
@@ -550,11 +551,12 @@ function AdminUsers() {
     return <div className="space-y-3">{Array.from({ length: 5 }).map((_, i) => <Skeleton key={i} className="h-16 w-full rounded-xl" />)}</div>;
   }
   if (error && !data) return <FetchErrorState message={error} onRetry={refetch} />;
-  if (!data || data.length === 0) return <EmptyState icon={Users} text={t("noResults")} />;
+  const users = data?.items ?? [];
+  if (!data || users.length === 0) return <EmptyState icon={Users} text={t("noResults")} />;
 
   return (
     <div className="space-y-2.5">
-      {data.map((u) => (
+      {users.map((u) => (
         <div key={u.id} className="flex flex-wrap items-center gap-3 rounded-xl border border-slate-200 bg-white p-3">
           <AvatarCircle name={u.name} />
           <div className="min-w-0 flex-1">
@@ -592,6 +594,24 @@ function AdminUsers() {
           </DropdownMenu>
         </div>
       ))}
+      {data && data.total > (data.size || 20) && (
+        <div className="flex items-center justify-between pt-3">
+          <Button variant="outline" size="sm" disabled={page <= 0} onClick={() => setPage((p) => Math.max(0, p - 1))}>
+            Previous
+          </Button>
+          <span className="text-xs text-slate-500">
+            Page {page + 1} of {Math.max(1, Math.ceil(data.total / (data.size || 20)))}
+          </span>
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={(page + 1) * (data.size || 20) >= data.total}
+            onClick={() => setPage((p) => p + 1)}
+          >
+            Next
+          </Button>
+        </div>
+      )}
     </div>
   );
 }
@@ -1104,65 +1124,34 @@ function AdminTelegramManagement() {
         </div>
       </SectionCard>
 
-      {/* Official Mini App & Community Links */}
-      <SectionCard title="Official Mini App & Community Links">
-        <div className="space-y-4">
-          <div>
-            <div className="flex items-center justify-between">
-              <Label htmlFor="tg-miniapp-url" className="text-xs font-semibold text-slate-700">
-                {t("tgOfficialMiniAppUrl")}
-              </Label>
-              {form.miniAppUrl && (
-                <a
-                  href={form.miniAppUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="flex items-center gap-1 text-[11px] text-sky-600 hover:text-sky-700 font-medium"
-                >
-                  <ExternalLink className="h-3 w-3" />
-                  Open Mini App
-                </a>
-              )}
-            </div>
-            <Input
-              id="tg-miniapp-url"
-              type="url"
-              placeholder="https://t.me/KhLanBot/app"
-              className="mt-1.5 h-9 text-xs"
-              value={form.miniAppUrl ?? ""}
-              onChange={(e) => setForm({ ...form, miniAppUrl: e.target.value })}
-            />
-            <p className="mt-1 text-[11px] text-slate-400">{t("tgOfficialMiniAppHint")}</p>
+      {/* Official Telegram Mini App */}
+      <SectionCard title="Official Telegram Mini App">
+        <div>
+          <div className="flex items-center justify-between">
+            <Label htmlFor="tg-miniapp-url" className="text-xs font-semibold text-slate-700">
+              {t("tgOfficialMiniAppUrl")}
+            </Label>
+            {form.miniAppUrl && (
+              <a
+                href={form.miniAppUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex items-center gap-1 text-[11px] text-sky-600 hover:text-sky-700 font-medium"
+              >
+                <ExternalLink className="h-3 w-3" />
+                Open Mini App
+              </a>
+            )}
           </div>
-
-          <div className="grid gap-4 sm:grid-cols-2">
-            <div>
-              <Label htmlFor="tg-channel-url" className="text-xs font-semibold text-slate-700">
-                {t("tgOfficialChannelUrl")}
-              </Label>
-              <Input
-                id="tg-channel-url"
-                type="url"
-                placeholder="https://t.me/khlan_channel"
-                className="mt-1.5 h-9 text-xs"
-                value={form.channelUrl ?? ""}
-                onChange={(e) => setForm({ ...form, channelUrl: e.target.value })}
-              />
-            </div>
-            <div>
-              <Label htmlFor="tg-group-url" className="text-xs font-semibold text-slate-700">
-                {t("tgOfficialGroupUrl")}
-              </Label>
-              <Input
-                id="tg-group-url"
-                type="url"
-                placeholder="https://t.me/khlan_community"
-                className="mt-1.5 h-9 text-xs"
-                value={form.groupUrl ?? ""}
-                onChange={(e) => setForm({ ...form, groupUrl: e.target.value })}
-              />
-            </div>
-          </div>
+          <Input
+            id="tg-miniapp-url"
+            type="url"
+            placeholder="https://t.me/KhLanOfficialBot/app"
+            className="mt-1.5 h-9 text-xs"
+            value={form.miniAppUrl ?? ""}
+            onChange={(e) => setForm({ ...form, miniAppUrl: e.target.value })}
+          />
+          <p className="mt-1 text-[11px] text-slate-400">{t("tgOfficialMiniAppHint")}</p>
         </div>
       </SectionCard>
 
@@ -2702,11 +2691,14 @@ function AdminPaymentConfig() {
   const testTelegram = async () => {
     setTestingTg(true);
     try {
-      const res = await apiSend<{ ok: boolean; error: string | null }>(
+      const res = await apiSend<{ ok?: boolean; success?: boolean; error?: string | null; message?: string }>(
         "/api/admin/payment-config/test-telegram", "POST",
       );
-      if (res.ok) toast.success(t("payConfigTgTestOk"));
-      else toast.error(t("payConfigTgTestFail", { err: res.error ?? "?" }));
+      if (res.ok || res.success) {
+        toast.success(t("payConfigTgTestOk"));
+      } else {
+        toast.error(t("payConfigTgTestFail", { err: res.error || "Connection failed" }));
+      }
     } catch (e) {
       toast.error(errorText(e));
     } finally {

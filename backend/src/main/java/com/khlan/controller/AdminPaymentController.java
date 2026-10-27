@@ -5,6 +5,7 @@ import com.khlan.dto.PlanDTO;
 import com.khlan.entity.UserEntity;
 import com.khlan.service.PaymentService;
 import com.khlan.service.PlanAdminService;
+import com.khlan.service.TelegramService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
@@ -27,6 +28,7 @@ public class AdminPaymentController {
 
     private final PaymentService paymentService;
     private final PlanAdminService planAdminService;
+    private final TelegramService telegramService;
 
     // ---------- Payment Approvals ----------
 
@@ -74,34 +76,59 @@ public class AdminPaymentController {
         return ResponseEntity.ok(paymentService.getAbaTransactions(status, search, day, duplicate, collision, limit));
     }
 
+    @PostMapping("/aba-transactions")
+    @Operation(summary = "Execute ABA transaction actions (sync, verify, ingest, clear)")
+    public ResponseEntity<Map<String, Object>> handleAbaTransactionAction(
+            @RequestBody(required = false) Map<String, Object> body,
+            @AuthenticationPrincipal UserEntity admin) {
+
+        String adminUserId = admin != null ? admin.getId() : "usr_admin_root";
+        return ResponseEntity.ok(paymentService.handleAbaTransactionAction(body, adminUserId));
+    }
+
+    @PatchMapping("/aba-transactions")
+    @Operation(summary = "Manually match an ABA transaction with a subscription payment")
+    public ResponseEntity<Map<String, Object>> manualMatchAbaTransaction(
+            @RequestBody Map<String, Object> body,
+            @AuthenticationPrincipal UserEntity admin) {
+
+        String adminUserId = admin != null ? admin.getId() : "usr_admin_root";
+        String transactionId = body != null ? (String) body.get("transactionId") : null;
+        String subscriptionPaymentId = body != null ? (String) body.get("subscriptionPaymentId") : null;
+        return ResponseEntity.ok(paymentService.manualMatchAbaTransaction(transactionId, subscriptionPaymentId, adminUserId));
+    }
+
     // ---------- Payment Configuration ----------
 
     @GetMapping("/payment-config")
     @Operation(summary = "Get master payment configuration (KHQR images, account name, telegram group)")
-    public ResponseEntity<PaymentDTO.PaymentConfigDTO> getPaymentConfig() {
-        return ResponseEntity.ok(paymentService.getPaymentConfig());
+    public ResponseEntity<Map<String, Object>> getPaymentConfig() {
+        return ResponseEntity.ok(paymentService.getAdminPaymentConfig());
     }
 
     @PutMapping("/payment-config")
     @Operation(summary = "Update master payment configuration")
-    public ResponseEntity<PaymentDTO.PaymentConfigDTO> updatePaymentConfig(
-            @RequestBody PaymentDTO.PaymentConfigDTO config,
+    public ResponseEntity<Map<String, Object>> updatePaymentConfig(
+            @RequestBody Map<String, Object> config,
             @AuthenticationPrincipal UserEntity admin) {
 
         String adminUserId = admin != null ? admin.getId() : "usr_admin_root";
-        return ResponseEntity.ok(paymentService.savePaymentConfig(config, adminUserId));
+        return ResponseEntity.ok(paymentService.saveAdminPaymentConfig(config, adminUserId));
     }
 
-    @PostMapping("/payment-config/preview")
+    @RequestMapping(value = "/payment-config/preview", method = {RequestMethod.GET, RequestMethod.POST})
     @Operation(summary = "Preview rendered KHQR configuration")
     public ResponseEntity<Map<String, Object>> previewPaymentConfig() {
-        return ResponseEntity.ok(Map.of("previewAvailable", true, "timestamp", System.currentTimeMillis()));
+        Map<String, Object> cfg = paymentService.getAdminPaymentConfig();
+        String payload = (String) cfg.get("khqrPayload");
+        String dataUrl = paymentService.generateKhqrDataUrl(payload);
+        return ResponseEntity.ok(Map.of("dataUrl", dataUrl != null ? dataUrl : ""));
     }
 
     @PostMapping("/payment-config/test-telegram")
     @Operation(summary = "Send test notification to configured Telegram group")
     public ResponseEntity<Map<String, Object>> testTelegram() {
-        return ResponseEntity.ok(Map.of("success", true, "message", "Test Telegram notification dispatched"));
+        return ResponseEntity.ok(telegramService.sendTestNotification(null, null));
     }
 
     // ---------- Plans & Subscriptions ----------

@@ -37,7 +37,7 @@ public class PurchaseController {
 
     @GetMapping("/api/account/purchases")
     public ResponseEntity<List<PurchaseDTO.PurchaseRequestDTO>> getBuyerPurchases(@AuthenticationPrincipal UserEntity user) {
-        String userId = user != null ? user.getId() : null;
+        String userId = user != null ? user.getId() : "usr_demo_buyer";
         return ResponseEntity.ok(purchaseService.getBuyerPurchases(userId));
     }
 
@@ -55,5 +55,14 @@ public class PurchaseController {
         String action = req != null && req.getAction() != null ? req.getAction() : "accept";
         String status = purchaseService.transitionPurchase(requireUserId(user), id, action);
         return ResponseEntity.ok(Map.of("ok", true, "status", status));
+    }
+
+    @PatchMapping("/api/account/purchases/{id}")
+    public ResponseEntity<Map<String, Object>> cancelBuyerPurchase(
+            @AuthenticationPrincipal UserEntity user,
+            @PathVariable("id") String id
+    ) {
+        purchaseService.cancelBuyerPurchase(requireUserId(user), id);
+        return ResponseEntity.ok(Map.of("ok", true));
     }
 }

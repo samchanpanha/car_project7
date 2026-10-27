@@ -40,6 +40,16 @@ public class TelegramController {
         return ResponseEntity.ok(telegramService.updateSellerTelegram(userId, request));
     }
 
+    @PostMapping("/api/seller/telegram/test")
+    @Operation(summary = "Test seller's telegram chat ID notification using the shared bot")
+    public ResponseEntity<Map<String, Object>> testSellerTelegram(
+            @RequestBody(required = false) Map<String, String> body,
+            @AuthenticationPrincipal UserEntity authUser) {
+        String userId = authUser != null ? authUser.getId() : "usr_dealer_sokha";
+        String explicitChatId = body != null ? body.get("chatId") : null;
+        return ResponseEntity.ok(telegramService.sendSellerTestNotification(userId, explicitChatId));
+    }
+
     @GetMapping("/api/tg/{code}")
     @Operation(summary = "Public tracked invite redirect (302) into seller's Telegram app/group/channel")
     public void handleInviteRedirect(
@@ -48,7 +58,12 @@ public class TelegramController {
             HttpServletResponse response) throws IOException {
 
         String targetUrl = telegramService.resolveInviteRedirect(code, dest);
-        response.sendRedirect(targetUrl);
+        response.setStatus(HttpServletResponse.SC_FOUND);
+        if (targetUrl != null && (targetUrl.startsWith("http://") || targetUrl.startsWith("https://"))) {
+            response.setHeader("Location", targetUrl);
+        } else {
+            response.setHeader("Location", (targetUrl != null && targetUrl.startsWith("/")) ? targetUrl : "/");
+        }
     }
 
     @PostMapping("/api/telegram/webhook")
@@ -60,11 +75,20 @@ public class TelegramController {
 
     @PostMapping("/api/telegram/setup")
     @Operation(summary = "Setup and verify Telegram bot webhook connectivity")
-    public ResponseEntity<TelegramDTO.TelegramSetupResponse> setupWebhook() {
-        return ResponseEntity.ok(TelegramDTO.TelegramSetupResponse.builder()
-                .ok(true)
-                .webhookUrl("/api/telegram/webhook")
-                .message("Telegram webhook successfully registered")
-                .build());
+    public ResponseEntity<Map<String, Object>> setupWebhook(@RequestParam(required = false) String url) {
+        return ResponseEntity.ok(telegramService.setupWebhook(url));
+    }
+
+    @GetMapping("/api/telegram/public-config")
+    @Operation(summary = "Get public Telegram bot configuration for mini app and channel links")
+    public ResponseEntity<Map<String, Object>> getPublicConfig() {
+        String botUsername = System.getenv().getOrDefault("TELEGRAM_BOT_USERNAME", "KhLanBot");
+        return ResponseEntity.ok(Map.of(
+                "botUsername", botUsername,
+                "miniAppUrl", "https://t.me/" + botUsername + "/app",
+                "channelUrl", "https://t.me/KhLanOfficial",
+                "groupUrl", "https://t.me/KhLanGroup",
+                "tmaEnabled", true
+        ));
     }
 }

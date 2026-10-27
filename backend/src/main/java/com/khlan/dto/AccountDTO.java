@@ -81,5 +81,6 @@ public class AccountDTO {
     public static class RunSavedSearchResponse {
         private long total;
         private List<VehicleDTO.VehicleCardDTO> vehicles;
+        private List<VehicleDTO.VehicleCardDTO> items;
     }
 }

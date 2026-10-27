@@ -1,5 +1,4 @@
 import type { Prisma } from "@prisma/client";
-import { db } from "@/lib/db";
 import type { ReportCheck, ReportStatus } from "@/lib/types";
 
 /** Vehicle row (with documents + images included) accepted by the rules engine. */
@@ -398,10 +397,7 @@ async function runCarChecks(
   } else {
     let comps = comparables;
     if (!comps) {
-      comps = await db.vehicle.findMany({
-        where: { status: "PUBLISHED", listingCategory: "CAR", bodyType: vehicle.bodyType, priceUsd: { gt: 0 } },
-        select: { id: true, bodyType: true, year: true, priceUsd: true },
-      });
+      comps = [];
     }
     const valid = comps.filter(
       (c) => c.id !== vehicle.id && Math.abs(c.year - vehicle.year) <= 2 && c.priceUsd > 0,
@@ -873,10 +869,7 @@ async function runMotorcycleChecks(
   } else {
     let comps = comparables;
     if (!comps) {
-      comps = await db.vehicle.findMany({
-        where: { status: "PUBLISHED", listingCategory: "MOTOR", priceUsd: { gt: 0 } },
-        select: { id: true, bodyType: true, year: true, priceUsd: true },
-      });
+      comps = [];
     }
     const valid = comps.filter(
       (c) => c.id !== vehicle.id && Math.abs(c.year - vehicle.year) <= 3 && c.priceUsd > 0,
@@ -1377,23 +1370,7 @@ async function runSparePartChecks(
   } else {
     let comps = comparables;
     if (!comps) {
-      comps = await db.vehicle.findMany({
-        where: {
-          status: "PUBLISHED",
-          listingCategory: "SPARE_PART",
-          priceUsd: { gt: 0 },
-          ...(vehicle.partCategory ? { partCategory: vehicle.partCategory } : {}),
-        },
-        select: {
-          id: true,
-          listingCategory: true,
-          bodyType: true,
-          year: true,
-          priceUsd: true,
-          partCategory: true,
-          partTarget: true,
-        },
-      });
+      comps = [];
     }
     const valid = comps.filter(
       (c) =>

@@ -143,6 +143,67 @@ public class AdminDTO {
         private boolean freeTrialEnabled;
         private int freeTrialDays;
         private boolean maintenanceMode;
+        private boolean demoModeEnabled;
+        private boolean adminOnlyLogin;
+        private double commissionPct;
+        private double featuredListingPriceUsd;
+        private boolean autoApproveListings;
         private List<TenantDTO.PlanDTO> plans;
+    }
+
+    @Data
+    @NoArgsConstructor
+    @AllArgsConstructor
+    @Builder
+    public static class PlatformSettingsUpdateRequest {
+        private Boolean freeTrialEnabled;
+        private Integer freeTrialDays;
+        private Boolean maintenanceMode;
+        private Boolean demoModeEnabled;
+        private Boolean adminOnlyLogin;
+        private Double commissionPct;
+        private Double featuredListingPriceUsd;
+        private Boolean autoApproveListings;
+    }
+
+    @Data
+    @NoArgsConstructor
+    @AllArgsConstructor
+    @Builder
+    public static class UpdateUserRequest {
+        private String role;
+        private Boolean blacklisted;
+        private String blacklistReason;
+    }
+
+    @Data
+    @NoArgsConstructor
+    @AllArgsConstructor
+    @Builder
+    public static class UpdateTenantRequest {
+        private String status;
+        private String verification;
+    }
+
+    @Data
+    @NoArgsConstructor
+    @AllArgsConstructor
+    @Builder
+    public static class StorageStatusDTO {
+        private boolean connected;
+        private String provider;
+        private String bucket;
+        private String endpoint;
+        private String message;
+    }
+    @Data
+    @NoArgsConstructor
+    @AllArgsConstructor
+    @Builder
+    public static class PagedUsersDTO {
+        private List<AdminUserDTO> items;
+        private int page;
+        private int size;
+        private long total;
     }
 }

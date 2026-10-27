@@ -208,6 +208,15 @@ export interface AdminUserDTO {
   listingCount: number;
   favoriteCount: number;
   tenantName?: string | null;
+  isBlacklisted?: boolean;
+  blacklistReason?: string | null;
+}
+
+export interface PagedUsersDTO {
+  items: AdminUserDTO[];
+  page: number;
+  size: number;
+  total: number;
 }
 
 export interface AiStatsDTO {
@@ -260,6 +269,7 @@ export interface SellerTelegramDTO {
   miniAppUrl: string | null;
   channelUrl: string | null;
   groupUrl: string | null;
+  chatId?: string | null;
   /** 8-char unique referral code (minted on first GET if absent) */
   inviteCode: string;
   stats: {

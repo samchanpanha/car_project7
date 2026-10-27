@@ -140,6 +140,18 @@
             <version>1.78.1</version>
         </dependency>
 
+        <!-- QR Code Generation (ZXing) -->
+        <dependency>
+            <groupId>com.google.zxing</groupId>
+            <artifactId>core</artifactId>
+            <version>3.5.3</version>
+        </dependency>
+        <dependency>
+            <groupId>com.google.zxing</groupId>
+            <artifactId>javase</artifactId>
+            <version>3.5.3</version>
+        </dependency>
+
         <!-- OpenAPI / Swagger Documentation -->
         <dependency>
             <groupId>org.springdoc</groupId>
@@ -165,7 +177,13 @@
             <artifactId>spring-security-test</artifactId>
             <scope>test</scope>
         </dependency>
-    </dependencies>
+            <!-- OCR (Tesseract) -->
+        <dependency>
+            <groupId>net.sourceforge.tess4j</groupId>
+            <artifactId>tess4j</artifactId>
+            <version>5.13.0</version>
+        </dependency>
+</dependencies>
 
     <build>
         <plugins>

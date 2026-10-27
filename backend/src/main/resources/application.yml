@@ -56,6 +56,12 @@ minio:
     private: ${CLOUDFLARE_R2_PRIVATE_BUCKET:cars-storage}
   public-url: ${CLOUDFLARE_R2_PUBLIC_URL:}
 
+# Telegram Bot & Channel Configuration
+telegram:
+  bot-token: ${TELEGRAM_BOT_TOKEN:8961155344:AAEXIEeSWNp4kudB2YQEnpj7hsUkd-ignAc}
+  group-chat-id: ${TELEGRAM_GROUP_CHAT_ID:-1004489863210}
+  webhook-secret: ${TELEGRAM_WEBHOOK_SECRET:khlan_webhook_secret_2026}
+
 # JWT Security Configuration
 jwt:
   secret: ${JWT_SECRET:KhLanSuperSecretJwtKeyCambodiaMarketplace2026SecureToken}
@@ -64,6 +70,9 @@ jwt:
 
 # Observability & Metrics
 management:
+  health:
+    redis:
+      enabled: false
   endpoints:
     web:
       exposure:

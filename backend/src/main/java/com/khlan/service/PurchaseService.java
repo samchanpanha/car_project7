@@ -215,4 +215,24 @@ public class PurchaseService {
 
         return nextStatus;
     }
+
+    @Transactional
+    public void cancelBuyerPurchase(String buyerId, String id) {
+        PurchaseRequestEntity pr = purchaseRequestRepository.findById(id)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Purchase request not found"));
+
+        if (!pr.getBuyerId().equals(buyerId)) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Purchase request not found");
+        }
+
+        if (!"PENDING".equals(pr.getStatus())) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "A " + pr.getStatus().toLowerCase() + " request can no longer be cancelled by the buyer");
+        }
+
+        pr.setStatus("CANCELLED");
+        pr.setDecidedById(buyerId);
+        pr.setDecidedAt(OffsetDateTime.now());
+        pr.setUpdatedAt(OffsetDateTime.now());
+        purchaseRequestRepository.save(pr);
+    }
 }

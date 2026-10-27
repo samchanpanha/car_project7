@@ -89,6 +89,9 @@ public class SellerProfileEntity {
     @Column(name = "tg_group_url")
     private String tgGroupUrl;
 
+    @Column(name = "tg_chat_id", length = 64)
+    private String tgChatId;
+
     @Column(name = "invite_code", unique = true, length = 64)
     private String inviteCode;
 

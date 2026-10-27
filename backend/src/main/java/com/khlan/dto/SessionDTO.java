@@ -22,6 +22,12 @@ public class SessionDTO {
     private boolean phoneVerified;
     private List<PersonaDTO> personas;
     private SubscriptionSummary subscription;
+    /** True when the current request is using a demo persona (not a real auth session). */
+    private boolean demoPersona;
+    /** Whether the platform demo mode is enabled (allows persona switching). */
+    private boolean demoModeEnabled;
+    /** When true, only admins can log in. */
+    private boolean adminOnlyLogin;
 
     @Data
     @NoArgsConstructor

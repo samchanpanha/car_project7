@@ -33,6 +33,7 @@ public class VehicleService {
 
     @Transactional(readOnly = true)
     public VehicleDTO.PagedVehiclesResponseDTO searchVehicles(
+            String q,
             String make,
             String model,
             String city,
@@ -49,6 +50,7 @@ public class VehicleService {
             Integer maxMileage,
             Boolean featured,
             String sellerId,
+            String dealerId,
             String sort,
             int page,
             int limit
@@ -73,6 +75,14 @@ public class VehicleService {
             // Always PUBLISHED for public search
             predicates.add(cb.equal(root.get("status"), "PUBLISHED"));
 
+            if (q != null && !q.isBlank()) {
+                String searchPattern = "%" + q.trim().toLowerCase() + "%";
+                Predicate qMake = cb.like(cb.lower(root.get("make")), searchPattern);
+                Predicate qModel = cb.like(cb.lower(root.get("model")), searchPattern);
+                Predicate qVariant = cb.like(cb.lower(root.get("variant")), searchPattern);
+                Predicate qDesc = cb.like(cb.lower(root.get("description")), searchPattern);
+                predicates.add(cb.or(qMake, qModel, qVariant, qDesc));
+            }
             if (make != null && !make.isBlank()) {
                 predicates.add(cb.equal(cb.lower(root.get("make")), make.toLowerCase()));
             }
@@ -87,6 +97,9 @@ public class VehicleService {
             }
             if (sellerId != null && !sellerId.isBlank()) {
                 predicates.add(cb.equal(root.get("sellerId"), sellerId));
+            }
+            if (dealerId != null && !dealerId.isBlank()) {
+                predicates.add(cb.equal(root.get("sellerId"), dealerId));
             }
 
             // Comma-separated enums
@@ -113,13 +126,41 @@ public class VehicleService {
                 .map(this::toCardDTO)
                 .collect(Collectors.toList());
 
+        long total = pageResult.getTotalElements();
+        int pageCount = Math.max(1, (int) Math.ceil((double) total / pageSize));
+
         return VehicleDTO.PagedVehiclesResponseDTO.builder()
+                .items(cards)
                 .vehicles(cards)
-                .total(pageResult.getTotalElements())
+                .total(total)
                 .page(pageIndex + 1)
+                .pageSize(pageSize)
                 .limit(pageSize)
+                .pageCount(pageCount)
+                .nextCursor(pageResult.hasNext() ? String.valueOf(pageIndex + 2) : null)
                 .hasMore(pageResult.hasNext())
                 .build();
+    }
+
+    @Transactional(readOnly = true)
+    public List<VehicleDTO.VehicleCardDTO> getSimilarVehicles(String excludeId, String make, String bodyType) {
+        Pageable limitFour = PageRequest.of(0, 4, Sort.by(Sort.Direction.DESC, "createdAt"));
+        Specification<VehicleEntity> spec = (root, query, cb) -> {
+            List<Predicate> preds = new ArrayList<>();
+            preds.add(cb.equal(root.get("status"), "PUBLISHED"));
+            if (excludeId != null && !excludeId.isBlank()) {
+                preds.add(cb.notEqual(root.get("id"), excludeId));
+            }
+            if (make != null && !make.isBlank()) {
+                preds.add(cb.equal(cb.lower(root.get("make")), make.toLowerCase()));
+            } else if (bodyType != null && !bodyType.isBlank()) {
+                preds.add(cb.equal(root.get("bodyType"), bodyType));
+            }
+            return cb.and(preds.toArray(new Predicate[0]));
+        };
+        return vehicleRepository.findAll(spec, limitFour).getContent().stream()
+                .map(this::toCardDTO)
+                .collect(Collectors.toList());
     }
 
     @Transactional

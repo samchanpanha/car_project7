@@ -68,20 +68,24 @@ public class PaymentController {
             @RequestParam(value = "bank", required = false) String bank,
             @RequestParam(value = "payerAccount", required = false) String payerAccount,
             @RequestParam(value = "payerName", required = false) String payerName,
-            @RequestParam(value = "paymentDate", required = false) String paymentDate) {
+            @RequestParam(value = "paymentDate", required = false) String paymentDate,
+            @AuthenticationPrincipal UserEntity authUser) {
+        String tenantId = resolveTenantId(authUser);
         PaymentDTO.CheckRefRequest req = PaymentDTO.CheckRefRequest.builder()
                 .ref(ref)
                 .plan(plan)
                 .billingCycle(cycle)
                 .build();
-        return ResponseEntity.ok(paymentService.checkReference(req));
+        return ResponseEntity.ok(paymentService.checkReference(req, tenantId));
     }
 
     @PostMapping("/check-ref")
     @Operation(summary = "Check transaction reference format and uniqueness")
     public ResponseEntity<PaymentDTO.CheckRefResponse> checkReference(
-            @RequestBody PaymentDTO.CheckRefRequest request) {
-        return ResponseEntity.ok(paymentService.checkReference(request));
+            @RequestBody PaymentDTO.CheckRefRequest request,
+            @AuthenticationPrincipal UserEntity authUser) {
+        String tenantId = resolveTenantId(authUser);
+        return ResponseEntity.ok(paymentService.checkReference(request, tenantId));
     }
 
     @PostMapping(value = "/ocr", consumes = MediaType.APPLICATION_JSON_VALUE)
@@ -108,12 +112,28 @@ public class PaymentController {
         return ResponseEntity.ok(paymentService.getPaymentById(id));
     }
 
+    @DeleteMapping("/{id}")
+    @Operation(summary = "Cancel a pending subscription payment submission")
+    public ResponseEntity<Map<String, Object>> cancelPayment(
+            @PathVariable String id,
+            @AuthenticationPrincipal UserEntity authUser) {
+        String tenantId = resolveTenantId(authUser);
+        paymentService.cancelPayment(id, tenantId);
+        return ResponseEntity.ok(Map.of("ok", true, "cancelled", id));
+    }
+
     @PostMapping(value = "/{id}/receipt", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     @Operation(summary = "Upload proof of payment receipt image")
     public ResponseEntity<PaymentDTO.SubscriptionPaymentDTO> uploadReceipt(
             @PathVariable String id,
             @RequestParam("file") MultipartFile file) {
         return ResponseEntity.ok(paymentService.uploadReceipt(id, file));
+    }
+
+    @GetMapping(value = "/{id}/receipt", produces = MediaType.TEXT_HTML_VALUE)
+    @Operation(summary = "Get official printable receipt HTML document")
+    public ResponseEntity<String> getPrintableReceipt(@PathVariable String id) {
+        return ResponseEntity.ok(paymentService.renderPrintableReceiptHtml(id));
     }
 
     private String resolveTenantId(UserEntity authUser) {

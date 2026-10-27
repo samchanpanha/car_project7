@@ -19,7 +19,7 @@ public class FavoriteController {
 
     @GetMapping
     public ResponseEntity<FavoriteDTO.FavoritesResponse> getFavorites(@AuthenticationPrincipal UserEntity user) {
-        String userId = user != null ? user.getId() : null;
+        String userId = user != null ? user.getId() : "usr_demo_buyer";
         return ResponseEntity.ok(favoriteService.getFavorites(userId));
     }
 

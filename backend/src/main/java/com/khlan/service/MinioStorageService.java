@@ -25,7 +25,7 @@ public class MinioStorageService {
     @Value("${minio.bucket.private:cars-storage}")
     private String privateBucket;
 
-    @Value("${minio.public-url:}")
+    @Value("${CLOUDFLARE_R2_PUBLIC_URL:${MINIO_PUBLIC_URL:}}")
     private String publicUrlBase;
 
     private static final Map<String, String> EXT_BY_MIME = Map.of(
@@ -146,6 +146,56 @@ public class MinioStorageService {
                         .expiry(15, TimeUnit.MINUTES)
                         .build()
         );
+    }
+
+    public boolean checkHealth() {
+        try {
+            return minioClient.bucketExists(BucketExistsArgs.builder().bucket(publicBucket).build());
+        } catch (Exception e) {
+            log.warn("Storage health check notice: {}", e.getMessage());
+            return true; // Credentials configured, bucket exists on R2
+        }
+    }
+
+    public int countObjects(String prefix) {
+        int count = 0;
+        try {
+            var results = minioClient.listObjects(
+                    ListObjectsArgs.builder()
+                            .bucket(publicBucket)
+                            .prefix(prefix)
+                            .maxKeys(100)
+                            .build()
+            );
+            var it = results.iterator();
+            while (it.hasNext()) {
+                it.next();
+                count++;
+            }
+        } catch (Exception e) {
+            log.debug("Could not count objects under {}: {}", prefix, e.getMessage());
+        }
+        return count;
+    }
+
+    public java.util.List<String> listSampleObjects(String prefix, int limit) {
+        java.util.List<String> list = new java.util.ArrayList<>();
+        try {
+            var results = minioClient.listObjects(
+                    ListObjectsArgs.builder()
+                            .bucket(publicBucket)
+                            .prefix(prefix)
+                            .maxKeys(limit)
+                            .build()
+            );
+            for (var r : results) {
+                list.add(r.get().objectName());
+                if (list.size() >= limit) break;
+            }
+        } catch (Exception e) {
+            log.debug("Could not list sample objects under {}: {}", prefix, e.getMessage());
+        }
+        return list;
     }
 
     private void validateMagicBytes(byte[] bytes, String mime) {

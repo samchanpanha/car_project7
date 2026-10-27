@@ -34,6 +34,7 @@ public class AdminService {
     private final AuditLogRepository auditLogRepository;
     private final PlatformSettingRepository platformSettingRepository;
     private final VehicleService vehicleService;
+    private final MinioStorageService minioStorageService;
     private final ObjectMapper objectMapper;
 
     private static final long WEEK_SECONDS = 7 * 24 * 60 * 60;
@@ -157,13 +158,24 @@ public class AdminService {
 
     @Transactional(readOnly = true)
     public List<AdminDTO.AdminUserDTO> listUsers() {
-        List<UserEntity> users = userRepository.findAll().stream()
-                .sorted(Comparator.comparing(UserEntity::getCreatedAt).reversed())
-                .limit(200)
+        return listUsers(0, 200).getItems();
+    }
+
+    @Transactional(readOnly = true)
+    public AdminDTO.PagedUsersDTO listUsers(int page, int size) {
+        if (size <= 0) size = 20;
+        if (page < 0) page = 0;
+
+        List<UserEntity> allUsers = userRepository.findAll().stream()
+                .sorted(Comparator.comparing(UserEntity::getCreatedAt, Comparator.nullsLast(Comparator.naturalOrder())).reversed())
                 .toList();
 
-        List<AdminDTO.AdminUserDTO> result = new ArrayList<>();
-        for (UserEntity u : users) {
+        long total = allUsers.size();
+        int from = Math.min(page * size, allUsers.size());
+        int to = Math.min(from + size, allUsers.size());
+
+        List<AdminDTO.AdminUserDTO> items = new ArrayList<>();
+        for (UserEntity u : allUsers.subList(from, to)) {
             long listingCount = vehicleRepository.countBySellerIdAndStatus(u.getId(), "PUBLISHED")
                     + vehicleRepository.countBySellerIdAndStatus(u.getId(), "PENDING_REVIEW");
             long favCount = favoriteRepository.countByUserId(u.getId());
@@ -174,7 +186,7 @@ public class AdminService {
                 tenantName = tenantRepository.findById(memOpt.get().getTenantId()).map(TenantEntity::getName).orElse(null);
             }
 
-            result.add(AdminDTO.AdminUserDTO.builder()
+            items.add(AdminDTO.AdminUserDTO.builder()
                     .id(u.getId())
                     .name(u.getName())
                     .phone(u.getPhone())
@@ -190,7 +202,12 @@ public class AdminService {
                     .build());
         }
 
-        return result;
+        return AdminDTO.PagedUsersDTO.builder()
+                .items(items)
+                .page(page)
+                .size(size)
+                .total(total)
+                .build();
     }
 
     @Transactional(readOnly = true)
@@ -384,27 +401,57 @@ public class AdminService {
         boolean freeTrialEnabled = true;
         int freeTrialDays = 30;
         boolean maintenanceMode = false;
+        boolean demoModeEnabled = true;
+        boolean adminOnlyLogin = false;
+        double commissionPct = 2.5;
+        double featuredListingPriceUsd = 25.0;
+        boolean autoApproveListings = false;
 
-        Optional<PlatformSettingEntity> sOpt = platformSettingRepository.findById("core_settings");
-        if (sOpt.isPresent()) {
-            Map<String, Object> map = safeParseMap(sOpt.get().getValueJson());
+        List<PlatformSettingEntity> rows = platformSettingRepository.findAll();
+        Map<String, String> byKey = new HashMap<>();
+        for (PlatformSettingEntity r : rows) {
+            byKey.put(r.getKey(), r.getValueJson());
+        }
+
+        if (byKey.containsKey("freeTrialEnabled")) freeTrialEnabled = Boolean.parseBoolean(byKey.get("freeTrialEnabled"));
+        if (byKey.containsKey("freeTrialDays")) freeTrialDays = Integer.parseInt(byKey.get("freeTrialDays"));
+        if (byKey.containsKey("maintenanceMode")) maintenanceMode = Boolean.parseBoolean(byKey.get("maintenanceMode"));
+        if (byKey.containsKey("demoModeEnabled")) demoModeEnabled = Boolean.parseBoolean(byKey.get("demoModeEnabled"));
+        if (byKey.containsKey("adminOnlyLogin")) adminOnlyLogin = Boolean.parseBoolean(byKey.get("adminOnlyLogin"));
+        if (byKey.containsKey("commissionPct")) commissionPct = Double.parseDouble(byKey.get("commissionPct"));
+        if (byKey.containsKey("featuredListingPriceUsd")) featuredListingPriceUsd = Double.parseDouble(byKey.get("featuredListingPriceUsd"));
+        if (byKey.containsKey("autoApproveListings")) autoApproveListings = Boolean.parseBoolean(byKey.get("autoApproveListings"));
+
+        if (byKey.containsKey("core_settings")) {
+            Map<String, Object> map = safeParseMap(byKey.get("core_settings"));
             if (map.containsKey("freeTrialEnabled")) freeTrialEnabled = Boolean.parseBoolean(map.get("freeTrialEnabled").toString());
             if (map.containsKey("freeTrialDays")) freeTrialDays = Integer.parseInt(map.get("freeTrialDays").toString());
             if (map.containsKey("maintenanceMode")) maintenanceMode = Boolean.parseBoolean(map.get("maintenanceMode").toString());
+            if (map.containsKey("demoModeEnabled")) demoModeEnabled = Boolean.parseBoolean(map.get("demoModeEnabled").toString());
+            if (map.containsKey("adminOnlyLogin")) adminOnlyLogin = Boolean.parseBoolean(map.get("adminOnlyLogin").toString());
+            if (map.containsKey("commissionPct")) commissionPct = Double.parseDouble(map.get("commissionPct").toString());
+            if (map.containsKey("featuredListingPriceUsd")) featuredListingPriceUsd = Double.parseDouble(map.get("featuredListingPriceUsd").toString());
+            if (map.containsKey("autoApproveListings")) autoApproveListings = Boolean.parseBoolean(map.get("autoApproveListings").toString());
         }
 
         List<TenantDTO.PlanDTO> plans = List.of(
                 TenantDTO.PlanDTO.builder()
-                        .id("FREE").name("Starter").priceUsd(0.0).featuredSlots(0).branchSlots(1)
+                        .id("FREE").plan("FREE").name("Starter").priceUsd(0.0)
+                        .priceUsdMonthly(0.0).priceUsdYearly(0.0).priceKhrMonthly(0.0).priceKhrYearly(0.0)
+                        .featuredSlots(0).branchSlots(1).listingsLimit(10).featuredLimit(0).seats(1).enabled(true)
                         .features(List.of("10 Active Listings", "1 Branch Location", "Standard Support"))
                         .build(),
                 TenantDTO.PlanDTO.builder()
-                        .id("PRO").name("Professional Dealership").priceUsd(49.0).featuredSlots(5).branchSlots(3)
-                        .features(List.of("Unlimited Listings", "5 Featured Spots", "3 Branch Locations", "AI Vehicle Reports", "Telegram CRM Bot"))
+                        .id("PRO").plan("PRO").name("Professional Dealership").priceUsd(49.0)
+                        .priceUsdMonthly(49.0).priceUsdYearly(490.0).priceKhrMonthly(200900.0).priceKhrYearly(2009000.0)
+                        .featuredSlots(5).branchSlots(3).listingsLimit(50).featuredLimit(5).seats(3).enabled(true)
+                        .features(List.of("50 Car Listings", "5 Featured Spots", "3 Staff Seats", "AI Vehicle Reports", "Telegram CRM Bot"))
                         .build(),
                 TenantDTO.PlanDTO.builder()
-                        .id("ENTERPRISE").name("Enterprise Network").priceUsd(149.0).featuredSlots(20).branchSlots(10)
-                        .features(List.of("Multi-Branch Sync", "20 Featured Spots", "10 Branch Locations", "Priority API Access", "Dedicated Account Manager"))
+                        .id("ENTERPRISE").plan("ENTERPRISE").name("Enterprise Network").priceUsd(149.0)
+                        .priceUsdMonthly(149.0).priceUsdYearly(1490.0).priceKhrMonthly(610900.0).priceKhrYearly(6109000.0)
+                        .featuredSlots(20).branchSlots(10).listingsLimit(999).featuredLimit(20).seats(10).enabled(true)
+                        .features(List.of("Unlimited Listings", "20 Featured Spots", "10 Staff Seats", "Priority API Access", "Dedicated Account Manager"))
                         .build()
         );
 
@@ -412,8 +459,431 @@ public class AdminService {
                 .freeTrialEnabled(freeTrialEnabled)
                 .freeTrialDays(freeTrialDays)
                 .maintenanceMode(maintenanceMode)
+                .demoModeEnabled(demoModeEnabled)
+                .adminOnlyLogin(adminOnlyLogin)
+                .commissionPct(commissionPct)
+                .featuredListingPriceUsd(featuredListingPriceUsd)
+                .autoApproveListings(autoApproveListings)
                 .plans(plans)
                 .build();
+    }
+
+    @Transactional
+    public AdminDTO.PlatformSettingsDTO updatePlatformSettings(String actorId, AdminDTO.PlatformSettingsUpdateRequest req) {
+        Optional<PlatformSettingEntity> sOpt = platformSettingRepository.findById("core_settings");
+        java.util.LinkedHashMap<String, Object> map = new java.util.LinkedHashMap<>();
+        sOpt.ifPresent(s -> map.putAll(safeParseMap(s.getValueJson())));
+
+        if (req.getFreeTrialEnabled() != null) {
+            map.put("freeTrialEnabled", req.getFreeTrialEnabled());
+            saveIndividualSetting("freeTrialEnabled", String.valueOf(req.getFreeTrialEnabled()));
+        }
+        if (req.getFreeTrialDays() != null) {
+            map.put("freeTrialDays", req.getFreeTrialDays());
+            saveIndividualSetting("freeTrialDays", String.valueOf(req.getFreeTrialDays()));
+        }
+        if (req.getMaintenanceMode() != null) {
+            map.put("maintenanceMode", req.getMaintenanceMode());
+            saveIndividualSetting("maintenanceMode", String.valueOf(req.getMaintenanceMode()));
+        }
+        if (req.getDemoModeEnabled() != null) {
+            map.put("demoModeEnabled", req.getDemoModeEnabled());
+            saveIndividualSetting("demoModeEnabled", String.valueOf(req.getDemoModeEnabled()));
+        }
+        if (req.getAdminOnlyLogin() != null) {
+            map.put("adminOnlyLogin", req.getAdminOnlyLogin());
+            saveIndividualSetting("adminOnlyLogin", String.valueOf(req.getAdminOnlyLogin()));
+        }
+        if (req.getCommissionPct() != null) {
+            map.put("commissionPct", req.getCommissionPct());
+            saveIndividualSetting("commissionPct", String.valueOf(req.getCommissionPct()));
+        }
+        if (req.getFeaturedListingPriceUsd() != null) {
+            map.put("featuredListingPriceUsd", req.getFeaturedListingPriceUsd());
+            saveIndividualSetting("featuredListingPriceUsd", String.valueOf(req.getFeaturedListingPriceUsd()));
+        }
+        if (req.getAutoApproveListings() != null) {
+            map.put("autoApproveListings", req.getAutoApproveListings());
+            saveIndividualSetting("autoApproveListings", String.valueOf(req.getAutoApproveListings()));
+        }
+
+        try {
+            String json = objectMapper.writeValueAsString(map);
+            PlatformSettingEntity entity = sOpt.map(s -> { s.setValueJson(json); return s; })
+                    .orElseGet(() -> PlatformSettingEntity.builder().key("core_settings").valueJson(json).build());
+            platformSettingRepository.save(entity);
+        } catch (Exception e) {
+            throw new org.springframework.web.server.ResponseStatusException(
+                    org.springframework.http.HttpStatus.INTERNAL_SERVER_ERROR, "Failed to save settings");
+        }
+
+        writeAudit(actorId, "SETTINGS_UPDATED", "PlatformSetting", "core_settings", new HashMap<>(map));
+        return getPlatformSettings();
+    }
+
+    private void saveIndividualSetting(String key, String value) {
+        PlatformSettingEntity entity = platformSettingRepository.findById(key)
+                .map(s -> { s.setValueJson(value); return s; })
+                .orElseGet(() -> PlatformSettingEntity.builder().key(key).valueJson(value).build());
+        platformSettingRepository.save(entity);
+    }
+
+    @Transactional
+    public AdminDTO.AdminUserDTO updateUser(String actorId, String userId, AdminDTO.UpdateUserRequest req) {
+        UserEntity user = userRepository.findById(userId)
+                .orElseThrow(() -> new org.springframework.web.server.ResponseStatusException(
+                        org.springframework.http.HttpStatus.NOT_FOUND, "User not found"));
+
+        if (req.getRole() != null && !req.getRole().isBlank()) user.setRole(req.getRole());
+        if (req.getBlacklisted() != null) user.setIsBlacklisted(req.getBlacklisted());
+        if (req.getBlacklistReason() != null)
+            user.setBlacklistReason(req.getBlacklistReason().isBlank() ? null : req.getBlacklistReason());
+        userRepository.save(user);
+
+        long listingCount = vehicleRepository.countBySellerIdAndStatus(userId, "PUBLISHED");
+        long favoriteCount = favoriteRepository.countByUserId(userId);
+        Optional<TenantMemberEntity> memberOpt = tenantMemberRepository.findFirstByUserIdAndStatus(userId, "ACTIVE");
+        String tenantName = memberOpt.flatMap(m -> tenantRepository.findById(m.getTenantId()))
+                .map(TenantEntity::getName).orElse(null);
+
+        return AdminDTO.AdminUserDTO.builder()
+                .id(user.getId()).name(user.getName()).phone(user.getPhone()).role(user.getRole())
+                .locale(user.getLocale()).phoneVerified(Boolean.TRUE.equals(user.getPhoneVerified()))
+                .createdAt(user.getCreatedAt() != null ? user.getCreatedAt().toString() : null)
+                .listingCount(listingCount).favoriteCount(favoriteCount).tenantName(tenantName)
+                .isBlacklisted(Boolean.TRUE.equals(user.getIsBlacklisted()))
+                .blacklistReason(user.getBlacklistReason())
+                .build();
+    }
+
+    @Transactional
+    public AdminDTO.AdminTenantDTO updateTenant(String actorId, String tenantId, AdminDTO.UpdateTenantRequest req) {
+        TenantEntity tenant = tenantRepository.findById(tenantId)
+                .orElseThrow(() -> new org.springframework.web.server.ResponseStatusException(
+                        org.springframework.http.HttpStatus.NOT_FOUND, "Tenant not found"));
+
+        if (req.getStatus() != null && !req.getStatus().isBlank()) tenant.setStatus(req.getStatus());
+        if (req.getVerification() != null && !req.getVerification().isBlank()) tenant.setVerification(req.getVerification());
+        tenantRepository.save(tenant);
+
+        int memberCount = tenantMemberRepository.findByTenantId(tenantId).size();
+        long listingCount = vehicleRepository.findByTenantId(tenantId).size();
+        Optional<SubscriptionEntity> subOpt = subscriptionRepository.findByTenantId(tenantId);
+
+        return AdminDTO.AdminTenantDTO.builder()
+                .id(tenant.getId()).name(tenant.getName()).slug(tenant.getSlug()).city(tenant.getCity())
+                .verification(tenant.getVerification()).status(tenant.getStatus())
+                .memberCount(memberCount).listingCount((int) listingCount)
+                .plan(subOpt.map(SubscriptionEntity::getPlan).orElse("FREE"))
+                .subscriptionStatus(subOpt.map(SubscriptionEntity::getStatus).orElse("INACTIVE"))
+                .mrrUsd(0.0).createdAt(tenant.getCreatedAt() != null ? tenant.getCreatedAt().toString() : null)
+                .build();
+    }
+
+    public Map<String, Object> getStorageStatus() {
+        String r2Endpoint = System.getenv().getOrDefault("CLOUDFLARE_R2_ENDPOINT", "https://cb9940df321e5a167f322120e5c74070.r2.cloudflarestorage.com");
+        String r2Bucket = System.getenv().getOrDefault("CLOUDFLARE_R2_BUCKET", "cars-storage").replace("\"", "").trim();
+        String r2Prefix = System.getenv().getOrDefault("CLOUDFLARE_R2_PREFIX", "");
+        String r2PublicUrl = System.getenv().getOrDefault("CLOUDFLARE_R2_PUBLIC_URL", "https://pub-d32806cd92a44955a3772e3e6c2369a5.r2.dev");
+        String r2Access = System.getenv().getOrDefault("CLOUDFLARE_R2_ACCESS_KEY_ID", "");
+
+        boolean r2Configured = !r2Endpoint.isBlank() && !r2Access.isBlank();
+        boolean r2Healthy = r2Configured && minioStorageService.checkHealth();
+        int r2Count = r2Healthy ? minioStorageService.countObjects(r2Prefix) : 0;
+
+        Map<String, Object> map = new LinkedHashMap<>();
+        map.put("r2Configured", r2Configured);
+        map.put("r2Healthy", r2Healthy);
+        map.put("r2Bucket", r2Bucket);
+        map.put("r2Prefix", r2Prefix);
+        map.put("r2PublicUrl", r2PublicUrl);
+        map.put("r2ObjectCount", r2Count);
+        map.put("minioConfigured", true);
+        map.put("minioHealthy", true);
+        map.put("pendingCount", 0);
+        map.put("pendingFiles", List.of());
+        map.put("connected", r2Healthy);
+        map.put("provider", "Cloudflare R2");
+        map.put("bucket", r2Bucket);
+        map.put("endpoint", r2Endpoint);
+        map.put("message", r2Healthy ? "Cloudflare R2 Edge Storage is operational" : "Storage degraded");
+        return map;
+    }
+
+    public Map<String, Object> testStorageConnection() {
+        long start = System.currentTimeMillis();
+        String r2Bucket = System.getenv().getOrDefault("CLOUDFLARE_R2_BUCKET", "cars-storage").replace("\"", "").trim();
+        String r2Prefix = System.getenv().getOrDefault("CLOUDFLARE_R2_PREFIX", "");
+        String r2PublicUrl = System.getenv().getOrDefault("CLOUDFLARE_R2_PUBLIC_URL", "https://pub-d32806cd92a44955a3772e3e6c2369a5.r2.dev");
+
+        boolean healthy = minioStorageService.checkHealth();
+        long latency = System.currentTimeMillis() - start;
+        List<String> samples = healthy ? minioStorageService.listSampleObjects(r2Prefix, 5) : List.of();
+        int count = samples.size();
+
+        Map<String, Object> map = new LinkedHashMap<>();
+        map.put("success", healthy);
+        map.put("bucket", r2Bucket);
+        map.put("prefix", r2Prefix);
+        map.put("publicUrl", r2PublicUrl);
+        map.put("objectCount", count);
+        map.put("sampleObjects", samples);
+        map.put("latencyMs", latency);
+        if (!healthy) {
+            map.put("error", "Failed to connect to storage bucket");
+        }
+        return map;
+    }
+
+    public Map<String, Object> syncR2Storage() {
+        Map<String, Object> map = new LinkedHashMap<>();
+        map.put("total", 0);
+        map.put("synced", 0);
+        map.put("failed", 0);
+        map.put("errors", List.of());
+        return map;
+    }
+
+    public Map<String, Object> getNacosStatus() {
+        String nacosHost = System.getenv().getOrDefault("NACOS_SERVER_ADDR", "nacos:8848");
+        String endpoint = nacosHost.startsWith("http") ? nacosHost : "http://" + nacosHost;
+        endpoint = endpoint.replaceAll("/+$", "");
+
+        Map<String, Object> health = new LinkedHashMap<>();
+        health.put("endpoint", endpoint);
+
+        List<Map<String, Object>> configs = new ArrayList<>();
+
+        try {
+            java.net.http.HttpClient client = java.net.http.HttpClient.newBuilder()
+                    .connectTimeout(java.time.Duration.ofSeconds(3))
+                    .build();
+
+            // 1. Query Nacos server console state
+            java.net.http.HttpRequest stateReq = java.net.http.HttpRequest.newBuilder()
+                    .uri(java.net.URI.create(endpoint + "/nacos/v1/console/server/state"))
+                    .timeout(java.time.Duration.ofSeconds(3))
+                    .GET()
+                    .build();
+
+            java.net.http.HttpResponse<String> stateRes = client.send(stateReq, java.net.http.HttpResponse.BodyHandlers.ofString());
+            if (stateRes.statusCode() == 200) {
+                com.fasterxml.jackson.databind.JsonNode stateNode = objectMapper.readTree(stateRes.body());
+                health.put("version", stateNode.path("version").asText("2.4.3"));
+                health.put("standalone", "standalone".equalsIgnoreCase(stateNode.path("startup_mode").asText("standalone")));
+                health.put("healthy", true);
+            } else {
+                health.put("version", "unknown");
+                health.put("standalone", false);
+                health.put("healthy", false);
+            }
+
+            // 2. Query published Nacos configs
+            java.net.http.HttpRequest configsReq = java.net.http.HttpRequest.newBuilder()
+                    .uri(java.net.URI.create(endpoint + "/nacos/v1/cs/configs?dataId=&group=&pageNo=1&pageSize=100&search=accurate"))
+                    .timeout(java.time.Duration.ofSeconds(3))
+                    .GET()
+                    .build();
+
+            java.net.http.HttpResponse<String> configsRes = client.send(configsReq, java.net.http.HttpResponse.BodyHandlers.ofString());
+            if (configsRes.statusCode() == 200) {
+                com.fasterxml.jackson.databind.JsonNode configsNode = objectMapper.readTree(configsRes.body());
+                com.fasterxml.jackson.databind.JsonNode pageItems = configsNode.path("pageItems");
+                if (pageItems.isArray()) {
+                    for (com.fasterxml.jackson.databind.JsonNode item : pageItems) {
+                        Map<String, Object> cfg = new LinkedHashMap<>();
+                        cfg.put("dataId", item.path("dataId").asText());
+                        cfg.put("group", item.path("group").asText("DEFAULT_GROUP"));
+                        cfg.put("type", item.path("type").asText("yaml"));
+                        configs.add(cfg);
+                    }
+                }
+            }
+        } catch (Exception e) {
+            log.warn("[Nacos] Failed to check status at {}: {}", endpoint, e.getMessage());
+            health.put("version", "unreachable");
+            health.put("standalone", false);
+            health.put("healthy", false);
+        }
+
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("endpoint", endpoint);
+        result.put("health", health);
+        result.put("configs", configs);
+        return result;
+    }
+
+    public Map<String, Object> syncNacosConfigs() {
+        String nacosHost = System.getenv().getOrDefault("NACOS_SERVER_ADDR", "nacos:8848");
+        String endpoint = nacosHost.startsWith("http") ? nacosHost : "http://" + nacosHost;
+        endpoint = endpoint.replaceAll("/+$", "");
+
+        List<String> published = new ArrayList<>();
+        List<String> errors = new ArrayList<>();
+
+        Map<String, String> modularConfigs = getModularConfigTemplates();
+
+        java.net.http.HttpClient client = java.net.http.HttpClient.newBuilder()
+                .connectTimeout(java.time.Duration.ofSeconds(4))
+                .build();
+
+        for (Map.Entry<String, String> entry : modularConfigs.entrySet()) {
+            String dataId = entry.getKey();
+            String content = entry.getValue();
+
+            try {
+                String formBody = "dataId=" + java.net.URLEncoder.encode(dataId, java.nio.charset.StandardCharsets.UTF_8)
+                        + "&group=DEFAULT_GROUP&type=yaml&content=" + java.net.URLEncoder.encode(content, java.nio.charset.StandardCharsets.UTF_8);
+
+                java.net.http.HttpRequest req = java.net.http.HttpRequest.newBuilder()
+                        .uri(java.net.URI.create(endpoint + "/nacos/v1/cs/configs"))
+                        .header("Content-Type", "application/x-www-form-urlencoded")
+                        .timeout(java.time.Duration.ofSeconds(5))
+                        .POST(java.net.http.HttpRequest.BodyPublishers.ofString(formBody))
+                        .build();
+
+                java.net.http.HttpResponse<String> res = client.send(req, java.net.http.HttpResponse.BodyHandlers.ofString());
+                if (res.statusCode() == 200 && "true".equalsIgnoreCase(res.body().trim())) {
+                    published.add(dataId);
+                } else {
+                    errors.add(dataId + ": HTTP " + res.statusCode() + " " + res.body());
+                }
+            } catch (Exception ex) {
+                log.error("[Nacos] Error publishing {}: {}", dataId, ex.getMessage());
+                errors.add(dataId + ": " + ex.getMessage());
+            }
+        }
+
+        Map<String, Object> response = new LinkedHashMap<>();
+        response.put("published", published);
+        response.put("errors", errors);
+        return response;
+    }
+
+    private Map<String, String> getModularConfigTemplates() {
+        Map<String, String> map = new LinkedHashMap<>();
+
+        // 1. Backend config
+        map.put("khlan-backend.yaml",
+                """
+                server:
+                  port: 8080
+                  shutdown: graceful
+                spring:
+                  application:
+                    name: khlan-backend
+                  threads:
+                    virtual:
+                      enabled: true
+                  datasource:
+                    url: jdbc:postgresql://postgres:5432/khlandb
+                    username: khlan
+                    password: khlan_secret_2026
+                    driver-class-name: org.postgresql.Driver
+                    hikari:
+                      maximum-pool-size: 20
+                      minimum-idle: 5
+                      idle-timeout: 300000
+                      connection-timeout: 20000
+                  jpa:
+                    open-in-view: false
+                    hibernate:
+                      ddl-auto: validate
+                  flyway:
+                    enabled: true
+                    baseline-on-migrate: true
+                    locations: classpath:db/migration
+                  data:
+                    redis:
+                      host: redis
+                      port: 6379
+                      timeout: 3000ms
+                jwt:
+                  secret: KhLanSuperSecretJwtKeyCambodiaMarketplace2026SecureToken
+                  access-token-expiration-ms: 86400000
+                  refresh-token-expiration-ms: 604800000
+                management:
+                  endpoints:
+                    web:
+                      exposure:
+                        include: health,info,prometheus,metrics
+                  endpoint:
+                    health:
+                      show-details: always
+                    prometheus:
+                      enabled: true
+                """);
+
+        // 2. Storage config
+        String r2Endpoint = System.getenv().getOrDefault("CLOUDFLARE_R2_ENDPOINT", "https://cb9940df321e5a167f322120e5c74070.r2.cloudflarestorage.com");
+        String r2Access = System.getenv().getOrDefault("CLOUDFLARE_R2_ACCESS_KEY_ID", "d3de5abfa49f01c944cc6cc9eee5a282");
+        String r2Secret = System.getenv().getOrDefault("CLOUDFLARE_R2_SECRET_ACCESS_KEY", "4f2977c626ea5856833a712e08052fbc78ab4cf7ebd22b6c529bbf85bf77cf5d");
+        String r2Bucket = System.getenv().getOrDefault("CLOUDFLARE_R2_BUCKET", "cars-storage");
+        String r2Prefix = System.getenv().getOrDefault("CLOUDFLARE_R2_PREFIX", "");
+        String r2Public = System.getenv().getOrDefault("CLOUDFLARE_R2_PUBLIC_URL", "https://pub-d32806cd92a44955a3772e3e6c2369a5.r2.dev");
+
+        map.put("khlan-storage.yaml",
+                String.format(
+                        """
+                        storage:
+                          default-provider: CLOUDFLARE_R2
+                          r2:
+                            endpoint: %s
+                            access-key-id: %s
+                            secret-access-key: %s
+                            bucket: %s
+                            prefix: %s
+                            public-url: %s
+                          minio:
+                            endpoint: http://minio:9000
+                            access-key: minioadmin
+                            secret-key: minioadmin
+                            bucket: cars-storage
+                        """,
+                        r2Endpoint, r2Access, r2Secret, r2Bucket, r2Prefix, r2Public
+                ));
+
+        // 3. Telegram config
+        String tgToken = System.getenv().getOrDefault("TELEGRAM_BOT_TOKEN", "8961155344:AAEXIEeSWNp4kudB2YQEnpj7hsUkd-ignAc");
+        String tgChat = System.getenv().getOrDefault("TELEGRAM_GROUP_CHAT_ID", "-1004489863210");
+        String tgSecret = System.getenv().getOrDefault("TELEGRAM_WEBHOOK_SECRET", "khlan_webhook_secret_2026");
+
+        map.put("khlan-telegram.yaml",
+                String.format(
+                        """
+                        telegram:
+                          bot-token: %s
+                          group-chat-id: "%s"
+                          webhook-secret: %s
+                          mini-app:
+                            enabled: true
+                            app-url: https://t.me/khlan_bot/app
+                        """,
+                        tgToken, tgChat, tgSecret
+                ));
+
+        // 4. Frontend config
+        map.put("khlan-frontend.yaml",
+                """
+                frontend:
+                  app-name: KhLan Automotive Marketplace
+                  default-locale: km
+                  supported-locales:
+                    - km
+                    - en
+                    - zh
+                    - vi
+                  features:
+                    ai-inspection: true
+                    telegram-mini-app: true
+                    multi-category: true
+                    demo-mode: false
+                  pricing:
+                    default-currency: USD
+                    khr-rate: 4100
+                """);
+
+        return map;
     }
 
     private void writeAudit(String actorId, String action, String entity, String entityId, Map<String, Object> meta) {

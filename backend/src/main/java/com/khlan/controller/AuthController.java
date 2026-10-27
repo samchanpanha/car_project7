@@ -1,6 +1,7 @@
 package com.khlan.controller;
 
 import com.khlan.dto.AuthDTO;
+import com.khlan.dto.TelegramAuthDTO;
 import com.khlan.service.AuthService;
 import com.khlan.service.CaptchaService;
 import io.swagger.v3.oas.annotations.Operation;
@@ -50,10 +51,23 @@ public class AuthController {
     @PostMapping("/captcha/verify")
     @Operation(summary = "Verify clicked letters order and mint single-use captchaToken")
     public ResponseEntity<?> verifyCaptcha(@Valid @RequestBody AuthDTO.CaptchaVerifyRequest req) {
-        String token = captchaService.verifyOrder(req.getId(), req.getOrder());
+        String answer = req.getEffectiveOrder();
+        if (answer == null || answer.isBlank()) {
+            return ResponseEntity.badRequest().body(Map.of("error", "sequence is required"));
+        }
+        String token = captchaService.verifyOrder(req.getId(), answer);
         if (token == null) {
-            return ResponseEntity.badRequest().body(Map.of("error", "Incorrect sequence or challenge expired"));
+            return ResponseEntity.badRequest().body(Map.of("ok", false, "error", "Incorrect sequence or challenge expired"));
         }
         return ResponseEntity.ok(AuthDTO.CaptchaVerifyResponse.builder().ok(true).captchaToken(token).build());
+    }
+
+    @PostMapping("/telegram")
+    @Operation(summary = "Authenticate or register via Telegram Mini App initData")
+    public ResponseEntity<TelegramAuthDTO.TelegramLoginResponse> loginTelegram(
+            @Valid @RequestBody TelegramAuthDTO.TelegramLoginRequest req,
+            HttpServletResponse response
+    ) {
+        return ResponseEntity.ok(authService.loginTelegram(req, response));
     }
 }

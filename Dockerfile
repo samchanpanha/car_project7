@@ -40,6 +40,8 @@ WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 
+ARG BACKEND_URL=http://backend:8080
+ENV BACKEND_URL=${BACKEND_URL}
 ENV NEXT_TELEMETRY_DISABLED=1
 ENV NODE_ENV=production
 
@@ -83,12 +85,8 @@ ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1
 ENV PORT=3000
 ENV HOSTNAME="0.0.0.0"
-ENV DATABASE_URL="postgresql://khlan:khlan_secret_2026@postgres:5432/khlandb"
 
-# Create persistent storage directories
-RUN mkdir -p /app/db /app/uploads
-
-# Copy dependencies, scripts, and source code (supports embedded background sync & tooling)
+# Copy dependencies, scripts, and source code
 COPY --from=deps /app/node_modules ./node_modules
 COPY package.json tsconfig.json ./
 COPY src ./src
@@ -98,12 +96,8 @@ COPY scripts ./scripts
 COPY --from=builder /app/.next/standalone ./
 COPY --from=builder /app/.next/static ./.next/static
 COPY --from=builder /app/public ./public
-COPY --from=builder /app/prisma ./prisma
 
-# Pre-seeded database template for cloud environments (Render, Railway, etc.)
-COPY db /app/db-template
-
-# Entrypoint script for WAL mode, volume directory setup, and optional background worker
+# Entrypoint script
 COPY docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
 RUN chmod +x /usr/local/bin/docker-entrypoint.sh
 

@@ -295,25 +295,28 @@ public class AccountService {
         String transmission = (String) q.get("transmission");
         String drivetrain = (String) q.get("drivetrain");
         String condition = (String) q.get("condition");
-        Double minPrice = q.get("minPrice") != null ? Double.valueOf(q.get("minPrice").toString()) : null;
-        Double maxPrice = q.get("maxPrice") != null ? Double.valueOf(q.get("maxPrice").toString()) : null;
-        Integer minYear = q.get("minYear") != null ? Integer.valueOf(q.get("minYear").toString()) : null;
-        Integer maxYear = q.get("maxYear") != null ? Integer.valueOf(q.get("maxYear").toString()) : null;
+        Double minPrice = q.get("minPrice") != null ? Double.valueOf(q.get("minPrice").toString()) : (q.get("priceMin") != null ? Double.valueOf(q.get("priceMin").toString()) : null);
+        Double maxPrice = q.get("maxPrice") != null ? Double.valueOf(q.get("maxPrice").toString()) : (q.get("priceMax") != null ? Double.valueOf(q.get("priceMax").toString()) : null);
+        Integer minYear = q.get("minYear") != null ? Integer.valueOf(q.get("minYear").toString()) : (q.get("yearMin") != null ? Integer.valueOf(q.get("yearMin").toString()) : null);
+        Integer maxYear = q.get("maxYear") != null ? Integer.valueOf(q.get("maxYear").toString()) : (q.get("yearMax") != null ? Integer.valueOf(q.get("yearMax").toString()) : null);
         Integer minMileage = q.get("minMileage") != null ? Integer.valueOf(q.get("minMileage").toString()) : null;
-        Integer maxMileage = q.get("maxMileage") != null ? Integer.valueOf(q.get("maxMileage").toString()) : null;
+        Integer maxMileage = q.get("maxMileage") != null ? Integer.valueOf(q.get("maxMileage").toString()) : (q.get("mileageMax") != null ? Integer.valueOf(q.get("mileageMax").toString()) : null);
         Boolean featured = q.get("featured") != null ? Boolean.valueOf(q.get("featured").toString()) : null;
         String sellerId = (String) q.get("sellerId");
+        String dealerId = (String) q.get("dealerId");
+        String keyword = (String) q.get("q");
         String sort = (String) q.get("sort");
 
         VehicleDTO.PagedVehiclesResponseDTO paged = vehicleService.searchVehicles(
-                make, model, city, bodyType, fuel, transmission, drivetrain, condition,
-                minPrice, maxPrice, minYear, maxYear, minMileage, maxMileage, featured, sellerId,
+                keyword, make, model, city, bodyType, fuel, transmission, drivetrain, condition,
+                minPrice, maxPrice, minYear, maxYear, minMileage, maxMileage, featured, sellerId, dealerId,
                 sort, 1, 12
         );
 
         return AccountDTO.RunSavedSearchResponse.builder()
                 .total(paged.getTotal())
                 .vehicles(paged.getVehicles())
+                .items(paged.getVehicles())
                 .build();
     }
 
