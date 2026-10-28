@@ -3,6 +3,7 @@ package com.khlan.service;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.core.type.TypeReference;
+import com.khlan.dto.RealtimeEventDTO;
 import com.khlan.dto.TelegramDTO;
 import com.khlan.entity.*;
 import com.khlan.repository.*;
@@ -43,6 +44,8 @@ public class TelegramService {
     private final PlatformSettingRepository platformSettingRepository;
     private final AuditLogRepository auditLogRepository;
     private final ObjectMapper objectMapper;
+    private final RealtimeService realtimeService;
+    private final TenantMemberRepository tenantMemberRepository;
 
     @Value("${telegram.bot-token:}")
     private String defaultBotToken;
@@ -845,6 +848,21 @@ public class TelegramService {
                         + "You can return to your browser dashboard now.";
                 sendDirectMessage(chatId, reply);
                 log.info("Auto-linked Telegram chatId {} to seller userId {}", chatId, userId);
+
+                if (realtimeService != null) {
+                    RealtimeEventDTO event = RealtimeEventDTO.builder()
+                            .type("TELEGRAM_LINKED")
+                            .title("🎉 Telegram Connected!")
+                            .message("Your Telegram account is now connected and receiving instant alerts.")
+                            .payload(Map.of("chatId", chatId, "userId", userId))
+                            .build();
+                    realtimeService.emitToUser(userId, event);
+
+                    Optional<TenantMemberEntity> memberOpt = tenantMemberRepository.findFirstByUserIdAndStatus(userId, "ACTIVE");
+                    if (memberOpt.isPresent()) {
+                        realtimeService.emitToTenant(memberOpt.get().getTenantId(), event);
+                    }
+                }
                 return;
             }
         }

@@ -19,6 +19,10 @@ import { ListingEditorDialog } from "@/components/marketplace/listing-editor";
 import { Pagination } from "@/components/marketplace/pagination";
 import { DealerBranches } from "./dealer-branches";
 import { DealerAnalyticsCharts } from "./dealer-analytics-charts";
+import { LiveStatusPill } from "./live-status-pill";
+import { TelegramHub } from "./telegram-hub";
+import { SubscriptionHub } from "./subscription-hub";
+import { useRealtimeEvent } from "@/hooks/use-realtime";
 import { AdvancedFilterToolbar, type AdvancedFilterValues } from "@/components/marketplace/advanced-filter-toolbar";
 import {
   AppointmentStatusBadge, AvatarCircle, EmptyState, FetchErrorState, SectionCard, StatCard,
@@ -41,7 +45,7 @@ import {
 import { Badge } from "@/components/ui/badge";
 import {
   Bike, CalendarDays, Car, CheckCircle2, ChevronDown, CreditCard, Eye, Heart, Hourglass, LayoutDashboard, Loader2,
-  MapPin, MessageSquare, MoreHorizontal, Package, Plus, Search, Settings, Star, Store, Trash2, TriangleAlert, UserPlus, Users, Wrench, X,
+  MapPin, MessageSquare, MoreHorizontal, Package, Plus, Search, Send, Settings, Star, Store, Trash2, TriangleAlert, UserPlus, Users, Wrench, X,
 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
@@ -66,6 +70,7 @@ export function DealerDashboard({ me }: { me: SessionDTO }) {
     { id: "branches", label: "Branches", icon: Store },
     { id: "leads", label: t("tabLeads"), icon: MessageSquare },
     { id: "appointments", label: t("tabAppointments"), icon: CalendarDays },
+    { id: "telegram", label: t("tabTelegram"), icon: Send },
     ...(isManagerOrOwner ? [{ id: "staff", label: t("tabStaff"), icon: Users }] : []),
     ...(isManagerOrOwner ? [{ id: "subscription", label: t("tabSubscription"), icon: CreditCard }] : []),
     { id: "settings", label: t("tabSettings"), icon: Settings },
@@ -76,9 +81,10 @@ export function DealerDashboard({ me }: { me: SessionDTO }) {
       greeting={t("dashboardWelcome", { name: me.user.name })}
       subtitle={t("dashboardDealerSub")}
       badge={
-        <span className="flex items-center gap-1.5">
+        <span className="flex flex-wrap items-center gap-2">
           <TenantRoleBadge role={me.tenant?.myRole ?? "OWNER"} />
           {me.tenant && <span className="text-xs font-medium text-slate-500">{me.tenant.name}</span>}
+          <LiveStatusPill />
         </span>
       }
       tabs={tabs}
@@ -135,8 +141,9 @@ export function DealerDashboard({ me }: { me: SessionDTO }) {
         )
       )}
       {active === "appointments" && <DealerAppointments />}
+      {active === "telegram" && <TelegramHub isDealer={true} />}
       {active === "staff" && isManagerOrOwner && <DealerStaff isManagerOrOwner={isManagerOrOwner} />}
-      {active === "subscription" && isManagerOrOwner && <DealerSubscription />}
+      {active === "subscription" && isManagerOrOwner && <SubscriptionHub isDealer={true} />}
       {active === "settings" && <DealerSettings />}
     </DashboardShell>
   );

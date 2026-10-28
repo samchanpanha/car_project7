@@ -2,6 +2,7 @@ package com.khlan.service;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.khlan.dto.AppointmentDTO;
+import com.khlan.dto.RealtimeEventDTO;
 import com.khlan.entity.*;
 import com.khlan.repository.*;
 import lombok.RequiredArgsConstructor;
@@ -25,6 +26,7 @@ public class AppointmentService {
     private final TenantMemberRepository tenantMemberRepository;
     private final AuditLogRepository auditLogRepository;
     private final ObjectMapper objectMapper;
+    private final RealtimeService realtimeService;
     private final org.springframework.beans.factory.ObjectProvider<TelegramService> telegramServiceProvider;
 
     @Transactional(readOnly = true)
@@ -130,6 +132,28 @@ public class AppointmentService {
             }
         } catch (Exception e) {
             log.warn("Failed to notify seller on Telegram: {}", e.getMessage());
+        }
+
+        try {
+            if (realtimeService != null) {
+                RealtimeEventDTO rtEvent = RealtimeEventDTO.builder()
+                        .type("APPOINTMENT_CREATED")
+                        .title("🚗 New Test-Drive Appointment!")
+                        .message(buyerName + " requested a test drive for " + vehicle.getYear() + " " + vehicle.getMake() + " " + vehicle.getModel())
+                        .payload(Map.of(
+                                "appointmentId", appt.getId(),
+                                "vehicleId", vehicle.getId(),
+                                "buyerName", buyerName,
+                                "scheduledAt", appt.getScheduledAt().toString()
+                        ))
+                        .build();
+                realtimeService.emitToUser(vehicle.getSellerId(), rtEvent);
+                if (appt.getTenantId() != null) {
+                    realtimeService.emitToTenant(appt.getTenantId(), rtEvent);
+                }
+            }
+        } catch (Exception e) {
+            log.warn("Failed to dispatch appointment realtime event: {}", e.getMessage());
         }
 
         return AppointmentDTO.BuyerAppointmentDTO.builder()

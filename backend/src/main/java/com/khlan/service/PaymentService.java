@@ -30,6 +30,7 @@ import java.util.*;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
+import com.khlan.dto.RealtimeEventDTO;
 import com.google.zxing.BarcodeFormat;
 import com.google.zxing.client.j2se.MatrixToImageWriter;
 import com.google.zxing.common.BitMatrix;
@@ -50,6 +51,7 @@ public class PaymentService {
     private final MinioStorageService minioStorageService;
     private final ObjectMapper objectMapper;
     private final ReceiptSlipParser receiptSlipParser;
+    private final RealtimeService realtimeService;
     private final org.springframework.beans.factory.ObjectProvider<TelegramService> telegramServiceProvider;
 
     private static final String SETTING_KEY_PAYMENT_CONFIG = "payment_config";
@@ -675,6 +677,21 @@ public class PaymentService {
             subscriptionRepository.save(sub);
             subscriptionPaymentRepository.save(payment);
 
+            if (realtimeService != null) {
+                realtimeService.emitToTenant(payment.getTenantId(), RealtimeEventDTO.builder()
+                        .type("SUBSCRIPTION_ACTIVATED")
+                        .title("🎉 Subscription Activated!")
+                        .message("Your " + payment.getPlan() + " plan has been approved and activated.")
+                        .payload(Map.of(
+                                "plan", payment.getPlan(),
+                                "paymentId", payment.getId(),
+                                "tenantId", payment.getTenantId(),
+                                "status", "ACTIVE",
+                                "periodEnd", newPeriodEnd.toString()
+                        ))
+                        .build());
+            }
+
             recordAudit(adminUserId, "PAYMENT_VERIFIED", "SubscriptionPayment", paymentId,
                     Map.of("plan", payment.getPlan(), "periodEnd", newPeriodEnd.toString()));
         } else if ("reject".equalsIgnoreCase(action)) {
@@ -684,6 +701,20 @@ public class PaymentService {
             payment.setReviewedAt(OffsetDateTime.now());
 
             subscriptionPaymentRepository.save(payment);
+
+            if (realtimeService != null) {
+                realtimeService.emitToTenant(payment.getTenantId(), RealtimeEventDTO.builder()
+                        .type("PAYMENT_REJECTED")
+                        .title("⚠️ Subscription Payment Rejected")
+                        .message(payment.getRejectionReason())
+                        .payload(Map.of(
+                                "paymentId", payment.getId(),
+                                "tenantId", payment.getTenantId(),
+                                "reason", payment.getRejectionReason()
+                        ))
+                        .build());
+            }
+
             recordAudit(adminUserId, "PAYMENT_REJECTED", "SubscriptionPayment", paymentId,
                     Map.of("reason", payment.getRejectionReason()));
         } else {

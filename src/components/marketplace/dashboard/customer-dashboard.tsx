@@ -12,8 +12,10 @@ import type { VehiclesResponseDTO } from "@/lib/types";
 import { VehicleCard, VehicleCardSkeleton } from "@/components/marketplace/vehicle-card";
 import { DashboardShell, type DashboardTabDef } from "./shell";
 import { PurchaseRequestList } from "./purchase-list";
-import { SellerInventory, SellerSubscription } from "./seller-tabs";
-import { SellerTelegram } from "./seller-telegram";
+import { SellerInventory } from "./seller-tabs";
+import { TelegramHub } from "./telegram-hub";
+import { SubscriptionHub } from "./subscription-hub";
+import { LiveStatusPill } from "./live-status-pill";
 import { SubscriptionPaywallCard } from "./payment-flow";
 import {
   AppointmentStatusBadge, ConfidenceRing, EmptyState, FetchErrorState, SectionCard, StatCard,
@@ -53,9 +55,9 @@ export function CustomerDashboard({ me }: { me: SessionDTO }) {
     { id: "saved-searches", label: t("tabSavedSearches"), icon: Search },
     { id: "appointments", label: t("tabAppointments"), icon: CalendarDays },
     { id: "reports", label: t("tabMyReports"), icon: FileCheck2 },
-    // private sellers also manage purchase requests on their own listings
-    ...(me.user.role === "SELLER"
-      ? [{ id: "sales", label: t("tabSalesRequests"), icon: Car } as DashboardTabDef]
+    // sellers and dealers also manage purchase requests on their own listings
+    ...(isSellerish
+      ? [{ id: "sales", label: t("tabSalesRequests"), icon: Handshake } as DashboardTabDef]
       : []),
     ...(isSellerish
       ? [
@@ -71,8 +73,11 @@ export function CustomerDashboard({ me }: { me: SessionDTO }) {
       greeting={t("dashboardWelcome", { name: me.user.name })}
       subtitle={t("dashboardCustomerSub")}
       badge={
-        <span className="text-xs font-medium text-slate-500">
-          {me.user.role === "BUYER" ? t("roleBUYER") : me.user.role === "DEALER" ? t("roleDEALER") : t("roleSELLER")}
+        <span className="flex flex-wrap items-center gap-2">
+          <span className="text-xs font-medium text-slate-500">
+            {me.user.role === "BUYER" ? t("roleBUYER") : me.user.role === "DEALER" ? t("roleDEALER") : t("roleSELLER")}
+          </span>
+          <LiveStatusPill />
         </span>
       }
       tabs={tabs}
@@ -93,15 +98,8 @@ export function CustomerDashboard({ me }: { me: SessionDTO }) {
       {active === "saved-searches" && <CustomerSavedSearches />}
       {active === "appointments" && <CustomerAppointments />}
       {active === "reports" && <CustomerReports />}
-      {active === "sales" && me.user.role === "SELLER" && (
-        !me.subscription || me.subscription.status !== "ACTIVE" ? (
-          <div className="rounded-xl border border-amber-300 bg-amber-50 p-4 text-xs text-amber-900">
-            <p className="font-bold">Sales Management Locked</p>
-            <p className="mt-1">Please complete your subscription payment above to manage buyer purchase requests.</p>
-          </div>
-        ) : (
-          <PurchaseRequestList url="/api/seller/purchase-requests" mode="seller" />
-        )
+      {active === "sales" && isSellerish && (
+        <PurchaseRequestList url="/api/seller/purchase-requests" mode="seller" />
       )}
       {active === "inventory" && isSellerish && (
         !me.subscription || me.subscription.status !== "ACTIVE" ? (
@@ -113,8 +111,8 @@ export function CustomerDashboard({ me }: { me: SessionDTO }) {
           <SellerInventory />
         )
       )}
-      {active === "subscription" && isSellerish && <SellerSubscription />}
-      {active === "telegram" && isSellerish && <SellerTelegram />}
+      {active === "subscription" && isSellerish && <SubscriptionHub isDealer={false} />}
+      {active === "telegram" && isSellerish && <TelegramHub isDealer={false} />}
     </DashboardShell>
   );
 }

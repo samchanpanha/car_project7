@@ -26,17 +26,28 @@ public class PurchaseDTO {
     @NoArgsConstructor
     @AllArgsConstructor
     @Builder
+    public static class BuyerSummaryDTO {
+        private String id;
+        private String name;
+    }
+
+    @Data
+    @NoArgsConstructor
+    @AllArgsConstructor
+    @Builder
     public static class PurchaseRequestDTO {
         private String id;
         private String vehicleId;
         private PurchaseVehicleDTO vehicle;
         private String buyerId;
         private String buyerName;
+        private BuyerSummaryDTO buyer;
         private String tenantId;
         private String sellerName;
         private String status;
         private String message;
         private double priceUsd;
+        private String decisionNote;
         private String createdAt;
         private String updatedAt;
     }

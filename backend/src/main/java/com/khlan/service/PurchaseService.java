@@ -111,6 +111,7 @@ public class PurchaseService {
             }
 
             String thumb = (v.getImages() != null && !v.getImages().isEmpty()) ? v.getImages().get(0).getUrl() : null;
+            String buyerName = userRepository.findById(r.getBuyerId()).map(UserEntity::getName).orElse("Buyer");
 
             result.add(PurchaseDTO.PurchaseRequestDTO.builder()
                     .id(r.getId())
@@ -123,7 +124,11 @@ public class PurchaseService {
                             .thumbnail(thumb)
                             .build())
                     .buyerId(r.getBuyerId())
-                    .buyerName(userRepository.findById(r.getBuyerId()).map(UserEntity::getName).orElse("Buyer"))
+                    .buyerName(buyerName)
+                    .buyer(PurchaseDTO.BuyerSummaryDTO.builder()
+                            .id(r.getBuyerId())
+                            .name(buyerName)
+                            .build())
                     .tenantId(r.getTenantId())
                     .sellerName(sellerName)
                     .status(r.getStatus())
@@ -139,12 +144,22 @@ public class PurchaseService {
 
     @Transactional(readOnly = true)
     public List<PurchaseDTO.PurchaseRequestDTO> getTenantPurchases(String userId) {
-        TenantMemberEntity member = tenantMemberRepository.findFirstByUserIdAndStatus(userId, "ACTIVE")
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.FORBIDDEN, "Forbidden"));
+        if (userId == null || userId.isBlank()) return List.of();
 
-        List<PurchaseRequestEntity> rows = purchaseRequestRepository.findByTenantIdOrderByCreatedAtDesc(member.getTenantId());
-        TenantEntity tenant = tenantRepository.findById(member.getTenantId()).orElse(null);
-        String tenantName = tenant != null ? tenant.getName() : "Dealership";
+        Optional<TenantMemberEntity> memberOpt = tenantMemberRepository.findFirstByUserIdAndStatus(userId, "ACTIVE");
+        List<PurchaseRequestEntity> rows;
+        String sellerDisplayName;
+
+        if (memberOpt.isPresent()) {
+            TenantMemberEntity member = memberOpt.get();
+            rows = purchaseRequestRepository.findByTenantIdOrderByCreatedAtDesc(member.getTenantId());
+            TenantEntity tenant = tenantRepository.findById(member.getTenantId()).orElse(null);
+            sellerDisplayName = tenant != null ? tenant.getName() : "Dealership";
+        } else {
+            // Private individual seller without a dealership tenant
+            rows = purchaseRequestRepository.findBySellerUserIdOrderByCreatedAtDesc(userId);
+            sellerDisplayName = userRepository.findById(userId).map(UserEntity::getName).orElse("Seller");
+        }
 
         List<PurchaseDTO.PurchaseRequestDTO> result = new ArrayList<>();
         for (PurchaseRequestEntity r : rows) {
@@ -167,8 +182,12 @@ public class PurchaseService {
                             .build())
                     .buyerId(r.getBuyerId())
                     .buyerName(buyerName)
+                    .buyer(PurchaseDTO.BuyerSummaryDTO.builder()
+                            .id(r.getBuyerId())
+                            .name(buyerName)
+                            .build())
                     .tenantId(r.getTenantId())
-                    .sellerName(tenantName)
+                    .sellerName(sellerDisplayName)
                     .status(r.getStatus())
                     .message(r.getMessage())
                     .priceUsd(r.getPriceUsd())
@@ -182,14 +201,24 @@ public class PurchaseService {
 
     @Transactional
     public String transitionPurchase(String userId, String id, String action) {
-        TenantMemberEntity member = tenantMemberRepository.findFirstByUserIdAndStatus(userId, "ACTIVE")
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.FORBIDDEN, "Forbidden"));
+        if (userId == null || userId.isBlank()) {
+            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Login required");
+        }
 
         PurchaseRequestEntity pr = purchaseRequestRepository.findById(id)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Purchase request not found"));
 
-        if (!member.getTenantId().equals(pr.getTenantId())) {
-            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Purchase request not found in your dealership");
+        Optional<TenantMemberEntity> memberOpt = tenantMemberRepository.findFirstByUserIdAndStatus(userId, "ACTIVE");
+
+        boolean canManage = false;
+        if (pr.getTenantId() != null && memberOpt.isPresent()) {
+            canManage = memberOpt.get().getTenantId().equals(pr.getTenantId());
+        } else if (userId.equals(pr.getSellerUserId())) {
+            canManage = true;
+        }
+
+        if (!canManage) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Forbidden: you do not have permission to manage this purchase request");
         }
 
         String nextStatus = switch (action.toLowerCase()) {
