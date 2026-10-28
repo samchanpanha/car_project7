@@ -182,7 +182,9 @@ public class ChatService {
         VehicleEntity vehicle = vehicleRepository.findById(conv.getVehicleId())
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Vehicle not found"));
 
-        boolean allowed = conv.getBuyerId().equals(userId) || vehicle.getSellerId().equals(userId);
+        boolean allowed = conv.getBuyerId().equals(userId)
+                || vehicle.getSellerId().equals(userId)
+                || (vehicle.getCreatedById() != null && vehicle.getCreatedById().equals(userId));
 
         if (!allowed) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Conversation not found");
@@ -253,7 +255,9 @@ public class ChatService {
         VehicleEntity vehicle = vehicleRepository.findById(conv.getVehicleId())
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Vehicle not found"));
 
-        boolean allowed = conv.getBuyerId().equals(userId) || vehicle.getSellerId().equals(userId);
+        boolean allowed = conv.getBuyerId().equals(userId)
+                || vehicle.getSellerId().equals(userId)
+                || (vehicle.getCreatedById() != null && vehicle.getCreatedById().equals(userId));
 
         if (!allowed) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Conversation not found");

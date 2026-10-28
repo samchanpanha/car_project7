@@ -8,9 +8,14 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
+
+import java.security.MessageDigest;
+import java.nio.charset.StandardCharsets;
 
 import java.io.IOException;
 import java.util.Map;
@@ -22,6 +27,9 @@ import java.util.Map;
 public class TelegramController {
 
     private final TelegramService telegramService;
+
+    @Value("${telegram.webhook-secret:}")
+    private String webhookSecret;
 
     @GetMapping("/api/seller/telegram")
     @Operation(summary = "Get seller's Telegram integration status, channels, and invite metrics")
@@ -69,7 +77,15 @@ public class TelegramController {
     @PostMapping("/api/telegram/webhook")
     @Operation(summary = "Telegram Bot webhook receiver for inline button clicks and ABA PayWay group alerts")
     public ResponseEntity<Map<String, Object>> handleWebhook(
+            @RequestHeader(value = "X-Telegram-Bot-Api-Secret-Token", required = false) String secretToken,
             @RequestBody Map<String, Object> update) {
+        if (webhookSecret != null && !webhookSecret.isBlank()) {
+            byte[] expected = webhookSecret.getBytes(StandardCharsets.UTF_8);
+            byte[] provided = secretToken == null ? new byte[0] : secretToken.getBytes(StandardCharsets.UTF_8);
+            if (provided.length != expected.length || !MessageDigest.isEqual(expected, provided)) {
+                return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(Map.of("ok", false, "error", "Invalid webhook secret"));
+            }
+        }
         return ResponseEntity.ok(telegramService.handleWebhookUpdate(update));
     }
 

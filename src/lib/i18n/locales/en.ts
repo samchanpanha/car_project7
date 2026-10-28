@@ -151,7 +151,7 @@ export const en = {
   limitations: "Limitations",
   confidence: "Confidence",
   reportDisclaimer:
-    "This report is an AI-assisted assessment of available evidence. It is not a guarantee of vehicle condition, ownership or legality. Always inspect in person.",
+    "This report is a rule-based evidence checklist generated from listing data and supplied documents. It is not a physical inspection, guarantee, or AI-verified approval. Always inspect in person.",
   disputeButton: "Dispute / correct this report",
   disputeThanks: "Received. Our team will review and follow up.",
   checkSource: "Source",

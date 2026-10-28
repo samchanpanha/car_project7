@@ -22,7 +22,6 @@ import { DealerAnalyticsCharts } from "./dealer-analytics-charts";
 import { LiveStatusPill } from "./live-status-pill";
 import { TelegramHub } from "./telegram-hub";
 import { SubscriptionHub } from "./subscription-hub";
-import { useRealtimeEvent } from "@/hooks/use-realtime";
 import { AdvancedFilterToolbar, type AdvancedFilterValues } from "@/components/marketplace/advanced-filter-toolbar";
 import {
   AppointmentStatusBadge, AvatarCircle, EmptyState, FetchErrorState, SectionCard, StatCard,

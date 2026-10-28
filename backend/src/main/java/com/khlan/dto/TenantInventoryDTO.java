@@ -44,6 +44,7 @@ public class TenantInventoryDTO {
         private List<StatusCount> statusBreakdown;
         private List<BodyTypeCount> bodyTypeBreakdown;
         private List<BranchBreakdownEntry> branchBreakdown;
+        private List<StaleLeadDetail> staleLeadDetails;
     }
 
     @Data
@@ -58,6 +59,9 @@ public class TenantInventoryDTO {
         private long totalLeads;
         private Double conversionRate;
         private long appointmentCount;
+        private long pendingAppointments;
+        private long staleLeads;
+        private Double avgResponseHours;
     }
 
     @Data
@@ -88,6 +92,17 @@ public class TenantInventoryDTO {
     public static class BodyTypeCount {
         private String type;
         private long count;
+    }
+
+    @Data
+    @Builder
+    @NoArgsConstructor
+    @AllArgsConstructor
+    public static class StaleLeadDetail {
+        private String type;
+        private String id;
+        private String vehicleId;
+        private long hoursPending;
     }
 
     @Data

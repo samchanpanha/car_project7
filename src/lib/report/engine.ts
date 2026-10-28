@@ -26,7 +26,7 @@ export type ComparableVehicle = {
   partTarget?: string | null;
 };
 
-const CURRENT_YEAR = 2025; // analysis reference year per MVP spec
+const CURRENT_YEAR = new Date().getFullYear(); // analysis reference year, keep aligned with calendar year
 
 /** Default bilingual limitations (Cars). */
 export const REPORT_LIMITATIONS: { en: string; km: string }[] = [

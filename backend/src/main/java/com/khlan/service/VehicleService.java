@@ -76,12 +76,23 @@ public class VehicleService {
             predicates.add(cb.equal(root.get("status"), "PUBLISHED"));
 
             if (q != null && !q.isBlank()) {
-                String searchPattern = "%" + q.trim().toLowerCase() + "%";
-                Predicate qMake = cb.like(cb.lower(root.get("make")), searchPattern);
-                Predicate qModel = cb.like(cb.lower(root.get("model")), searchPattern);
-                Predicate qVariant = cb.like(cb.lower(root.get("variant")), searchPattern);
-                Predicate qDesc = cb.like(cb.lower(root.get("description")), searchPattern);
-                predicates.add(cb.or(qMake, qModel, qVariant, qDesc));
+                // Tokenize keyword search so multi-word queries require each
+                // token to appear in at least one listing text field.  This
+                // behaves much closer to a full-text search while remaining
+                // portable across SQLite/PostgreSQL.
+                for (String rawToken : q.trim().toLowerCase().split("\\s+")) {
+                    if (rawToken.isBlank()) continue;
+                    String searchPattern = "%" + rawToken + "%";
+                    Predicate tokenMatch = cb.or(
+                            cb.like(cb.lower(root.get("make")), searchPattern),
+                            cb.like(cb.lower(root.get("model")), searchPattern),
+                            cb.like(cb.lower(root.get("variant")), searchPattern),
+                            cb.like(cb.lower(root.get("description")), searchPattern),
+                            cb.like(cb.lower(root.get("city")), searchPattern),
+                            cb.like(cb.lower(root.get("exteriorColor")), searchPattern)
+                    );
+                    predicates.add(tokenMatch);
+                }
             }
             if (make != null && !make.isBlank()) {
                 predicates.add(cb.equal(cb.lower(root.get("make")), make.toLowerCase()));

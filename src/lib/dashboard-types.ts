@@ -132,6 +132,15 @@ export interface TenantAnalyticsDTO {
     totalLeads: number;
     conversionRate: number;
     appointmentCount: number;
+    pendingAppointments?: number;
+    staleLeads?: number;
+    avgResponseHours?: number;
+    staleLeadDetails?: {
+      type: string;
+      id: string;
+      vehicleId: string;
+      hoursPending: number;
+    }[];
   };
   timeline: {
     date: string;

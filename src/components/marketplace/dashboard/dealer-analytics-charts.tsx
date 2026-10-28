@@ -158,6 +158,44 @@ export function DealerAnalyticsCharts() {
         </div>
       </div>
 
+      {/* SLA Cards */}
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+        <div className="rounded-xl border border-rose-200/80 bg-gradient-to-br from-rose-50/70 to-white p-3.5 shadow-2xs">
+          <div className="flex items-center justify-between">
+            <span className="text-[11px] font-semibold uppercase tracking-wider text-rose-800">Pending Appointments</span>
+          </div>
+          <p className="mt-2 text-xl font-extrabold text-slate-950">{summary.pendingAppointments ?? 0}</p>
+          <p className="mt-0.5 text-[11px] text-slate-500">Requested but not confirmed</p>
+        </div>
+        <div className="rounded-xl border border-amber-200/80 bg-gradient-to-br from-amber-50/70 to-white p-3.5 shadow-2xs">
+          <div className="flex items-center justify-between">
+            <span className="text-[11px] font-semibold uppercase tracking-wider text-amber-800">Stale Leads</span>
+          </div>
+          <p className="mt-2 text-xl font-extrabold text-slate-950">{summary.staleLeads ?? 0}</p>
+          <p className="mt-0.5 text-[11px] text-slate-500">Pending over 24 hours</p>
+        </div>
+        <div className="rounded-xl border border-sky-200/80 bg-gradient-to-br from-sky-50/70 to-white p-3.5 shadow-2xs">
+          <div className="flex items-center justify-between">
+            <span className="text-[11px] font-semibold uppercase tracking-wider text-sky-800">Avg Response Time</span>
+          </div>
+          <p className="mt-2 text-xl font-extrabold text-slate-950">{summary.avgResponseHours ?? 0} h</p>
+          <p className="mt-0.5 text-[11px] text-slate-500">Appointment update latency</p>
+        </div>
+      </div>
+
+      {data.staleLeadDetails && data.staleLeadDetails.length > 0 && (
+        <div className="rounded-xl border border-slate-200 bg-white p-3 shadow-2xs">
+          <p className="text-xs font-bold text-slate-800 mb-2">Stale Lead Drill-down</p>
+          <ul className="space-y-1">
+            {data.staleLeadDetails.map((lead) => (
+              <li key={lead.id} className="text-xs text-slate-600">
+                {lead.type} #{lead.id.slice(-6)} on vehicle {lead.vehicleId.slice(-6)} – {lead.hoursPending}h pending
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
       {/* Main Views & Leads Performance Chart */}
       <SectionCard title={`Views & Buyer Inquiries Trend (Last ${days} Days)`}>
         <div className="h-64 w-full pt-2">

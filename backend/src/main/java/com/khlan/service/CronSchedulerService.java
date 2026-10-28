@@ -1,9 +1,18 @@
 package com.khlan.service;
 
+import com.khlan.dto.VehicleDTO;
 import com.khlan.entity.AbaTransactionEntity;
+import com.khlan.entity.AppointmentEntity;
+import com.khlan.entity.AuditLogEntity;
+import com.khlan.entity.PurchaseRequestEntity;
+import com.khlan.entity.SavedSearchEntity;
 import com.khlan.entity.SubscriptionEntity;
 import com.khlan.entity.SubscriptionPaymentEntity;
 import com.khlan.repository.AbaTransactionRepository;
+import com.khlan.repository.AppointmentRepository;
+import com.khlan.repository.AuditLogRepository;
+import com.khlan.repository.PurchaseRequestRepository;
+import com.khlan.repository.SavedSearchRepository;
 import com.khlan.repository.SubscriptionPaymentRepository;
 import com.khlan.repository.SubscriptionRepository;
 import lombok.RequiredArgsConstructor;
@@ -14,6 +23,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.OffsetDateTime;
+import java.time.format.DateTimeParseException;
 import java.util.*;
 
 @Slf4j
@@ -25,6 +35,15 @@ public class CronSchedulerService {
     private final SubscriptionPaymentRepository subscriptionPaymentRepository;
     private final AbaTransactionRepository abaTransactionRepository;
     private final PaymentService paymentService;
+
+    private final SavedSearchRepository savedSearchRepository;
+    private final AppointmentRepository appointmentRepository;
+    private final PurchaseRequestRepository purchaseRequestRepository;
+    private final AuditLogRepository auditLogRepository;
+    private final AccountService accountService;
+
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    private RealtimeService realtimeService;
 
     @Value("${cron.secret:}")
     private String cronSecret;
@@ -137,6 +156,160 @@ public class CronSchedulerService {
                 "expiredCount", expiredCount,
                 "expiringSoonCount", expiringSoon.size()
         );
+    }
+
+    /**
+     * Saved-search alerting sweep (every 15 minutes): sends an in-app realtime
+     * alert when a recently published vehicle matches a user's enabled saved
+     * search. Deduplication is handled through audit logs.
+     */
+    @Scheduled(fixedDelay = 900000, initialDelay = 120000)
+    @Transactional
+    public void scheduledSavedSearchAlerts() {
+        log.info("[Scheduler] Running saved-search alert sweep...");
+        try {
+            int alerted = 0;
+            List<SavedSearchEntity> searches = savedSearchRepository.findAll();
+            for (SavedSearchEntity search : searches) {
+                if (!Boolean.TRUE.equals(search.getAlertsEnabled())) continue;
+
+                List<VehicleDTO.VehicleCardDTO> matches;
+                try {
+                    matches = accountService.runSavedSearch(search.getUserId(), search.getId()).getVehicles();
+                } catch (Exception e) {
+                    log.debug("Saved-search run failed for {}: {}", search.getId(), e.getMessage());
+                    continue;
+                }
+                if (matches == null || matches.isEmpty()) continue;
+
+                for (VehicleDTO.VehicleCardDTO vehicle : matches) {
+                    if (vehicle == null || vehicle.getId() == null) continue;
+                    if (!isRecent(vehicle.getCreatedAt(), 48)) continue;
+                    if (alreadyAlerted(search.getId(), vehicle.getId())) continue;
+
+                    recordAlert(search.getId(), search.getUserId(), vehicle.getId());
+                    alerted++;
+
+                    if (realtimeService != null) {
+                        realtimeService.emitToUser(search.getUserId(), com.khlan.dto.RealtimeEventDTO.builder()
+                                .type("SAVED_SEARCH_MATCH")
+                                .title("New vehicle matches your saved search")
+                                .message(search.getName() + ": " + vehicle.getMake() + " " + vehicle.getModel() + " (" + vehicle.getYear() + ")")
+                                .payload(Map.of(
+                                        "savedSearchId", search.getId(),
+                                        "vehicleId", vehicle.getId(),
+                                        "make", vehicle.getMake() != null ? vehicle.getMake() : "",
+                                        "model", vehicle.getModel() != null ? vehicle.getModel() : "",
+                                        "year", vehicle.getYear(),
+                                        "priceUsd", vehicle.getPriceUsd()
+                                ))
+                                .build());
+                    }
+                }
+            }
+            log.info("[Scheduler] Saved-search alert sweep complete (sent={})", alerted);
+        } catch (Exception e) {
+            log.error("[Scheduler] Error in saved-search alert sweep", e);
+        }
+    }
+
+    /**
+     * Lead follow-up sweep (every 6 hours): notifies sellers about purchase
+     * requests/appointments that remain pending after 24 hours.
+     */
+    @Scheduled(fixedDelay = 21600000, initialDelay = 300000)
+    @Transactional
+    public void scheduledLeadFollowUps() {
+        log.info("[Scheduler] Running lead follow-up sweep...");
+        try {
+            OffsetDateTime cutoff = OffsetDateTime.now().minusHours(24);
+            int notified = 0;
+
+            for (PurchaseRequestEntity req : purchaseRequestRepository.findAll()) {
+                if (!"PENDING".equalsIgnoreCase(req.getStatus())) continue;
+                if (req.getCreatedAt() == null || req.getCreatedAt().isAfter(cutoff)) continue;
+                if (alreadyFollowedUp("PurchaseRequest", req.getId())) continue;
+
+                recordFollowUp("PurchaseRequest", req.getId(), req.getSellerUserId());
+                notified++;
+                if (realtimeService != null && req.getSellerUserId() != null) {
+                    realtimeService.emitToUser(req.getSellerUserId(), com.khlan.dto.RealtimeEventDTO.builder()
+                            .type("LEAD_FOLLOWUP")
+                            .title("Pending purchase request needs follow-up")
+                            .message("A buyer purchase request has been waiting over 24 hours.")
+                            .payload(Map.of("requestId", req.getId(), "vehicleId", req.getVehicleId()))
+                            .build());
+                }
+            }
+
+            for (AppointmentEntity appt : appointmentRepository.findAll()) {
+                if (!"REQUESTED".equalsIgnoreCase(appt.getStatus())) continue;
+                if (appt.getCreatedAt() == null || appt.getCreatedAt().isAfter(cutoff)) continue;
+                if (alreadyFollowedUp("Appointment", appt.getId())) continue;
+
+                recordFollowUp("Appointment", appt.getId(), appt.getSellerId());
+                notified++;
+                if (realtimeService != null && appt.getSellerId() != null) {
+                    realtimeService.emitToUser(appt.getSellerId(), com.khlan.dto.RealtimeEventDTO.builder()
+                            .type("LEAD_FOLLOWUP")
+                            .title("Test-drive appointment needs confirmation")
+                            .message("A buyer appointment request has been waiting over 24 hours.")
+                            .payload(Map.of("appointmentId", appt.getId(), "vehicleId", appt.getVehicleId()))
+                            .build());
+                }
+            }
+
+            log.info("[Scheduler] Lead follow-up sweep complete (notified={})", notified);
+        } catch (Exception e) {
+            log.error("[Scheduler] Error in lead follow-up sweep", e);
+        }
+    }
+
+    private boolean isRecent(String createdAtRaw, int hours) {
+        if (createdAtRaw == null || createdAtRaw.isBlank()) return false;
+        try {
+            OffsetDateTime created = OffsetDateTime.parse(createdAtRaw);
+            return !created.isBefore(OffsetDateTime.now().minusHours(hours));
+        } catch (DateTimeParseException e) {
+            return false;
+        }
+    }
+
+    private boolean alreadyAlerted(String searchId, String vehicleId) {
+        List<AuditLogEntity> logs = auditLogRepository.findByEntityAndEntityIdOrderByCreatedAtDesc("Vehicle", vehicleId);
+        return logs.stream().anyMatch(log -> log.getAction().equals("SAVED_SEARCH_ALERT")
+                && log.getMetaJson() != null
+                && log.getMetaJson().contains(searchId));
+    }
+
+    private void recordAlert(String searchId, String userId, String vehicleId) {
+        long count = System.currentTimeMillis();
+        auditLogRepository.save(AuditLogEntity.builder()
+                .id("audit_" + count + "_" + searchId.substring(0, Math.min(8, searchId.length())))
+                .actorId(userId)
+                .action("SAVED_SEARCH_ALERT")
+                .entity("Vehicle")
+                .entityId(vehicleId)
+                .metaJson("{\"savedSearchId\":\"" + searchId + "\",\"vehicleId\":\"" + vehicleId + "\"}")
+                .createdAt(OffsetDateTime.now())
+                .build());
+    }
+
+    private boolean alreadyFollowedUp(String entityType, String entityId) {
+        List<AuditLogEntity> logs = auditLogRepository.findByEntityAndEntityIdOrderByCreatedAtDesc(entityType, entityId);
+        return logs.stream().anyMatch(log -> "LEAD_FOLLOWUP".equals(log.getAction()));
+    }
+
+    private void recordFollowUp(String entityType, String entityId, String actorId) {
+        long count = System.currentTimeMillis();
+        auditLogRepository.save(AuditLogEntity.builder()
+                .id("audit_" + count + "_" + Math.abs(entityId.hashCode()))
+                .actorId(actorId)
+                .action("LEAD_FOLLOWUP")
+                .entity(entityType)
+                .entityId(entityId)
+                .createdAt(OffsetDateTime.now())
+                .build());
     }
 
     private void validateCronAuth(String authHeader) {

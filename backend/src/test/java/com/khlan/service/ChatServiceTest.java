@@ -174,4 +174,32 @@ class ChatServiceTest {
         // Verify messageRepository.save was called EXACTLY ONCE (for the user's message, NO auto-reply)
         verify(messageRepository, times(1)).save(any(MessageEntity.class));
     }
+
+    @Test
+    @DisplayName("Should allow a conversation created under a different seller user id when createdById matches")
+    void testCreatedByCanGetConversation() {
+        VehicleEntity createdByVehicle = VehicleEntity.builder()
+                .id("veh_accord_2021")
+                .make("Honda")
+                .model("Accord")
+                .year(2021)
+                .priceUsd(37500.0)
+                .sellerId("usr_priv_sopheak")
+                .createdById("usr_creator_chan")
+                .build();
+
+        when(conversationRepository.findById("conv_001")).thenReturn(Optional.of(testConversation));
+        when(vehicleRepository.findById("veh_accord_2021")).thenReturn(Optional.of(createdByVehicle));
+        when(messageRepository.findByConversationIdOrderByCreatedAtAsc("conv_001")).thenReturn(List.of());
+        when(vehicleService.getSellerSummary("usr_priv_sopheak")).thenReturn(
+                VehicleDTO.SellerSummaryDTO.builder()
+                        .id("usr_priv_sopheak")
+                        .name("Sopheak Ngin")
+                        .build()
+        );
+
+        Map<String, Object> result = chatService.getConversation("usr_creator_chan", "conv_001");
+        assertNotNull(result);
+        assertTrue(result.containsKey("conversation"));
+    }
 }

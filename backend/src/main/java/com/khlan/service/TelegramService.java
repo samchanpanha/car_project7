@@ -426,11 +426,10 @@ public class TelegramService {
         try {
             String secret = null;
             try { secret = System.getenv("TELEGRAM_WEBHOOK_SECRET"); } catch (Exception ignored) {}
-            if (secret == null || secret.isBlank()) secret = "khlan_webhook_secret_2026";
 
             Map<String, Object> body = new LinkedHashMap<>();
             body.put("url", effectiveUrl);
-            body.put("secret_token", secret);
+            if (secret != null && !secret.isBlank()) body.put("secret_token", secret.trim());
             body.put("allowed_updates", List.of("message", "callback_query"));
 
             HttpRequest req = HttpRequest.newBuilder()

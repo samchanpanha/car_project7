@@ -117,6 +117,10 @@ public class MinioStorageService {
      * Upload private file (payment slip, inspection doc).
      */
     public String uploadPrivateDoc(byte[] bytes, String mimeType) throws Exception {
+        if (bytes == null || bytes.length == 0) throw new IllegalArgumentException("File content cannot be empty");
+        if (mimeType != null && (mimeType.equalsIgnoreCase("image/jpeg") || mimeType.equalsIgnoreCase("image/png") || mimeType.equalsIgnoreCase("image/webp"))) {
+            validateMagicBytes(bytes, mimeType);
+        }
         String ext = EXT_BY_MIME.getOrDefault(mimeType.toLowerCase(), "bin");
         String objectName = "receipts/" + UUID.randomUUID() + "." + ext;
 
@@ -153,7 +157,7 @@ public class MinioStorageService {
             return minioClient.bucketExists(BucketExistsArgs.builder().bucket(publicBucket).build());
         } catch (Exception e) {
             log.warn("Storage health check notice: {}", e.getMessage());
-            return true; // Credentials configured, bucket exists on R2
+            return false; // Report real health instead of masking failures
         }
     }
 

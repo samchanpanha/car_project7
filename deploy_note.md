@@ -24,6 +24,9 @@ Set these in your deployment platform:
 - `CLOUDFLARE_R2_*`: object storage settings
 - `TELEGRAM_BOT_TOKEN`, `TELEGRAM_GROUP_CHAT_ID`, `TELEGRAM_WEBHOOK_SECRET`
 - `JWT_SECRET`, `NEXTAUTH_SECRET`
+- `APP_DEMO_MODE=false` (required in production to disable demo persona login)
+- `CORS_ALLOWED_ORIGINS=https://yourdomain.com`
+- `SPRING_REDIS_HOST`, `SPRING_REDIS_PORT` (required only for horizontal scaling/multi-instance realtime delivery)
 
 ## 4. Verification
 

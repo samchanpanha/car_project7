@@ -100,7 +100,7 @@ public class DualAuthFilter extends OncePerRequestFilter {
         // 4. Try persona cookie (khlan_persona)
         if (cookies != null) {
             for (Cookie c : cookies) {
-                if (PERSONA_COOKIE.equals(c.getName()) && ALLOWED_PERSONA_IDS.contains(c.getValue())) {
+                if (isDemoModeEnabled() && PERSONA_COOKIE.equals(c.getName()) && ALLOWED_PERSONA_IDS.contains(c.getValue())) {
                     return c.getValue();
                 }
             }
@@ -108,10 +108,19 @@ public class DualAuthFilter extends OncePerRequestFilter {
 
         // 5. Try x-khlan-persona header
         String personaHeader = request.getHeader(PERSONA_HEADER);
-        if (personaHeader != null && ALLOWED_PERSONA_IDS.contains(personaHeader.trim())) {
+        if (isDemoModeEnabled() && personaHeader != null && ALLOWED_PERSONA_IDS.contains(personaHeader.trim())) {
             return personaHeader.trim();
         }
 
         return null;
+    }
+
+    private boolean isDemoModeEnabled() {
+        String value = System.getenv("APP_DEMO_MODE");
+        if (value == null) value = System.getProperty("app.demo.mode");
+        if (value == null || value.isBlank()) {
+            return true; // Keep local/demo behavior unless explicitly disabled
+        }
+        return Boolean.parseBoolean(value.trim());
     }
 }

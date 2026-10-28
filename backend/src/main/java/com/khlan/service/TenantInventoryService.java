@@ -34,6 +34,7 @@ public class TenantInventoryService {
     private final TenantBranchRepository tenantBranchRepository;
     private final ConversationRepository conversationRepository;
     private final AppointmentRepository appointmentRepository;
+    private final PurchaseRequestRepository purchaseRequestRepository;
     private final AuditLogRepository auditLogRepository;
     private final ObjectMapper objectMapper;
 
@@ -187,6 +188,44 @@ public class TenantInventoryService {
 
         double conversionRate = totalLeads > 0 ? ((double) appointmentCount / totalLeads) * 100.0 : 0.0;
 
+        long pendingAppointments = appointments.stream()
+                .filter(a -> "REQUESTED".equalsIgnoreCase(a.getStatus()))
+                .count();
+        OffsetDateTime staleCutoff = OffsetDateTime.now().minusHours(24);
+        long staleLeads = appointments.stream()
+                .filter(a -> "REQUESTED".equalsIgnoreCase(a.getStatus()) && a.getCreatedAt() != null && a.getCreatedAt().isBefore(staleCutoff))
+                .count()
+                + purchaseRequestRepository.findByTenantIdOrderByCreatedAtDesc(tenantId).stream()
+                .filter(r -> "PENDING".equalsIgnoreCase(r.getStatus()) && r.getCreatedAt() != null && r.getCreatedAt().isBefore(staleCutoff))
+                .count();
+
+        List<TenantInventoryDTO.StaleLeadDetail> staleLeadDetails = new ArrayList<>();
+        OffsetDateTime now = OffsetDateTime.now();
+        appointments.stream()
+                .filter(a -> "REQUESTED".equalsIgnoreCase(a.getStatus()) && a.getCreatedAt() != null && a.getCreatedAt().isBefore(staleCutoff))
+                .limit(10)
+                .forEach(a -> staleLeadDetails.add(TenantInventoryDTO.StaleLeadDetail.builder()
+                        .type("Appointment")
+                        .id(a.getId())
+                        .vehicleId(a.getVehicleId())
+                        .hoursPending(java.time.Duration.between(a.getCreatedAt(), now).toHours())
+                        .build()));
+        purchaseRequestRepository.findByTenantIdOrderByCreatedAtDesc(tenantId).stream()
+                .filter(r -> "PENDING".equalsIgnoreCase(r.getStatus()) && r.getCreatedAt() != null && r.getCreatedAt().isBefore(staleCutoff))
+                .limit(Math.max(0, 20 - staleLeadDetails.size()))
+                .forEach(r -> staleLeadDetails.add(TenantInventoryDTO.StaleLeadDetail.builder()
+                        .type("PurchaseRequest")
+                        .id(r.getId())
+                        .vehicleId(r.getVehicleId())
+                        .hoursPending(java.time.Duration.between(r.getCreatedAt(), now).toHours())
+                        .build()));
+
+        double avgResponseHours = appointments.stream()
+                .filter(a -> a.getCreatedAt() != null && a.getUpdatedAt() != null && !"REQUESTED".equalsIgnoreCase(a.getStatus()))
+                .mapToDouble(a -> java.time.Duration.between(a.getCreatedAt(), a.getUpdatedAt()).toMinutes() / 60.0)
+                .average()
+                .orElse(0.0);
+
         // Status breakdown
         Map<String, List<VehicleEntity>> byStatus = vehicles.stream()
                 .collect(Collectors.groupingBy(VehicleEntity::getStatus));
@@ -250,6 +289,9 @@ public class TenantInventoryService {
                 .totalLeads(totalLeads)
                 .conversionRate(Math.round(conversionRate * 10.0) / 10.0)
                 .appointmentCount(appointmentCount)
+                .pendingAppointments(pendingAppointments)
+                .staleLeads(staleLeads)
+                .avgResponseHours(Math.round(avgResponseHours * 10.0) / 10.0)
                 .build();
 
         return TenantInventoryDTO.TenantAnalyticsResponse.builder()
@@ -258,6 +300,7 @@ public class TenantInventoryService {
                 .statusBreakdown(statusBreakdown)
                 .bodyTypeBreakdown(bodyTypeBreakdown)
                 .branchBreakdown(branchBreakdown)
+                .staleLeadDetails(staleLeadDetails)
                 .build();
     }
 

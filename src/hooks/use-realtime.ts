@@ -87,6 +87,16 @@ export function useRealtime() {
             description: data.message,
             duration: 5000,
           });
+        } else if (data.type === "SAVED_SEARCH_MATCH") {
+          toast.success(data.title || "🔔 New vehicle match", {
+            description: data.message,
+            duration: 8000,
+          });
+        } else if (data.type === "LEAD_FOLLOWUP") {
+          toast.info(data.title || "⏰ Lead follow-up", {
+            description: data.message,
+            duration: 8000,
+          });
         }
       } catch (err) {
         console.warn("[Realtime] Failed to parse SSE event data:", err);

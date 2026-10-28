@@ -33,16 +33,31 @@ public class SecurityConfig {
                 .cors(cors -> cors.configurationSource(corsConfigurationSource()))
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(auth -> auth
-                        // Public endpoints
+                        // Public endpoints (must not leak tenant/admin data)
                         .requestMatchers(
-                                "/api/**",
                                 "/error",
-                                "/swagger-ui/**",
-                                "/swagger-ui.html",
-                                "/v3/api-docs/**",
-                                "/actuator/**"
+                                "/api/health",
+                                "/api/auth/**",
+                                "/api/session",
+                                "/api/meta",
+                                "/api/meta/**",
+                                "/api/vehicles",
+                                "/api/vehicles/**",
+                                "/api/uploads/**",
+                                "/api/sellers/**",
+                                "/api/tg/**",
+                                "/api/telegram/public-config",
+                                "/api/reports/**"
                         ).permitAll()
-                        .anyRequest().authenticated()
+                        // Protected role endpoints
+                        .requestMatchers("/api/admin/**").hasAnyRole("ADMIN", "SUPER_ADMIN")
+                        .requestMatchers("/api/tenant/**", "/api/seller/**").hasAnyRole("SELLER", "DEALER", "ADMIN", "SUPER_ADMIN")
+                        .requestMatchers("/api/realtime/**", "/api/conversations/**", "/api/account/**", "/api/favorites/**", "/api/purchases/**").authenticated()
+                        // Swagger/actuator only for non-production admin can be added via profile
+                        .requestMatchers("/swagger-ui/**", "/swagger-ui.html", "/v3/api-docs/**").permitAll()
+                        .requestMatchers("/actuator/health", "/actuator/prometheus").permitAll()
+                        .requestMatchers("/actuator/**").hasAnyRole("ADMIN", "SUPER_ADMIN")
+                        .anyRequest().permitAll()
                 )
                 .addFilterBefore(dualAuthFilter, UsernamePasswordAuthenticationFilter.class);
 
@@ -57,7 +72,8 @@ public class SecurityConfig {
     @Bean
     public CorsConfigurationSource corsConfigurationSource() {
         CorsConfiguration configuration = new CorsConfiguration();
-        configuration.setAllowedOriginPatterns(List.of("*"));
+        String origins = System.getenv().getOrDefault("CORS_ALLOWED_ORIGINS", "http://localhost:3000");
+        configuration.setAllowedOrigins(List.of(origins.split(",")));
         configuration.setAllowedMethods(List.of("GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"));
         configuration.setAllowedHeaders(List.of("*"));
         configuration.setAllowCredentials(true);

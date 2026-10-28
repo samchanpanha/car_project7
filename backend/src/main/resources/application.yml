@@ -58,15 +58,15 @@ minio:
 
 # Telegram Bot & Channel Configuration
 telegram:
-  bot-token: ${TELEGRAM_BOT_TOKEN:8691160498:AAFkdDht6Wj7TAxRWxLTJPurDRP84BMwxb0}
-  group-chat-id: ${TELEGRAM_GROUP_CHAT_ID:-1004489863210}
-  webhook-secret: ${TELEGRAM_WEBHOOK_SECRET:khlan_webhook_secret_2026}
+  bot-token: ${TELEGRAM_BOT_TOKEN:}
+  group-chat-id: ${TELEGRAM_GROUP_CHAT_ID:}
+  webhook-secret: ${TELEGRAM_WEBHOOK_SECRET:}
   webhook-url: ${TELEGRAM_WEBHOOK_URL:}
   local-polling: ${TELEGRAM_LOCAL_POLLING:true}
 
 # JWT Security Configuration
 jwt:
-  secret: ${JWT_SECRET:KhLanSuperSecretJwtKeyCambodiaMarketplace2026SecureToken}
+  secret: ${JWT_SECRET:${random.uuid}${random.uuid}}
   access-token-expiration-ms: 86400000 # 24 hours
   refresh-token-expiration-ms: 604800000 # 7 days
 
@@ -81,7 +81,7 @@ management:
         include: health,info,prometheus,metrics
   endpoint:
     health:
-      show-details: always
+      show-details: never
     prometheus:
       enabled: true
   metrics:
