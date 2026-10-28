@@ -135,7 +135,7 @@ export function DealerDashboard({ me }: { me: SessionDTO }) {
         )
       )}
       {active === "appointments" && <DealerAppointments />}
-      {active === "staff" && isManagerOrOwner && <DealerStaff />}
+      {active === "staff" && isManagerOrOwner && <DealerStaff isManagerOrOwner={isManagerOrOwner} />}
       {active === "subscription" && isManagerOrOwner && <DealerSubscription />}
       {active === "settings" && <DealerSettings />}
     </DashboardShell>
@@ -894,10 +894,11 @@ function DealerAppointments() {
 
 // ---------------- staff ----------------
 
-function DealerStaff() {
+function DealerStaff({ isManagerOrOwner = true }: { isManagerOrOwner?: boolean }) {
   const t = useT();
   const navigate = useAppStore((s) => s.navigate);
   const { data, loading, error, refetch } = useFetch<TenantStaffResponseDTO | TenantMemberDTO[]>("/api/tenant/staff");
+  const { data: dashData } = useFetch<TenantDashboardDTO>("/api/tenant/dashboard");
   const [busyId, setBusyId] = useState<string | null>(null);
   const [inviteOpen, setInviteOpen] = useState(false);
   const [invName, setInvName] = useState("");
@@ -905,12 +906,18 @@ function DealerStaff() {
   const [invRole, setInvRole] = useState<(typeof STAFF_ROLES)[number]>("SALES_STAFF");
   const [inviting, setInviting] = useState(false);
 
-  const members: TenantMemberDTO[] = Array.isArray(data) ? data : (data?.members ?? []);
-  const seatsLimit: number = Array.isArray(data) ? Math.max(1, members.length) : (data?.seatsLimit ?? 1);
-  const seatsUsed: number = Array.isArray(data)
-    ? members.filter((m) => m.status === "ACTIVE").length
-    : (data?.seatsUsed ?? members.filter((m) => m.status === "ACTIVE").length);
-  const plan: string = Array.isArray(data) ? "FREE" : (data?.plan ?? "FREE");
+  const isRawArray = Array.isArray(data);
+  const members: TenantMemberDTO[] = isRawArray ? data : (data?.members ?? []);
+  const subPlan = dashData?.subscription?.plan ?? "FREE";
+  const subSeats = dashData?.subscription?.seats ?? 1;
+
+  const plan: string = !isRawArray && data?.plan ? data.plan : subPlan;
+  const seatsLimit: number = !isRawArray && typeof data?.seatsLimit === "number"
+    ? data.seatsLimit
+    : Math.max(subSeats, members.length);
+  const seatsUsed: number = !isRawArray && typeof data?.seatsUsed === "number"
+    ? data.seatsUsed
+    : members.filter((m) => m.status === "ACTIVE").length;
   const isSeatsFull = seatsUsed >= seatsLimit;
 
   const patch = async (memberId: string, body: Record<string, string>) => {
@@ -1008,13 +1015,15 @@ function DealerStaff() {
             <p className="font-medium">
               {t("seatLimitFullDesc", { plan, limit: seatsLimit })}
             </p>
-            <Button
-              size="sm"
-              onClick={() => navigate({ name: "dashboard", tab: "subscription" })}
-              className="bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold"
-            >
-              {t("upgradeForMoreSeats")}
-            </Button>
+            {isManagerOrOwner && (
+              <Button
+                size="sm"
+                onClick={() => navigate({ name: "dashboard", tab: "subscription" })}
+                className="bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold"
+              >
+                {t("upgradeForMoreSeats")}
+              </Button>
+            )}
           </div>
         )}
       </div>
@@ -1262,14 +1271,14 @@ function DealerSubscription() {
         </div>
       </div>
 
-      {current && (
+      {current && current.plan && (
         <div className={cn("rounded-xl border p-4 text-sm", expired ? "border-rose-200 bg-rose-50/60" : "border-amber-200 bg-amber-50/60")}>
           <p className={cn("font-semibold", expired ? "text-rose-900" : "text-amber-900")}>
-            {current.plan} · {formatUsd(current.priceUsd)} / {current.billingCycle === "MONTHLY" ? t("billingMonthly").toLowerCase() : t("billingYearly").toLowerCase()}
+            {current.plan} · {formatUsd(current.priceUsd ?? 0)} / {current.billingCycle === "MONTHLY" ? t("billingMonthly").toLowerCase() : t("billingYearly").toLowerCase()}
             {expired && <span className="ml-2 rounded-full bg-rose-100 px-2 py-0.5 text-[10px] font-bold text-rose-800">{t("subExpiresBadge")}</span>}
           </p>
           <p className={cn("mt-0.5 text-xs", expired ? "text-rose-800/80" : "text-amber-800/80")}>
-            {t("subRenews", { d: formatDateTime(current.currentPeriodEnd, locale) })} · {t("subSeats", { n: current.seats })}
+            {t("subRenews", { d: formatDateTime(current.currentPeriodEnd, locale) })} · {t("subSeats", { n: current.seats ?? 1 })}
           </p>
           {(expired || current.status === "PAST_DUE") && (
             <p className="mt-1.5 text-xs font-medium text-rose-800">{t("subPayFirst")}</p>
@@ -1280,9 +1289,10 @@ function DealerSubscription() {
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         {plans.map((p) => {
           const isCurrent = current?.plan === p.plan && !expired;
-          const price = cycle === "MONTHLY" ? p.priceUsdMonthly : p.priceUsdYearly;
+          const price = cycle === "MONTHLY" ? (p.priceUsdMonthly ?? 0) : (p.priceUsdYearly ?? 0);
           const isPaid = p.plan !== "FREE";
           const freeBlocked = p.plan === "FREE" && freeDisabled;
+          const features = p.features ?? [];
           return (
             <div
               key={p.plan}
@@ -1293,7 +1303,7 @@ function DealerSubscription() {
               )}
             >
               <div className="flex items-center justify-between">
-                <p className="text-sm font-bold text-slate-900">{p.plan}</p>
+                <p className="text-sm font-bold text-slate-900">{p.name || p.plan}</p>
                 {isCurrent && <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-bold text-amber-800">{t("subCurrentBadge")}</span>}
               </div>
               <div className="mt-2">
@@ -1303,16 +1313,16 @@ function DealerSubscription() {
                 </p>
                 {p.plan !== "FREE" && (
                   <p className="text-xs font-bold text-emerald-700 mt-0.5">
-                    ៛{((cycle === "MONTHLY" ? p.priceKhrMonthly : p.priceKhrYearly) || Math.round((price * 4100) / 100 * 100)).toLocaleString()} KHR
+                    ៛{(((cycle === "MONTHLY" ? p.priceKhrMonthly : p.priceKhrYearly) || Math.round(((price ?? 0) * 4100) / 100 * 100)) ?? 0).toLocaleString()} KHR
                   </p>
                 )}
               </div>
               <ul className="mt-3 space-y-1 text-xs text-slate-500">
-                <li>· {t("kpiListings")}: {p.listingsLimit}</li>
-                <li>· {t("actFeature")}: {p.featuredLimit}</li>
-                <li>· {t("subSeats", { n: p.seats })}</li>
-                {p.features.map((f) => (
-                  <li key={f.en}>· {f[locale]}</li>
+                <li>· {t("kpiListings")}: {p.listingsLimit ?? 10}</li>
+                <li>· {t("actFeature")}: {p.featuredLimit ?? 0}</li>
+                <li>· {t("subSeats", { n: p.seats ?? 1 })}</li>
+                {features.map((f, idx) => (
+                  <li key={f?.en || idx}>· {f?.[locale] || f?.en || (typeof f === "string" ? f : "")}</li>
                 ))}
               </ul>
               {freeBlocked && (

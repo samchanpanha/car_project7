@@ -31,11 +31,8 @@ public class ReceiptSlipParser {
     private final AbaTransactionRepository abaTransactionRepository;
 
     private static final Pattern SVG_TEXT_PATTERN = Pattern.compile("<text[^>]*>([^<]+)</text>", Pattern.CASE_INSENSITIVE);
-    private static final Pattern TRX_REF_PATTERN = Pattern.compile(
-            "(?:Reference(?:\\s*(?:No\\.?|ID|#|Number))?|\\bRef(?:\\s*(?:No\\.?|ID|#|Number))?|Trx\\.?\\s*(?:ID|No\\.?|#)?|Txn\\.?\\s*(?:ID|No\\.?|#)?|Transaction\\s*(?:ID|No\\.?|Ref|Hash|Number)?|Bank\\s*Ref(?:\\s*No\\.?)?)[:\\s#\\.]+([0-9A-Za-z]{6,32})",
-            Pattern.CASE_INSENSITIVE
-    );
-    private static final Pattern STANDALONE_15_PATTERN = Pattern.compile("\\b(17\\d{13}|\\d{15})\\b");
+    private static final Pattern STANDALONE_15_PATTERN = Pattern.compile("\\b(17\\d{13})\\b");
+    private static final Pattern WING_BAKONG_16_PATTERN = Pattern.compile("\\b(00024\\d{7}[0-9A-Za-z]{4})\\b");
     private static final Pattern EXT_REF_PATTERN = Pattern.compile(
             "(?:External\\s*Txn\\s*Ref|External\\s*Ref|Ext\\s*Ref)[:\\s#]*([0-9a-zA-Z]{6,32})",
             Pattern.CASE_INSENSITIVE
@@ -61,7 +58,6 @@ public class ReceiptSlipParser {
             String enteredRef,
             String previewUrl,
             PaymentDTO.PaymentConfigDTO paymentConfig) {
-        String reqImage = dataUrl;
 
         String imageHash = computeSha256(imageBytes);
         // 1. Extract raw text from receipt
@@ -79,7 +75,7 @@ public class ReceiptSlipParser {
                 if (aba.getPayerName() != null) receiptData.setPayerName(aba.getPayerName());
                 if (aba.getApv() != null) receiptData.setApv(aba.getApv());
                 if (aba.getMerchantName() != null) receiptData.setPayee(aba.getMerchantName());
-                if ("UNDERPAID".equalsIgnoreCase(aba.getStatus()) && aba.getAmountUsd() != null) {
+                if ("UNDERPAID".equalsIgnoreCase(aba.getStatus()) && aba.getAmountUsd() != null && (receiptData.getAmountUsd() == null || receiptData.getAmountUsd() < 1.0)) {
                     receiptData.setAmountUsd(aba.getAmountUsd());
                     receiptData.setAmount(aba.getAmount());
                     isUnderpaid = true;
@@ -96,12 +92,32 @@ public class ReceiptSlipParser {
         // Duplicate check: only flag if already claimed in an active or pending payment
         boolean isDuplicate = false;
         String duplicateDetails = null;
-        if (receiptData.getTrxId() != null) {
-            String normalizedRef = receiptData.getTrxId().trim().toUpperCase().replaceAll("[^A-Z0-9]", "");
-            Optional<SubscriptionPaymentEntity> dupByRef = subscriptionPaymentRepository.findByManualRefKey(normalizedRef);
-            if (dupByRef.isPresent() && ("VERIFIED".equals(dupByRef.get().getStatus()) || "AWAITING_VERIFICATION".equals(dupByRef.get().getStatus()))) {
-                isDuplicate = true;
-                duplicateDetails = "Trx ID " + receiptData.getTrxId() + " already claimed in payment " + dupByRef.get().getId();
+        if (receiptData.getTrxId() != null && !receiptData.getTrxId().isBlank()) {
+            String rawTrx = receiptData.getTrxId().trim();
+            String cleanTrx = rawTrx
+                    .replaceAll("^(?i)(TRX(?:\\.?\\s*ID)?|TRANSACTION\\s*ID|TXN(?:\\s*ID)?|APV|REF(?:ERENCE)?(?:\\s*(?:NO|ID|#))?)\\s*[:#-]?\\s*", "")
+                    .replaceAll("[^A-Za-z0-9]", "")
+                    .toUpperCase();
+            String trxKey = "TRX:" + cleanTrx;
+            List<SubscriptionPaymentEntity> dupByRef = subscriptionPaymentRepository.findDuplicatesByAnyRef(cleanTrx, trxKey);
+            for (SubscriptionPaymentEntity dup : dupByRef) {
+                if ("VERIFIED".equalsIgnoreCase(dup.getStatus()) || "AWAITING_VERIFICATION".equalsIgnoreCase(dup.getStatus())) {
+                    isDuplicate = true;
+                    duplicateDetails = "Trx ID " + receiptData.getTrxId() + " already claimed in payment " + dup.getReference() + " (" + dup.getStatus() + ")";
+                    break;
+                }
+            }
+        }
+
+        // Image hash duplicate check
+        if (!isDuplicate && imageHash != null && !imageHash.isBlank()) {
+            Optional<SubscriptionPaymentEntity> dupByImg = subscriptionPaymentRepository.findByEvidenceHash(imageHash);
+            if (dupByImg.isPresent()) {
+                SubscriptionPaymentEntity dup = dupByImg.get();
+                if ("VERIFIED".equalsIgnoreCase(dup.getStatus()) || "AWAITING_VERIFICATION".equalsIgnoreCase(dup.getStatus())) {
+                    isDuplicate = true;
+                    duplicateDetails = "Exact receipt image previously submitted on payment " + dup.getReference() + " (" + dup.getStatus() + ")";
+                }
             }
         }
 
@@ -120,13 +136,27 @@ public class ReceiptSlipParser {
             }
         }
 
-        boolean amountMatch = "KHR".equalsIgnoreCase(currency)
-                ? (receiptData.getAmountKhr() != null && Math.abs(receiptData.getAmountKhr() - expectedKhr) <= 4100.0)
-                : (receiptData.getAmountUsd() != null && Math.abs(receiptData.getAmountUsd() - expectedUsd) <= 1.0);
+        boolean amountMatch = false;
+        if ("KHR".equalsIgnoreCase(currency)) {
+            if (receiptData.getAmountKhr() != null && Math.abs(receiptData.getAmountKhr() - expectedKhr) <= 4100.0) {
+                amountMatch = true;
+            } else if (receiptData.getAmountUsd() != null && Math.abs(receiptData.getAmountUsd() - expectedUsd) <= 1.0) {
+                amountMatch = true;
+            }
+        } else {
+            if (receiptData.getAmountUsd() != null && Math.abs(receiptData.getAmountUsd() - expectedUsd) <= 1.0) {
+                amountMatch = true;
+            } else if (receiptData.getAmountKhr() != null && Math.abs(receiptData.getAmountKhr() - expectedKhr) <= 4100.0) {
+                amountMatch = true;
+            }
+        }
         boolean currencyMatch = "USD".equalsIgnoreCase(currency) || "KHR".equalsIgnoreCase(currency);
 
         List<String> riskFlags = new ArrayList<>();
-        if (isDuplicate) riskFlags.add("DUPLICATE_RECEIPT");
+        if (isDuplicate) {
+            riskFlags.add("DUPLICATE_RECEIPT");
+            riskFlags.add("DUPLICATE_TRANSACTION_ID");
+        }
         if (isWrongMerchant) riskFlags.add("WRONG_MERCHANT_PAYEE");
         if (!amountMatch) riskFlags.add("AMOUNT_MISMATCH");
 
@@ -136,11 +166,12 @@ public class ReceiptSlipParser {
             status = "MISMATCH";
             message = "Payment slip was paid to \"" + receiptData.getPayee() + "\" instead of our official merchant KHQR.";
         } else if (isDuplicate) {
-            status = "WARN";
-            message = "⚠️ Duplicate Trx ID detected! " + (duplicateDetails != null ? duplicateDetails : "");
+            status = "MISMATCH";
+            message = "⚠️ Duplicate transaction detected! " + (duplicateDetails != null ? duplicateDetails : "This receipt or Trx ID has already been submitted.");
         } else if (!amountMatch) {
             status = "WARN";
-            message = "Amount detected ($" + receiptData.getAmountUsd() + ") differs from plan price ($" + expectedUsd + ").";
+            double detectedVal = receiptData.getAmountUsd() != null ? receiptData.getAmountUsd() : (receiptData.getAmountKhr() != null ? receiptData.getAmountKhr() / khrRate : 0.0);
+            message = String.format("Amount detected ($%.2f) differs from plan price ($%.2f).", detectedVal, expectedUsd);
         }
 
         PaymentDTO.VerificationDetailsDTO verification = PaymentDTO.VerificationDetailsDTO.builder()
@@ -257,7 +288,8 @@ public class ReceiptSlipParser {
         if (trxId == null) {
             for (int i = 0; i < textLines.length && trxId == null; i++) {
                 String up = textLines[i].toUpperCase();
-                if (!(up.contains("TRX") || up.contains("REF") || up.contains("TXN"))) continue;
+                if (!(up.contains("TRX") || up.contains("REF") || up.contains("TXN") || up.contains("TRANSACTION") || up.contains("TRANS"))) continue;
+                if (up.contains("MERCHANT ID") || up.contains("TERMINAL ID") || up.contains("FROM ACCOUNT") || up.contains("TO ACCOUNT")) continue;
                 Matcher same = Pattern.compile("[:.#\\-]\\s*([A-Za-z0-9][A-Za-z0-9\\-]{5,31})").matcher(textLines[i]);
                 while (same.find()) {
                     String cand = same.group(1).toUpperCase().replace("-", "").replaceAll("[^A-Z0-9]", "");
@@ -271,6 +303,15 @@ public class ReceiptSlipParser {
                     if (isValidExtractedRef(cand)) { trxId = cand; break; }
                     break;
                 }
+            }
+        }
+
+        // Specific Wing / Bakong 16-character format (e.g. 000245426300FU69, 000245426296F1T4)
+        if (trxId == null) {
+            Matcher wingM = WING_BAKONG_16_PATTERN.matcher(text);
+            if (wingM.find()) {
+                String cand = wingM.group(1).toUpperCase();
+                if (isValidExtractedRef(cand)) trxId = cand;
             }
         }
 
@@ -393,6 +434,9 @@ public class ReceiptSlipParser {
     private boolean isValidExtractedRef(String cand) {
         if (cand == null || cand.isBlank()) return false;
         if (cand.length() < 6 || cand.length() > 32) return false;
+        // Explicitly reject platform merchant ID ("125110123382784") and phone numbers
+        if ("125110123382784".equals(cand)) return false;
+        if (cand.startsWith("0") && cand.length() <= 10 && cand.matches("\\d+")) return false;
         // Reject obvious UI/document words that the OCR labelled as a "reference".
         String[] bad = new String[] {"CONFIRMATION","REFERENCE","TRANSACTION","NUMBER","COPY","RECEIPT","PAYMENT","SUCCESSFUL","MERCHANT","ACCOUNT","AMOUNT","CURRENCY","KHQR","BAKONG","MOBILE","PAYWAY","TRXID"};
         for (String b : bad) if (cand.equals(b)) return false;
@@ -400,9 +444,10 @@ public class ReceiptSlipParser {
     }
 
     private double resolveExpectedUsd(String plan, boolean yearly) {
-        if ("ENTERPRISE".equalsIgnoreCase(plan)) return yearly ? 990.0 : 99.0;
+        if ("ENTERPRISE".equalsIgnoreCase(plan)) return yearly ? 1490.0 : 149.0;
         if ("PRO".equalsIgnoreCase(plan)) return yearly ? 490.0 : 49.0;
-        return yearly ? 190.0 : 19.0;
+        if ("BASIC".equalsIgnoreCase(plan)) return yearly ? 190.0 : 19.0;
+        return 0.0;
     }
 
     private String computeSha256(byte[] data) {

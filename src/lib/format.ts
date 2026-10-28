@@ -2,8 +2,9 @@ import type { Locale } from "./i18n";
 
 const KHR_PER_USD = 4100; // indicative demo rate (see PLAN.md §2 — validate at launch)
 
-export function formatUsd(value: number): string {
-  return `$${value.toLocaleString("en-US", { maximumFractionDigits: 0 })}`;
+export function formatUsd(value: number | null | undefined): string {
+  const v = typeof value === "number" && !Number.isNaN(value) ? value : 0;
+  return `$${v.toLocaleString("en-US", { maximumFractionDigits: 0 })}`;
 }
 
 export function formatKhr(usd: number): string {

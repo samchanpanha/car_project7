@@ -17,6 +17,7 @@ import org.springframework.web.server.ResponseStatusException;
 
 import java.time.OffsetDateTime;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -93,7 +94,7 @@ public class TenantController {
     }
 
     @GetMapping("/api/tenant/staff")
-    public ResponseEntity<List<TenantDTO.TenantMemberDTO>> getStaff(@AuthenticationPrincipal UserEntity user) {
+    public ResponseEntity<TenantDTO.TenantStaffResponseDTO> getStaff(@AuthenticationPrincipal UserEntity user) {
         return ResponseEntity.ok(tenantService.getStaff(requireUserId(user)));
     }
 
@@ -138,24 +139,27 @@ public class TenantController {
         List<Object> plansList = new ArrayList<>();
         if (pricing != null && pricing.getPlans() != null) {
             pricing.getPlans().forEach((planKey, planDef) -> {
-                plansList.add(Map.of(
-                        "plan", planKey,
-                        "name", planDef.getName() != null ? planDef.getName() : planKey,
-                        "priceMonthlyUsd", planDef.getPriceUsdMonthly() != null ? planDef.getPriceUsdMonthly() : 0.0,
-                        "priceYearlyUsd", planDef.getPriceUsdYearly() != null ? planDef.getPriceUsdYearly() : 0.0,
-                        "listingsLimit", planDef.getListingsLimit() != null ? planDef.getListingsLimit() : 10,
-                        "featuredLimit", planDef.getFeaturedLimit() != null ? planDef.getFeaturedLimit() : 0,
-                        "seats", planDef.getSeats() != null ? planDef.getSeats() : 1,
-                        "highlight", "PRO".equalsIgnoreCase(planKey)
-                ));
+                Map<String, Object> p = new LinkedHashMap<>();
+                p.put("plan", planKey);
+                p.put("name", planDef.getName() != null ? planDef.getName() : planKey);
+                p.put("priceUsdMonthly", planDef.getPriceUsdMonthly() != null ? planDef.getPriceUsdMonthly() : 0.0);
+                p.put("priceUsdYearly", planDef.getPriceUsdYearly() != null ? planDef.getPriceUsdYearly() : 0.0);
+                p.put("priceKhrMonthly", planDef.getPriceKhrMonthly() != null ? planDef.getPriceKhrMonthly() : 0.0);
+                p.put("priceKhrYearly", planDef.getPriceKhrYearly() != null ? planDef.getPriceKhrYearly() : 0.0);
+                p.put("listingsLimit", planDef.getListingsLimit() != null ? planDef.getListingsLimit() : 10);
+                p.put("featuredLimit", planDef.getFeaturedLimit() != null ? planDef.getFeaturedLimit() : 0);
+                p.put("seats", planDef.getSeats() != null ? planDef.getSeats() : 1);
+                p.put("highlight", "PRO".equalsIgnoreCase(planKey));
+                p.put("features", planDef.getFeatures() != null ? planDef.getFeatures() : List.of());
+                plansList.add(p);
             });
         }
-        return ResponseEntity.ok(Map.of(
-                "subscription", dashboard.getSubscription() != null ? dashboard.getSubscription() : Map.of(),
-                "plans", plansList,
-                "freePlanEnabled", true,
-                "paymentsEnabled", true
-        ));
+        Map<String, Object> resp = new LinkedHashMap<>();
+        resp.put("subscription", dashboard.getSubscription());
+        resp.put("plans", plansList);
+        resp.put("freePlanEnabled", true);
+        resp.put("paymentsEnabled", true);
+        return ResponseEntity.ok(resp);
     }
 
     @PostMapping("/api/tenant/subscription")
@@ -172,6 +176,33 @@ public class TenantController {
     @GetMapping("/api/seller/subscription")
     public ResponseEntity<Map<String, Object>> getSellerSubscription(@AuthenticationPrincipal UserEntity user) {
         String userId = user != null ? user.getId() : "usr_demo_buyer";
+
+        // If the user owns an active paid tenant subscription, prefer it over the
+        // (possibly expired) account-level free trial so paid customers never
+        // see a stale "expired free trial" card after renewing/upgrading.
+        try {
+            TenantDTO.TenantDashboardDTO dashboard = tenantService.getDashboard(userId);
+            TenantDTO.TenantSubscriptionDTO paidSub = dashboard != null ? dashboard.getSubscription() : null;
+            if (paidSub != null && "ACTIVE".equalsIgnoreCase(paidSub.getStatus())
+                    && paidSub.getPlan() != null && !"FREE".equalsIgnoreCase(paidSub.getPlan())) {
+                OffsetDateTime paidPeriodEnd;
+                try { paidPeriodEnd = OffsetDateTime.parse(paidSub.getCurrentPeriodEnd()); }
+                catch (Exception ignored) { paidPeriodEnd = OffsetDateTime.now().plusDays(30); }
+                long paidDaysLeft = Math.max(0, java.time.temporal.ChronoUnit.DAYS.between(OffsetDateTime.now(), paidPeriodEnd));
+                return ResponseEntity.ok(Map.of(
+                        "plan", paidSub.getPlan(),
+                        "status", "ACTIVE",
+                        "startedAt", OffsetDateTime.now().toString(),
+                        "currentPeriodEnd", paidPeriodEnd.toString(),
+                        "daysLeft", paidDaysLeft,
+                        "freeTrialDays", 0,
+                        "freeTrialEnabled", false
+                ));
+            }
+        } catch (Exception ignored) {
+            // fall back to virtual free-trial below
+        }
+
         AdminDTO.PlatformSettingsDTO settings = adminService.getPlatformSettings();
         int freeTrialDays = settings.getFreeTrialDays() > 0 ? settings.getFreeTrialDays() : 30;
         boolean freeTrialEnabled = settings.isFreeTrialEnabled();

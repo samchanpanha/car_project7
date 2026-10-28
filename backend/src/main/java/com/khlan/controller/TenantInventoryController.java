@@ -42,7 +42,7 @@ public class TenantInventoryController {
             @AuthenticationPrincipal UserEntity authUser) {
 
         TenantMemberEntity member = resolveTenantMember(authUser);
-        Integer pageParam = (Boolean.TRUE.equals(paged) && page == null) ? 1 : page;
+        Integer pageParam = (Boolean.TRUE.equals(paged) && page == null) ? Integer.valueOf(1) : (page != null ? page : null);
 
         Object result = tenantInventoryService.getInventory(
                 member.getTenantId(), status, branchId, q, priceMin, priceMax, sort, pageParam, limit);

@@ -58,9 +58,11 @@ minio:
 
 # Telegram Bot & Channel Configuration
 telegram:
-  bot-token: ${TELEGRAM_BOT_TOKEN:8961155344:AAEXIEeSWNp4kudB2YQEnpj7hsUkd-ignAc}
+  bot-token: ${TELEGRAM_BOT_TOKEN:8691160498:AAFkdDht6Wj7TAxRWxLTJPurDRP84BMwxb0}
   group-chat-id: ${TELEGRAM_GROUP_CHAT_ID:-1004489863210}
   webhook-secret: ${TELEGRAM_WEBHOOK_SECRET:khlan_webhook_secret_2026}
+  webhook-url: ${TELEGRAM_WEBHOOK_URL:}
+  local-polling: ${TELEGRAM_LOCAL_POLLING:true}
 
 # JWT Security Configuration
 jwt:

@@ -1416,7 +1416,7 @@ function AdminPayments() {
                       </p>
                       <p className="mt-1 text-xs text-slate-500">
                         {t("payAmount")}: <span className="font-bold text-amber-700">{formatUsd(p.amountUsd)}</span>
-                        {p.amountExpected && p.currency === "KHR" ? ` (៛${p.amountExpected.toLocaleString()} KHR)` : ""}
+                        {p.amountExpected && p.currency === "KHR" ? ` (៛${(p.amountExpected ?? 0).toLocaleString()} KHR)` : ""}
                         {" · "}{t("payFromTenant")}: <code className="rounded bg-slate-100 px-1.5 py-0.5 text-[10px]">{p.reference}</code>
                         {p.manualRef ? ` · ${t("payManualRef")}: ${p.manualRef}` : ""}
                       </p>
@@ -1424,7 +1424,7 @@ function AdminPayments() {
                         <p className="mt-0.5 text-[11px] text-emerald-700 font-medium">
                           ✨ OCR Detected Trx: <code className="font-mono font-bold bg-emerald-50 px-1 py-0.5 rounded border border-emerald-200">{p.ocrRef}</code>
                           {p.ocrAmount ? ` · Detected: $${p.ocrAmount}` : ""}
-                          {p.ocrPaidAt ? ` · ${new Date(p.ocrPaidAt).toLocaleString()}` : ""}
+                          {p.ocrPaidAt && !isNaN(new Date(p.ocrPaidAt).getTime()) ? ` · ${new Date(p.ocrPaidAt).toLocaleString()}` : ""}
                         </p>
                       )}
                       <p className="mt-0.5 text-[11px] text-slate-400">
@@ -1549,7 +1549,11 @@ function AdminPayments() {
                       {viewing.ocrPaidAt && (
                         <div className="col-span-2">
                           <span className="text-slate-400 block text-[10px]">Receipt Timestamp:</span>
-                          <span className="font-semibold text-slate-800">{new Date(viewing.ocrPaidAt).toLocaleString()}</span>
+                          <span className="font-semibold text-slate-800">
+                            {viewing.ocrPaidAt && !isNaN(new Date(viewing.ocrPaidAt).getTime())
+                              ? new Date(viewing.ocrPaidAt).toLocaleString()
+                              : viewing.ocrPaidAt || "—"}
+                          </span>
                         </div>
                       )}
                     </div>
@@ -2081,7 +2085,7 @@ function AdminAbaTransactionsView({ onVerified }: { onVerified?: () => void }) {
                   )}
                 </div>
                 <div className="mt-0.5 text-[10px] text-slate-400">
-                  {day.totalKhr > 0 && `៛${day.totalKhr.toLocaleString()}`}
+                  {day.totalKhr > 0 && `៛${(day.totalKhr ?? 0).toLocaleString()}`}
                   {day.totalKhr > 0 && day.totalUsd > 0 && " · "}
                   {day.totalUsd > 0 && `$${day.totalUsd.toFixed(2)}`}
                 </div>
@@ -2209,7 +2213,7 @@ function AdminAbaTransactionsView({ onVerified }: { onVerified?: () => void }) {
                             : "bg-emerald-100 text-emerald-800",
                         )}
                       >
-                        {tx.currency === "KHR" ? `៛${tx.amount.toLocaleString()}` : `$${tx.amount.toFixed(2)}`}
+                        {tx.currency === "KHR" ? `៛${(tx.amount ?? 0).toLocaleString()}` : `$${tx.amount.toFixed(2)}`}
                       </span>
 
                       {/* Trx ID with Copy */}
@@ -2393,7 +2397,7 @@ function AdminAbaTransactionsView({ onVerified }: { onVerified?: () => void }) {
               <div className="rounded-lg bg-slate-50 p-2.5 border border-slate-200 text-xs space-y-1">
                 <div className="flex items-center justify-between">
                   <span className="font-bold text-slate-900">
-                    {matchingTx.currency === "KHR" ? `៛${matchingTx.amount.toLocaleString()}` : `$${matchingTx.amount.toFixed(2)}`}
+                    {matchingTx.currency === "KHR" ? `៛${(matchingTx.amount ?? 0).toLocaleString()}` : `$${matchingTx.amount.toFixed(2)}`}
                   </span>
                   <span className="font-mono text-slate-600 font-bold">Trx: {matchingTx.trxId}</span>
                 </div>

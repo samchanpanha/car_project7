@@ -19,7 +19,27 @@ import { PrismaClient } from "@prisma/client";
  * in globalThis as usual.
  */
 
-type PrismaClientCtor = new (options?: { log?: string[] }) => PrismaClient;
+type PrismaClientCtor = new (options?: { log?: string[]; datasources?: { db?: { url?: string } } }) => PrismaClient;
+
+function resolveDatabaseUrl(): string {
+  let url = process.env.DATABASE_URL;
+  if (!url) {
+    return process.env.NODE_ENV === "production"
+      ? "postgresql://khlan:khlan_secret_2026@postgres:5432/khlandb"
+      : "postgresql://khlan:khlan_secret_2026@localhost:5432/khlandb";
+  }
+  // If running inside docker container or production where postgres service is reachable
+  const isDocker = Boolean(
+    process.env.DOCKER_CONTAINER ||
+    process.env.BACKEND_URL?.includes("backend") ||
+    process.env.HOSTNAME === "0.0.0.0" ||
+    process.env.NODE_ENV === "production"
+  );
+  if (isDocker && (url.includes("localhost:5432") || url.includes("127.0.0.1:5432"))) {
+    url = url.replace("localhost:5432", "postgres:5432").replace("127.0.0.1:5432", "postgres:5432");
+  }
+  return url;
+}
 
 function hasRequiredDelegates(client: unknown): boolean {
   return (
@@ -58,11 +78,21 @@ function ensureClient(): PrismaClient {
   const existing = globalForPrisma.prisma;
   if (existing && hasRequiredDelegates(existing)) return existing;
 
+  const dbUrl = resolveDatabaseUrl();
+  const clientOptions = {
+    datasources: {
+      db: {
+        url: dbUrl,
+      },
+    },
+  };
+
   // In production, instantiate directly without require-cache busting.
   if (process.env.NODE_ENV === "production") {
     const client =
       existing ??
       new PrismaClient({
+        ...clientOptions,
         log: ["warn", "error"],
       });
     globalForPrisma.prisma = client;
@@ -72,7 +102,10 @@ function ensureClient(): PrismaClient {
   // In development, if delegates are missing after schema edits, try a freshly required client.
   const freshCtor = loadFreshCtor();
   if (freshCtor) {
-    const fresh = new freshCtor({ log: ["query"] });
+    const fresh = new freshCtor({
+      ...clientOptions,
+      log: ["query"],
+    });
     if (hasRequiredDelegates(fresh)) {
       globalForPrisma.prisma = fresh;
       return fresh;
@@ -82,6 +115,7 @@ function ensureClient(): PrismaClient {
   const client =
     existing ??
     new PrismaClient({
+      ...clientOptions,
       log: ["query"],
     });
   globalForPrisma.prisma = client;

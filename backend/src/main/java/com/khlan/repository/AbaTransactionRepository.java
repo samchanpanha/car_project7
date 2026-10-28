@@ -14,6 +14,8 @@ public interface AbaTransactionRepository extends JpaRepository<AbaTransactionEn
 
     Optional<AbaTransactionEntity> findByTrxId(String trxId);
 
+    Optional<AbaTransactionEntity> findByApv(String apv);
+
     List<AbaTransactionEntity> findByStatusOrderByTransactionDateDesc(String status);
 
     Page<AbaTransactionEntity> findAllByOrderByTransactionDateDesc(Pageable pageable);

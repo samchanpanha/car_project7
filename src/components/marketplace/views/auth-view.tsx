@@ -762,7 +762,7 @@ function RegistrationSubscriptionStep({
 
                 <div className="mt-3 flex items-baseline gap-1">
                   <span className="text-2xl font-extrabold text-slate-900">
-                    {currency === "USD" ? `$${pPriceUsd}` : `៛${pPriceKhr.toLocaleString()}`}
+                    {currency === "USD" ? `$${pPriceUsd}` : `៛${(pPriceKhr ?? 0).toLocaleString()}`}
                   </span>
                   <span className="text-xs text-slate-400">
                     /{billingCycle === "YEARLY" ? "year" : "month"}
@@ -851,10 +851,10 @@ function RegistrationSubscriptionStep({
               </p>
               <div className="mt-1 flex items-baseline gap-2">
                 <span className="text-2xl font-black text-slate-900">
-                  {currency === "USD" ? `$${priceUsd}.00 USD` : `៛${priceKhr.toLocaleString()} KHR`}
+                  {currency === "USD" ? `$${priceUsd}.00 USD` : `៛${(priceKhr ?? 0).toLocaleString()} KHR`}
                 </span>
                 <span className="text-xs font-semibold text-slate-500">
-                  ({currency === "USD" ? `៛${priceKhr.toLocaleString()} KHR` : `$${priceUsd}.00 USD`})
+                  ({currency === "USD" ? `៛${(priceKhr ?? 0).toLocaleString()} KHR` : `$${priceUsd}.00 USD`})
                 </span>
               </div>
               <p className="mt-1 text-[11px] text-emerald-900/80">
@@ -864,7 +864,7 @@ function RegistrationSubscriptionStep({
 
             <p className="text-xs text-slate-600 leading-relaxed">
               1. Click the QR code to enlarge and scan with <strong>ABA Mobile</strong> or any banking app.<br />
-              2. Transfer exact amount: <strong>{currency === "USD" ? `$${priceUsd}.00 USD` : `៛${priceKhr.toLocaleString()} KHR`}</strong>.<br />
+              2. Transfer exact amount: <strong>{currency === "USD" ? `$${priceUsd}.00 USD` : `៛${(priceKhr ?? 0).toLocaleString()} KHR`}</strong>.<br />
               3. Enter the bank transaction reference (Trx ID / APV) below.<br />
               4. Click <strong>Verify & Complete Payment</strong> to activate your dashboard.
             </p>
@@ -1002,9 +1002,9 @@ function RegistrationSubscriptionStep({
         qrSrcUsd={qrSrcUsd}
         qrSrcKhr={qrSrcKhr}
         accountName={manual?.accountName || "SAM CHAN PANHA"}
-        amountText={currency === "USD" ? `$${priceUsd}.00 USD` : `៛${priceKhr.toLocaleString()} KHR`}
+        amountText={currency === "USD" ? `$${priceUsd}.00 USD` : `៛${(priceKhr ?? 0).toLocaleString()} KHR`}
         amountTextUsd={`$${priceUsd}.00 USD`}
-        amountTextKhr={`៛${priceKhr.toLocaleString()} KHR`}
+        amountTextKhr={`៛${(priceKhr ?? 0).toLocaleString()} KHR`}
         planTitle={currentPlan.title}
         currency={currency}
         onCurrencyChange={(c) => setCurrency(c)}

@@ -41,6 +41,7 @@ public class TelegramDTO {
         private String channelUrl;
         private String groupUrl;
         private String chatId;
+        private String botUsername;
         private long inviteCount;
         private Map<String, String> links;
         private SellerTelegramStats stats;

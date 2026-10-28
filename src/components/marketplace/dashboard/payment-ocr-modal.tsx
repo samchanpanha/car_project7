@@ -43,6 +43,7 @@ import { fileToDataUrl } from "@/lib/image-client";
 import { apiSend } from "@/lib/client-hooks";
 import type { PlanDTO } from "@/lib/dashboard-types";
 import { arePaymentRefsMatching } from "@/lib/payments/reference";
+import { scanReceiptInBrowser } from "@/lib/payments/client-ocr";
 
 interface OcrResponse {
   success: boolean;
@@ -134,6 +135,7 @@ export function PaymentOcrModal({
   const [image, setImage] = useState<string | null>(null);
   const [scanning, setScanning] = useState(false);
   const [scanStep, setScanStep] = useState<string>("");
+  const [scanProgress, setScanProgress] = useState<number>(0);
   const [result, setResult] = useState<OcrResponse | null>(null);
   const [customRef, setCustomRef] = useState<string>("");
   const [copiedRef, setCopiedRef] = useState(false);
@@ -144,6 +146,7 @@ export function PaymentOcrModal({
     setImage(null);
     setScanning(false);
     setScanStep("");
+    setScanProgress(0);
     setResult(null);
     setCustomRef("");
     setShowRawText(false);
@@ -160,19 +163,46 @@ export function PaymentOcrModal({
     setCustomRef("");
     setResult(null);
     setImage(null);
+    setScanProgress(0);
     try {
       setScanning(true);
       setScanStep("Optimizing image resolution...");
+      setScanProgress(15);
       const dataUrl = await fileToDataUrl(file, 1600, 0.9);
       setImage(dataUrl);
 
-      setScanStep("Scanning receipt with OCR engine...");
-      const res = await apiSend<OcrResponse>("/api/tenant/payments/ocr", "POST", {
-        image: dataUrl,
-        plan: plan?.plan || "PRO",
-        cycle,
-        currency,
-      });
+      setScanStep("Scanning receipt with Next.js OCR engine...");
+      setScanProgress(35);
+
+      let res: OcrResponse;
+      try {
+        // Primary: Next.js server route handler with Sharp preprocessing and OCR
+        res = await apiSend<OcrResponse>("/api/ocr", "POST", {
+          image: dataUrl,
+          plan: plan?.plan || "PRO",
+          cycle,
+          currency,
+        });
+        setScanProgress(100);
+      } catch (serverErr) {
+        // Fallback: Client-side in-browser Tesseract scanner
+        console.warn("Server OCR failed, switching to in-browser scanner:", serverErr);
+        setScanStep("Running client-side OCR scanner...");
+        const clientRes = await scanReceiptInBrowser(
+          dataUrl,
+          {
+            plan: plan?.plan || "PRO",
+            cycle,
+            currency,
+          },
+          (p) => {
+            // Map 0..100 to 35..95%
+            setScanProgress(Math.round(35 + (p.progress / 100) * 60));
+          }
+        );
+        res = clientRes as unknown as OcrResponse;
+        setScanProgress(100);
+      }
 
       setResult(res);
       const detected = res.data.trxId || res.data.externalRef || res.data.apv || "";
@@ -380,13 +410,22 @@ export function PaymentOcrModal({
 
                 {/* Scanning Laser Beam Effect */}
                 {scanning && (
-                  <div className="absolute inset-0 flex flex-col justify-between pointer-events-none bg-slate-950/40 backdrop-blur-[1px]">
+                  <div className="absolute inset-0 flex flex-col justify-between pointer-events-none bg-slate-950/60 backdrop-blur-[2px]">
                     <div className="w-full h-1 bg-gradient-to-r from-transparent via-emerald-400 to-transparent shadow-[0_0_15px_#10B981] animate-bounce" />
-                    <div className="p-3 text-center">
-                      <span className="inline-flex items-center gap-2 rounded-full bg-slate-900/90 border border-emerald-400/80 px-3.5 py-1 text-xs font-bold text-emerald-400 shadow-lg">
-                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    <div className="p-4 text-center space-y-2.5">
+                      <span className="inline-flex items-center gap-2 rounded-full bg-slate-900/95 border border-emerald-400/80 px-4 py-1.5 text-xs font-bold text-emerald-400 shadow-xl">
+                        <Loader2 className="h-3.5 w-3.5 animate-spin text-emerald-400" />
                         {scanStep || "Scanning receipt with OCR..."}
+                        {scanProgress > 0 && <span className="text-emerald-300 ml-1 font-mono">{scanProgress}%</span>}
                       </span>
+                      {scanProgress > 0 && (
+                        <div className="w-56 mx-auto h-2 bg-slate-800/90 rounded-full overflow-hidden border border-emerald-500/40 p-0.5 shadow-inner">
+                          <div
+                            className="h-full bg-gradient-to-r from-emerald-500 to-teal-400 transition-all duration-300 rounded-full shadow-[0_0_8px_#10B981]"
+                            style={{ width: `${scanProgress}%` }}
+                          />
+                        </div>
+                      )}
                     </div>
                   </div>
                 )}
@@ -577,7 +616,7 @@ export function PaymentOcrModal({
                         {result.data.amountUsd
                           ? `$${result.data.amountUsd.toFixed(2)} USD`
                           : result.data.amountKhr
-                          ? `៛${result.data.amountKhr.toLocaleString()} KHR`
+                          ? `៛${(result.data.amountKhr ?? 0).toLocaleString()} KHR`
                           : "Unknown"}
                       </span>
                       <span className="text-[10px] text-slate-400">

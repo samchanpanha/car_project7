@@ -2,6 +2,7 @@ package com.khlan.service;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.core.type.TypeReference;
 import com.khlan.dto.TelegramDTO;
 import com.khlan.entity.*;
 import com.khlan.repository.*;
@@ -25,6 +26,7 @@ import java.time.Duration;
 import java.time.LocalDate;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
+import java.time.format.DateTimeFormatter;
 import java.util.*;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -133,6 +135,7 @@ public class TelegramService {
                 .channelUrl(profile.getTgChannelUrl())
                 .groupUrl(profile.getTgGroupUrl())
                 .chatId(profile.getTgChatId())
+                .botUsername(getEffectiveBotUsername())
                 .inviteCount(inviteCount)
                 .links(links)
                 .stats(stats)
@@ -198,39 +201,52 @@ public class TelegramService {
                 ? configuredWebhookUrl
                 : System.getenv("TELEGRAM_WEBHOOK_URL");
         if (url != null && !url.isBlank()) {
+            localPollingEnabled = false;
             Map<String, Object> res = setupWebhook(url.trim());
             log.info("Telegram auto webhook registration result: {}", res);
+        } else {
+            // When no static webhook is configured, clear any stale webhook and enable active long-polling
+            log.info("No static TELEGRAM_WEBHOOK_URL configured. Clearing webhook and enabling long-polling.");
+            clearWebhook();
+            localPollingEnabled = true;
         }
     }
 
-    @Scheduled(fixedDelay = 3000, initialDelay = 5000)
+    @Scheduled(fixedDelay = 2000, initialDelay = 3000)
     public void pollTelegramUpdatesForLocalTesting() {
         if (!localPollingEnabled) return;
         String token = resolveBotToken(null);
-        if (token == null) return;
+        if (token == null || token.isBlank()) return;
 
         try {
-            String endpoint = "https://api.telegram.org/bot" + token + "/getUpdates?timeout=1";
+            String endpoint = "https://api.telegram.org/bot" + token + "/getUpdates?timeout=2";
             if (nextUpdateOffset > 0) endpoint += "&offset=" + nextUpdateOffset;
 
             HttpRequest req = HttpRequest.newBuilder()
                     .uri(URI.create(endpoint))
-                    .timeout(Duration.ofSeconds(6))
+                    .timeout(Duration.ofSeconds(8))
                     .GET()
                     .build();
             HttpResponse<String> res = HttpClient.newHttpClient().send(req, HttpResponse.BodyHandlers.ofString());
             JsonNode data = objectMapper.readTree(res.body());
-            if (!data.path("ok").asBoolean()) return;
+            if (!data.path("ok").asBoolean()) {
+                String desc = data.path("description").asText("");
+                if (desc.contains("webhook is active")) {
+                    log.info("Detected active webhook conflict while polling. Clearing webhook to allow getUpdates.");
+                    clearWebhook();
+                }
+                return;
+            }
 
             for (JsonNode upd : data.path("result")) {
                 long updateId = upd.path("update_id").asLong(0);
                 if (updateId > 0) nextUpdateOffset = updateId + 1;
 
                 try {
-                    Map<String, Object> updateMap = objectMapper.convertValue(upd, Map.class);
+                    Map<String, Object> updateMap = objectMapper.convertValue(upd, new TypeReference<Map<String, Object>>() {});
                     handleWebhookUpdate(updateMap);
                 } catch (Exception e) {
-                    log.debug("Could not process polled update {}: {}", updateId, e.getMessage());
+                    log.error("Could not process polled update {}: {}", updateId, e.getMessage());
                 }
             }
         } catch (Exception e) {
@@ -254,6 +270,7 @@ public class TelegramService {
                 String paymentId = parts[1];
 
                 try {
+                    log.info("Processing Telegram inline button click: action={}, paymentId={}", action, paymentId);
                     paymentService.handlePaymentAction(paymentId, action, "Processed via Telegram Inline Button", "usr_admin_bot");
 
                     String token = resolveBotToken(null);
@@ -264,8 +281,18 @@ public class TelegramService {
                     if (msg != null) {
                         Object chatId = ((Map<String, Object>) msg.get("chat")).get("id");
                         Object messageId = msg.get("message_id");
+                        String oldText = (String) msg.get("text");
                         if (chatId != null && messageId != null) {
-                            editMessageText(token, chatId, messageId, resultText + " — payment " + paymentId);
+                            String newText;
+                            if (oldText != null && oldText.contains("Status")) {
+                                String newStatus = "approve".equalsIgnoreCase(action) ? "VERIFIED" : "REJECTED";
+                                newText = oldText
+                                        .replaceFirst("🔔 <b>New Subscription Payment Submitted</b>", "🔔 <b>Subscription Payment " + ("approve".equalsIgnoreCase(action) ? "Approved" : "Rejected") + "</b>")
+                                        .replaceFirst("• <b>Status</b>: <code>[^<]*</code>", "• <b>Status</b>: <code>" + newStatus + "</code>\n• <b>Decision</b>: " + resultText + " by Admin");
+                            } else {
+                                newText = resultText + " — payment " + paymentId;
+                            }
+                            editMessageText(token, chatId, messageId, newText);
                         }
                     }
 
@@ -279,11 +306,24 @@ public class TelegramService {
             }
         }
 
-        // 2. Check message (e.g. ABA PayWay bank receipt alert posted to group)
+        // 2. Check message (e.g. ABA PayWay bank receipt alert posted to group or seller bot commands)
         if (update.containsKey("message")) {
             Map<String, Object> msg = (Map<String, Object>) update.get("message");
             String text = (String) msg.get("text");
             if (text == null) text = (String) msg.get("caption");
+
+            Object chatObj = msg.get("chat");
+            String chatId = chatObj instanceof Map ? String.valueOf(((Map<?, ?>) chatObj).get("id")) : null;
+
+            if (text != null && text.trim().startsWith("/start")) {
+                handleStartCommand(chatId, text.trim());
+                return Map.of("ok", true, "type", "START_COMMAND_HANDLED");
+            }
+
+            if (text != null && (text.equalsIgnoreCase("/id") || text.equalsIgnoreCase("/chatid") || text.equalsIgnoreCase("/whoami"))) {
+                sendDirectMessage(chatId, "👋 <b>Your Telegram Chat ID:</b> <code>" + chatId + "</code>\n\nEnter this ID in your KhLan Seller Dashboard under the Telegram tab to receive buyer notifications.");
+                return Map.of("ok", true, "type", "CHAT_ID_REPLIED");
+            }
 
             if (text != null && text.contains("ABA") && text.contains("Trx")) {
                 parseAndRecordAbaMessage(msg, text);
@@ -308,7 +348,10 @@ public class TelegramService {
                     .header("Content-Type", "application/json")
                     .POST(HttpRequest.BodyPublishers.ofString(objectMapper.writeValueAsString(body)))
                     .build();
-            HttpClient.newHttpClient().send(req, HttpResponse.BodyHandlers.discarding());
+            HttpResponse<String> res = HttpClient.newHttpClient().send(req, HttpResponse.BodyHandlers.ofString());
+            if (res.statusCode() != 200) {
+                log.warn("Telegram answerCallbackQuery response: HTTP {} - {}", res.statusCode(), res.body());
+            }
         } catch (Exception e) {
             log.debug("Could not answer callback query {}: {}", callbackQueryId, e.getMessage());
         }
@@ -321,6 +364,7 @@ public class TelegramService {
             body.put("chat_id", chatId);
             body.put("message_id", messageId);
             body.put("text", text);
+            body.put("parse_mode", "HTML");
 
             HttpRequest req = HttpRequest.newBuilder()
                     .uri(URI.create("https://api.telegram.org/bot" + token + "/editMessageText"))
@@ -328,9 +372,39 @@ public class TelegramService {
                     .header("Content-Type", "application/json")
                     .POST(HttpRequest.BodyPublishers.ofString(objectMapper.writeValueAsString(body)))
                     .build();
-            HttpClient.newHttpClient().send(req, HttpResponse.BodyHandlers.discarding());
+            HttpResponse<String> res = HttpClient.newHttpClient().send(req, HttpResponse.BodyHandlers.ofString());
+            if (res.statusCode() != 200) {
+                log.warn("Telegram editMessageText HTML failed (HTTP {} - {}). Retrying without parse_mode.", res.statusCode(), res.body());
+                // Fallback without parse_mode if formatting had an unescaped character
+                body.remove("parse_mode");
+                HttpRequest fallbackReq = HttpRequest.newBuilder()
+                        .uri(URI.create("https://api.telegram.org/bot" + token + "/editMessageText"))
+                        .timeout(Duration.ofSeconds(6))
+                        .header("Content-Type", "application/json")
+                        .POST(HttpRequest.BodyPublishers.ofString(objectMapper.writeValueAsString(body)))
+                        .build();
+                HttpClient.newHttpClient().send(fallbackReq, HttpResponse.BodyHandlers.discarding());
+            }
         } catch (Exception e) {
             log.debug("Could not edit telegram message: {}", e.getMessage());
+        }
+    }
+
+    public Map<String, Object> clearWebhook() {
+        String token = resolveBotToken(null);
+        if (token == null) return Map.of("ok", false, "error", "No bot token configured");
+        try {
+            HttpRequest req = HttpRequest.newBuilder()
+                    .uri(URI.create("https://api.telegram.org/bot" + token + "/deleteWebhook"))
+                    .timeout(Duration.ofSeconds(6))
+                    .GET()
+                    .build();
+            HttpResponse<String> res = HttpClient.newHttpClient().send(req, HttpResponse.BodyHandlers.ofString());
+            JsonNode data = objectMapper.readTree(res.body());
+            return Map.of("ok", data.path("ok").asBoolean(), "description", data.path("description").asText());
+        } catch (Exception e) {
+            log.error("Failed to clear Telegram webhook", e);
+            return Map.of("ok", false, "error", e.getMessage());
         }
     }
 
@@ -341,13 +415,18 @@ public class TelegramService {
             return Map.of("ok", false, "error", "webhookUrl is required");
         }
 
+        String effectiveUrl = webhookUrl.trim();
+        if (!effectiveUrl.endsWith("/api/telegram/webhook")) {
+            effectiveUrl = effectiveUrl.replaceAll("/+$", "") + "/api/telegram/webhook";
+        }
+
         try {
             String secret = null;
             try { secret = System.getenv("TELEGRAM_WEBHOOK_SECRET"); } catch (Exception ignored) {}
             if (secret == null || secret.isBlank()) secret = "khlan_webhook_secret_2026";
 
             Map<String, Object> body = new LinkedHashMap<>();
-            body.put("url", webhookUrl);
+            body.put("url", effectiveUrl);
             body.put("secret_token", secret);
             body.put("allowed_updates", List.of("message", "callback_query"));
 
@@ -682,11 +761,13 @@ public class TelegramService {
                 long messageId = data.path("result").path("message_id").asLong(0);
                 return Map.of("ok", true, "success", true, "message", "Test alert dispatched to Telegram chat " + chatId, "messageId", messageId);
             } else {
-                return Map.of("ok", false, "error", data.path("description").asText("Telegram API HTTP " + res.statusCode()));
+                String desc = data.path("description").asText("Telegram API HTTP " + res.statusCode());
+                return Map.of("ok", false, "success", false, "error", desc, "message", desc);
             }
         } catch (Exception e) {
             log.error("Failed to send seller test notification", e);
-            return Map.of("ok", false, "error", e.getMessage() != null ? e.getMessage() : "Failed to connect to api.telegram.org");
+            String err = e.getMessage() != null ? e.getMessage() : "Failed to connect to api.telegram.org";
+            return Map.of("ok", false, "success", false, "error", err, "message", err);
         }
     }
 
@@ -694,50 +775,117 @@ public class TelegramService {
         String token = resolveBotToken(null);
         if (token == null || token.isBlank()) return;
 
-        String targetChatId = null;
+        String sellerChatId = null;
         if (sellerId != null && !sellerId.isBlank()) {
             Optional<SellerProfileEntity> profile = sellerProfileRepository.findByUserId(sellerId);
             if (profile.isPresent() && profile.get().getTgChatId() != null && !profile.get().getTgChatId().isBlank()) {
-                targetChatId = profile.get().getTgChatId().trim();
+                sellerChatId = profile.get().getTgChatId().trim();
             }
         }
-        if (targetChatId == null || targetChatId.isBlank()) {
-            targetChatId = resolveGroupChatId(null);
+
+        String groupChatId = resolveGroupChatId(null);
+        if ((sellerChatId == null || sellerChatId.isBlank()) && (groupChatId == null || groupChatId.isBlank())) {
+            return;
         }
-        if (targetChatId == null || targetChatId.isBlank()) return;
+
+        StringBuilder sb = new StringBuilder();
+        sb.append("🚗 <b>New Buyer Test-Drive Appointment Requested!</b>\n\n");
+        sb.append("• <b>Vehicle</b>: ").append(escapeHtml(vehicleTitle != null ? vehicleTitle : "Vehicle")).append("\n");
+        sb.append("• <b>Buyer</b>: ").append(escapeHtml(buyerName != null ? buyerName : "Interested Buyer")).append("\n");
+        sb.append("• <b>Scheduled At</b>: <code>").append(escapeHtml(scheduledAt != null ? scheduledAt : "Pending")).append("</code>\n");
+        if (notes != null && !notes.isBlank()) {
+            sb.append("• <b>Notes</b>: ").append(escapeHtml(notes)).append("\n");
+        }
+        sb.append("• <b>Time</b>: ").append(OffsetDateTime.now().format(DateTimeFormatter.ofPattern("dd MMM yyyy, HH:mm"))).append("\n");
+
+        String baseText = sb.toString();
+
+        // 1. Dispatch directly to seller personal chat if linked
+        if (sellerChatId != null && !sellerChatId.isBlank()) {
+            sendDirectMessage(sellerChatId, baseText);
+            log.info("Dispatched seller lead alert directly to seller Telegram chat {}", sellerChatId);
+        }
+
+        // 2. Dual Dispatch: also copy to central admin group so operations can monitor
+        if (groupChatId != null && !groupChatId.isBlank() && !groupChatId.equals(sellerChatId)) {
+            String groupCopyText = baseText + (sellerChatId != null
+                    ? "\n<i>(Copied from seller direct alert)</i>"
+                    : "\n<i>(Notice: Seller has not linked personal Telegram yet)</i>");
+            sendDirectMessage(groupChatId, groupCopyText);
+            log.info("Dispatched seller lead alert to Telegram group {}", groupChatId);
+        }
+    }
+
+    private void handleStartCommand(String chatId, String text) {
+        if (chatId == null || chatId.isBlank()) return;
+
+        if (text.startsWith("/start link_")) {
+            String userId = text.substring("/start link_".length()).trim();
+            if (!userId.isBlank()) {
+                Optional<SellerProfileEntity> profileOpt = sellerProfileRepository.findByUserId(userId);
+                SellerProfileEntity profile;
+                if (profileOpt.isPresent()) {
+                    profile = profileOpt.get();
+                    profile.setTgChatId(chatId);
+                    sellerProfileRepository.save(profile);
+                } else {
+                    profile = SellerProfileEntity.builder()
+                            .id("sp_" + UUID.randomUUID().toString().replace("-", "").substring(0, 16))
+                            .userId(userId)
+                            .tgChatId(chatId)
+                            .inviteCode(mintCode())
+                            .build();
+                    sellerProfileRepository.save(profile);
+                }
+
+                String reply = "🎉 <b>Telegram Connected Successfully!</b>\n\n"
+                        + "Your KhLan seller account is now linked to this chat.\n"
+                        + "• <b>Chat ID:</b> <code>" + chatId + "</code>\n"
+                        + "• <b>Notifications:</b> Real-time test-drive appointments and buyer inquiries will be sent here directly.\n\n"
+                        + "You can return to your browser dashboard now.";
+                sendDirectMessage(chatId, reply);
+                log.info("Auto-linked Telegram chatId {} to seller userId {}", chatId, userId);
+                return;
+            }
+        }
+
+        String welcome = "👋 <b>Welcome to KhLan Auto Marketplace Bot!</b>\n\n"
+                + "Your Telegram Chat ID is: <code>" + chatId + "</code>\n\n"
+                + "To receive real-time notifications for your listings and test-drive appointments, enter this Chat ID in your <b>KhLan Seller Dashboard</b> under the <b>Telegram</b> tab.";
+        sendDirectMessage(chatId, welcome);
+    }
+
+    public void sendDirectMessage(String chatId, String htmlText) {
+        if (chatId == null || chatId.isBlank() || htmlText == null) return;
+        String token = resolveBotToken(null);
+        if (token == null || token.isBlank()) return;
 
         try {
-            HttpClient client = HttpClient.newBuilder()
-                    .connectTimeout(Duration.ofSeconds(6))
-                    .build();
-
-            StringBuilder sb = new StringBuilder();
-            sb.append("🚗 <b>New Buyer Test-Drive Appointment Requested!</b>\n\n");
-            sb.append("• <b>Vehicle</b>: ").append(escapeHtml(vehicleTitle != null ? vehicleTitle : "Vehicle")).append("\n");
-            sb.append("• <b>Buyer</b>: ").append(escapeHtml(buyerName != null ? buyerName : "Interested Buyer")).append("\n");
-            sb.append("• <b>Scheduled At</b>: <code>").append(escapeHtml(scheduledAt != null ? scheduledAt : "Pending")).append("</code>\n");
-            if (notes != null && !notes.isBlank()) {
-                sb.append("• <b>Notes</b>: ").append(escapeHtml(notes)).append("\n");
-            }
-            sb.append("• <b>Time</b>: ").append(OffsetDateTime.now());
-
             Map<String, Object> body = new LinkedHashMap<>();
-            body.put("chat_id", targetChatId);
-            body.put("text", sb.toString());
+            body.put("chat_id", chatId);
+            body.put("text", htmlText);
             body.put("parse_mode", "HTML");
 
             HttpRequest req = HttpRequest.newBuilder()
                     .uri(URI.create("https://api.telegram.org/bot" + token + "/sendMessage"))
-                    .timeout(Duration.ofSeconds(8))
+                    .timeout(Duration.ofSeconds(6))
                     .header("Content-Type", "application/json")
                     .POST(HttpRequest.BodyPublishers.ofString(objectMapper.writeValueAsString(body)))
                     .build();
-
-            client.send(req, HttpResponse.BodyHandlers.ofString());
-            log.info("Dispatched seller lead alert to Telegram chat {}", targetChatId);
+            HttpClient.newHttpClient().send(req, HttpResponse.BodyHandlers.discarding());
         } catch (Exception e) {
-            log.warn("Failed to dispatch seller lead alert: {}", e.getMessage());
+            log.warn("Failed to send direct telegram message to {}: {}", chatId, e.getMessage());
         }
+    }
+
+    public String getEffectiveBotUsername() {
+        try {
+            TelegramDTO.AdminTelegramConfigDTO cfg = getPlatformConfig();
+            if (cfg != null && cfg.getBotUsername() != null && !cfg.getBotUsername().isBlank()) {
+                return cfg.getBotUsername().trim().replaceFirst("^@", "");
+            }
+        } catch (Exception ignored) {}
+        return "KhmerSmartRestaurantBot";
     }
 
     public TelegramDTO.AdminTelegramConfigDTO getPlatformConfig() {

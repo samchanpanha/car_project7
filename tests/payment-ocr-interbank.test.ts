@@ -111,4 +111,61 @@ describe("Payment OCR & Interbank Verification Utilities", () => {
       expect(arePaymentRefsMatching("999999999999", parsedMock).match).toBe(false);
     });
   });
+
+  describe("Next.js App Router / Client OCR Pipeline", () => {
+    it("should parse ABA slip text with Bakong account number and currency correctly", () => {
+      const receipt = `
+        ABA Bank
+        TRANSFER SUCCESS
+        TRX ID: ABA987654321
+        AMOUNT: 49.00 USD
+        TO: SAM CHAN PANHA
+        ACCOUNT: 001 555 888
+        DATE: 2026-10-28 10:15:00
+      `;
+      const parsed = parseReceiptText(receipt);
+      expect(parsed.trxId).toBe("ABA987654321");
+      expect(parsed.amount).toBe(49.00);
+      expect(parsed.currency).toBe("USD");
+      expect(parsed.payee).toContain("SAM CHAN PANHA");
+    });
+
+    it("should correctly extract Wing Bank 16-character Transaction ID 000245426300FU69 and reject Merchant ID 125110123382784", () => {
+      const receipt = `
+        Date and Time: 28-10-2026 | 01:15:20 PM
+        From Account: 087 556 849
+        Merchant Name: SAM CHAN PANHA
+        Merchant ID: 125110123382784
+        Merchant Bank: ABA Bank
+        Payment Amount: -49.00 USD
+        Fee: Free
+        Transaction ID: 000245426300FU69
+        Transaction Hash: cebeba4f
+        DISCLAIMER: This document is for informational purpose only...
+        Wing Bank (Cambodia) Plc. 023 999 989 | 012 999 489
+      `;
+      const parsed = parseReceiptText(receipt);
+      expect(parsed.trxId).toBe("000245426300FU69");
+      expect(parsed.trxId).not.toBe("125110123382784");
+      expect(parsed.amount).toBe(49.00);
+      expect(parsed.currency).toBe("USD");
+      expect(parsed.bankName).toBe("Wing Bank");
+
+      const matchRes = arePaymentRefsMatching("000245426300FU69", parsed);
+      expect(matchRes.match).toBe(true);
+    });
+
+    it("should extract Transaction ID when label and 000245426300FU69 are on separate lines", () => {
+      const receipt = `
+        Merchant Name: SAM CHAN PANHA
+        Merchant ID: 125110123382784
+        Transaction ID
+        000245426300FU69
+        Amount: $49.00
+      `;
+      const parsed = parseReceiptText(receipt);
+      expect(parsed.trxId).toBe("000245426300FU69");
+      expect(parsed.trxId).not.toBe("125110123382784");
+    });
+  });
 });

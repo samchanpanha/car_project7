@@ -265,21 +265,25 @@ public class PaymentService {
         double amountExpected = "KHR".equals(currency) ? amountUsd * rate : amountUsd;
 
         String manualRef = req.getManualRef() != null ? req.getManualRef().trim() : null;
-        String manualRefKey = manualRef != null ? normalizeRef(manualRef) : null;
+        String cleanRef = (manualRef != null && !manualRef.isBlank()) ? normalizeRef(manualRef) : null;
+        String trxKey = (cleanRef != null && !cleanRef.isBlank()) ? toTrxKey(cleanRef) : null;
 
         SubscriptionPaymentEntity payment = null;
-        if (manualRefKey != null && !manualRefKey.isBlank()) {
-            Optional<SubscriptionPaymentEntity> existingOpt = subscriptionPaymentRepository.findByManualRefKey(manualRefKey);
-            if (existingOpt.isPresent()) {
-                SubscriptionPaymentEntity existing = existingOpt.get();
+        if (cleanRef != null && !cleanRef.isBlank()) {
+            List<SubscriptionPaymentEntity> duplicates = subscriptionPaymentRepository.findDuplicatesByAnyRef(cleanRef, trxKey);
+            for (SubscriptionPaymentEntity existing : duplicates) {
                 if (!existing.getTenantId().equals(tenantId)) {
                     throw new ResponseStatusException(HttpStatus.CONFLICT, "This transaction reference has already been claimed by another account.");
                 }
-                if ("VERIFIED".equals(existing.getStatus())) {
+                if ("VERIFIED".equalsIgnoreCase(existing.getStatus())) {
                     throw new ResponseStatusException(HttpStatus.CONFLICT, "This transaction reference has already been verified and activated.");
                 }
-                // Re-use and update existing pending payment
-                payment = existing;
+                if ("AWAITING_VERIFICATION".equalsIgnoreCase(existing.getStatus())) {
+                    throw new ResponseStatusException(HttpStatus.CONFLICT, "This transaction reference has already been submitted and is currently awaiting verification.");
+                }
+                if ("PENDING".equalsIgnoreCase(existing.getStatus())) {
+                    payment = existing;
+                }
             }
         }
 
@@ -301,8 +305,9 @@ public class PaymentService {
         payment.setAmountExpected(amountExpected);
         payment.setExchangeRate(rate);
         payment.setMonths(months);
-        payment.setManualRef(manualRef);
-        payment.setManualRefKey(manualRefKey);
+        payment.setManualRef(cleanRef != null ? cleanRef : manualRef);
+        payment.setManualRefKey(trxKey != null ? trxKey : cleanRef);
+        payment.setManualRefKind("TRX");
 
         String note = req.getNote();
         if (req.getPaymentDate() != null && !req.getPaymentDate().isBlank()) {
@@ -325,7 +330,16 @@ public class PaymentService {
                     base64Data = base64Data.substring(base64Data.indexOf(",") + 1);
                 }
                 byte[] imgBytes = Base64.getDecoder().decode(base64Data.trim());
-                payment.setEvidenceHash(computeSha256(imgBytes));
+                String imgHash = computeSha256(imgBytes);
+                payment.setEvidenceHash(imgHash);
+
+                Optional<SubscriptionPaymentEntity> dupByImg = subscriptionPaymentRepository.findByEvidenceHash(imgHash);
+                if (dupByImg.isPresent() && !dupByImg.get().getId().equals(payment.getId())) {
+                    SubscriptionPaymentEntity dup = dupByImg.get();
+                    if ("VERIFIED".equalsIgnoreCase(dup.getStatus()) || "AWAITING_VERIFICATION".equalsIgnoreCase(dup.getStatus())) {
+                        throw new ResponseStatusException(HttpStatus.CONFLICT, "This receipt image has already been submitted for another payment.");
+                    }
+                }
 
                 if ((payment.getEvidenceUrl() == null || payment.getEvidenceUrl().isBlank()) && minioStorageService != null) {
                     try {
@@ -384,10 +398,13 @@ public class PaymentService {
         }
 
         String normalized = normalizeRef(req.getRef());
-        Optional<SubscriptionPaymentEntity> existing = subscriptionPaymentRepository.findByManualRefKey(normalized);
-        if (existing.isPresent()) {
-            SubscriptionPaymentEntity p = existing.get();
-            if ("VERIFIED".equals(p.getStatus())) {
+        String trxKey = toTrxKey(normalized);
+        List<SubscriptionPaymentEntity> duplicates = subscriptionPaymentRepository.findDuplicatesByAnyRef(normalized, trxKey);
+        if (!duplicates.isEmpty()) {
+            SubscriptionPaymentEntity verified = duplicates.stream()
+                    .filter(p -> "VERIFIED".equalsIgnoreCase(p.getStatus()))
+                    .findFirst().orElse(null);
+            if (verified != null) {
                 return PaymentDTO.CheckRefResponse.builder()
                         .valid(false)
                         .exists(true)
@@ -396,27 +413,45 @@ public class PaymentService {
                         .message("This transaction reference has already been verified and activated.")
                         .build();
             }
-            if (tenantId != null && !tenantId.equals(p.getTenantId())) {
+
+            SubscriptionPaymentEntity awaiting = duplicates.stream()
+                    .filter(p -> "AWAITING_VERIFICATION".equalsIgnoreCase(p.getStatus()))
+                    .findFirst().orElse(null);
+            if (awaiting != null) {
+                if (tenantId != null && !tenantId.equals(awaiting.getTenantId())) {
+                    return PaymentDTO.CheckRefResponse.builder()
+                            .valid(false)
+                            .exists(true)
+                            .duplicate(true)
+                            .normalizedRef(normalized)
+                            .message("This transaction reference has already been claimed by another account.")
+                            .build();
+                }
                 return PaymentDTO.CheckRefResponse.builder()
                         .valid(false)
                         .exists(true)
                         .duplicate(true)
                         .normalizedRef(normalized)
-                        .message("This transaction reference has already been claimed by another account.")
+                        .message("This transaction reference has already been submitted and is currently awaiting verification.")
                         .build();
             }
-            return PaymentDTO.CheckRefResponse.builder()
-                    .valid(true)
-                    .exists(true)
-                    .duplicate(false)
-                    .normalizedRef(normalized)
-                    .message("Pending review. Submitting will update your review request.")
-                    .build();
         }
 
         // Check if an unmatched ABA transaction matches this reference
         Optional<AbaTransactionEntity> aba = abaTransactionRepository.findByTrxId(normalized);
+        if (aba.isEmpty()) {
+            aba = abaTransactionRepository.findByApv(normalized);
+        }
         if (aba.isPresent()) {
+            if ("MATCHED".equalsIgnoreCase(aba.get().getStatus())) {
+                return PaymentDTO.CheckRefResponse.builder()
+                        .valid(false)
+                        .exists(true)
+                        .duplicate(true)
+                        .normalizedRef(normalized)
+                        .message("This bank transaction reference has already been matched to an active subscription.")
+                        .build();
+            }
             return PaymentDTO.CheckRefResponse.builder()
                     .valid(true)
                     .exists(true)
@@ -1145,18 +1180,28 @@ public class PaymentService {
     }
 
     private boolean matchesPayment(AbaTransactionEntity tx, SubscriptionPaymentEntity p) {
-        if (p.getManualRef() != null && !p.getManualRef().isBlank()) {
-            String m = p.getManualRef().trim();
-            if (tx.getTrxId() != null && (tx.getTrxId().contains(m) || m.contains(tx.getTrxId()))) return true;
-            if (tx.getApv() != null && (tx.getApv().contains(m) || m.contains(tx.getApv()))) return true;
+        if ("UNDERPAID".equalsIgnoreCase(tx.getStatus())) {
+            return false;
         }
-        if (p.getReference() != null && !p.getReference().isBlank()) {
-            String ref = p.getReference().trim();
-            if (tx.getTrxId() != null && (tx.getTrxId().contains(ref) || ref.contains(tx.getTrxId()))) return true;
+        boolean refMatched = false;
+        if (p.getManualRef() != null && !p.getManualRef().isBlank()) {
+            String m = normalizeRef(p.getManualRef());
+            String txTrx = tx.getTrxId() != null ? normalizeRef(tx.getTrxId()) : "";
+            String txApv = tx.getApv() != null ? normalizeRef(tx.getApv()) : "";
+            if (!txTrx.isBlank() && (txTrx.contains(m) || m.contains(txTrx))) refMatched = true;
+            if (!txApv.isBlank() && (txApv.contains(m) || m.contains(txApv))) refMatched = true;
+        }
+        if (!refMatched && p.getReference() != null && !p.getReference().isBlank()) {
+            String ref = normalizeRef(p.getReference());
+            String txTrx = tx.getTrxId() != null ? normalizeRef(tx.getTrxId()) : "";
+            if (!txTrx.isBlank() && (txTrx.contains(ref) || ref.contains(txTrx))) refMatched = true;
+        }
+        if (!refMatched) {
+            return false;
         }
         double txUsd = tx.getAmountUsd() != null ? tx.getAmountUsd() : 0.0;
         double pUsd = p.getAmountUsd() != null ? p.getAmountUsd() : 0.0;
-        return Math.abs(txUsd - pUsd) < 0.01;
+        return Math.abs(txUsd - pUsd) < 1.0;
     }
 
     private void answerTelegramCallback(String botToken, String callbackQueryId, String text) {
@@ -1530,14 +1575,23 @@ public class PaymentService {
     }
 
     private double resolvePlanPrice(String plan, boolean yearly) {
-        if ("ENTERPRISE".equalsIgnoreCase(plan)) return yearly ? 990.0 : 99.0;
+        if ("ENTERPRISE".equalsIgnoreCase(plan)) return yearly ? 1490.0 : 149.0;
         if ("PRO".equalsIgnoreCase(plan)) return yearly ? 490.0 : 49.0;
-        return yearly ? 190.0 : 19.0; // BASIC
+        if ("BASIC".equalsIgnoreCase(plan)) return yearly ? 190.0 : 19.0;
+        return 0.0;
     }
 
     private String normalizeRef(String ref) {
         if (ref == null) return "";
-        return ref.trim().toUpperCase().replaceAll("[^A-Z0-9]", "");
+        return ref.trim()
+                .toUpperCase()
+                .replaceAll("^(?:TRX(?:\\.?\\s*ID)?|TRANSACTION\\s*ID|TXN(?:\\s*ID)?|APV|REF(?:ERENCE)?(?:\\s*(?:NO|ID|#))?)\\s*[:#-]?\\s*", "")
+                .replaceAll("[^A-Z0-9]", "");
+    }
+
+    private String toTrxKey(String cleanRef) {
+        if (cleanRef == null || cleanRef.isBlank()) return "";
+        return "TRX:" + cleanRef;
     }
 
     private String generateAlphaNumeric(int len) {

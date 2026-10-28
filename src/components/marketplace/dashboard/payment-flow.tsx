@@ -270,6 +270,7 @@ export function RequestSubscriptionDialog({
       try {
         const ocrRes = await apiSend<{
           success: boolean;
+          previewUrl?: string;
           blocked?: boolean;
           isWrongMerchant?: boolean;
           fraudAlertId?: string | null;
@@ -301,7 +302,7 @@ export function RequestSubscriptionDialog({
             riskFlags: string[];
             message: string;
           };
-        }>("/api/tenant/payments/ocr", "POST", {
+        }>("/api/ocr", "POST", {
           image: dataUrl,
           plan: plan?.plan || "PRO",
           cycle,
@@ -316,15 +317,11 @@ export function RequestSubscriptionDialog({
           toast.error(`⛔ Payment Blocked! This slip was paid to "${ocrRes.verification?.detectedPayee || ocrRes.data?.payee || "a foreign merchant"}" instead of our KHQR. Security alert dispatched.`);
         } else if (ocrRes.success) {
           let detectedRef = ocrRes.data.trxId || ocrRes.data.externalRef || ocrRes.data.apv;
-          if ((dataUrl && dataUrl.includes('087ae6df-df20-41a7-b041-2b6ab6e74c9b')) || (ocrRes.previewUrl && ocrRes.previewUrl.includes('087ae6df'))) {
-            detectedRef = 'FT26299CZ9C9';
-          }
           if (detectedRef) {
             setManualRef(detectedRef);
             toast.success(`✨ Trx ID auto-extracted from receipt: ${detectedRef}`);
-          } else {
-            setManualRef("");
-            toast.error("Could not detect a valid Transaction ID from this receipt. Please upload a clear photo or screenshot of your bank transfer slip.");
+          } else if (!manualRef.trim()) {
+            toast.info("No new Trx ID auto-detected. You can manually enter your bank reference number.");
           }
 
           if (ocrRes.data.currency === "USD" || ocrRes.data.currency === "KHR") {
@@ -789,10 +786,10 @@ export function RequestSubscriptionDialog({
 
           <DialogDescription className="text-xs sm:text-sm font-semibold text-slate-700 dark:text-slate-300 mt-1 flex flex-wrap items-center gap-1.5">
             <span className="text-amber-700 dark:text-amber-400 font-extrabold text-sm sm:text-base">
-              {currency === "USD" ? `${formatUsd(priceUsd)} USD` : `៛${priceKhr.toLocaleString()} KHR`}
+              {currency === "USD" ? `${formatUsd(priceUsd)} USD` : `៛${(priceKhr ?? 0).toLocaleString()} KHR`}
             </span>
             <span className="text-xs text-slate-500 font-bold">
-              ({currency === "USD" ? `៛${priceKhr.toLocaleString()} KHR` : `${formatUsd(priceUsd)} USD`})
+              ({currency === "USD" ? `៛${(priceKhr ?? 0).toLocaleString()} KHR` : `${formatUsd(priceUsd)} USD`})
             </span>
             <span className="text-slate-400">·</span>
             <span>{cycle === "MONTHLY" ? t("billingMonthly") : t("billingYearly")}</span>
@@ -888,7 +885,7 @@ export function RequestSubscriptionDialog({
 
                   <div className="flex items-center justify-center gap-2">
                     <Badge className="bg-emerald-100 text-emerald-900 border-emerald-300 text-xs sm:text-sm font-black px-3 py-1">
-                      {currency === "USD" ? `${formatUsd(priceUsd)} USD` : `៛${priceKhr.toLocaleString()} KHR`}
+                      {currency === "USD" ? `${formatUsd(priceUsd)} USD` : `៛${(priceKhr ?? 0).toLocaleString()} KHR`}
                     </Badge>
                     <Button
                       type="button"
@@ -1019,7 +1016,7 @@ export function RequestSubscriptionDialog({
                     )}
                     {ocrData.amount != null && (
                       <span className="ml-1 text-[11px] font-bold text-slate-700 dark:text-slate-300">
-                        · {ocrData.currency || currency} {ocrData.amount.toLocaleString()}
+                        · {ocrData.currency || currency} {(ocrData.amount ?? 0).toLocaleString()}
                       </span>
                     )}
                   </div>
@@ -1159,7 +1156,7 @@ export function RequestSubscriptionDialog({
                       <span className="font-bold block text-slate-800 dark:text-slate-200">Amount &amp; Currency:</span>
                       {!ocrData.isUnderpaid ? (
                         <span className="text-emerald-700 dark:text-emerald-400 font-medium truncate block">
-                          {ocrData.amount != null ? `${ocrData.currency || currency} ${ocrData.amount.toLocaleString()} (Paid in Full)` : "Matches plan requirement"}
+                          {ocrData.amount != null ? `${ocrData.currency || currency} ${(ocrData.amount ?? 0).toLocaleString()} (Paid in Full)` : "Matches plan requirement"}
                         </span>
                       ) : (
                         <span className="text-rose-600 dark:text-rose-400 font-bold block truncate">
@@ -1352,7 +1349,7 @@ export function RequestSubscriptionDialog({
                           </>
                         ) : ocrData?.isUnderpaid ? (
                           <>
-                            Detected receipt amount (<strong className="font-mono text-rose-950 dark:text-white">{ocrData.currency || currency} {ocrData.amount?.toLocaleString()}</strong>) is less than the required plan price. Submit for Telegram admin review to manually verify and approve.
+                            Detected receipt amount (<strong className="font-mono text-rose-950 dark:text-white">{ocrData.currency || currency} {(ocrData.amount ?? 0).toLocaleString()}</strong>) is less than the required plan price. Submit for Telegram admin review to manually verify and approve.
                           </>
                         ) : (
                           <>
@@ -1588,9 +1585,9 @@ export function RequestSubscriptionDialog({
         qrSrcUsd={qrSrcUsd}
         qrSrcKhr={qrSrcKhr}
         planTitle={`${plan?.plan ?? "PRO"} (${cycle === "YEARLY" ? "Yearly" : "Monthly"})`}
-        amountText={currency === "USD" ? `${formatUsd(priceUsd)} USD` : `៛${priceKhr.toLocaleString()} KHR`}
+        amountText={currency === "USD" ? `${formatUsd(priceUsd)} USD` : `៛${(priceKhr ?? 0).toLocaleString()} KHR`}
         amountTextUsd={`${formatUsd(priceUsd)} USD`}
-        amountTextKhr={`៛${priceKhr.toLocaleString()} KHR`}
+        amountTextKhr={`៛${(priceKhr ?? 0).toLocaleString()} KHR`}
         currency={currency}
         onCurrencyChange={setCurrency}
         accountName={manual?.accountName || "SAM CHAN PANHA"}
@@ -2118,15 +2115,16 @@ export function SubscriptionPaywallCard({
         ]
   ).map((p: any) => {
     const rawKey = (p.plan ?? p.id ?? "PRO").toString().toUpperCase();
-    const key: "PRO" | "ENTERPRISE" = rawKey === "ENTERPRISE" ? "ENTERPRISE" : "PRO";
-    const title = p.name || (key === "PRO" ? "Professional Dealership" : "Enterprise Network");
-    const priceMonthly = p.priceUsdMonthly ?? p.priceUsd ?? (key === "PRO" ? 49 : 149);
+    const key: "BASIC" | "PRO" | "ENTERPRISE" =
+      rawKey === "ENTERPRISE" ? "ENTERPRISE" : (rawKey === "BASIC" ? "BASIC" : "PRO");
+    const title = p.name || (key === "BASIC" ? "Basic Dealer" : (key === "PRO" ? "Professional Dealership" : "Enterprise Network"));
+    const priceMonthly = p.priceUsdMonthly ?? p.priceUsd ?? (key === "BASIC" ? 19 : (key === "PRO" ? 49 : 149));
     const priceYearly = p.priceUsdYearly ?? priceMonthly * 10;
     const priceKhrMonthly = p.priceKhrMonthly ?? Math.round((priceMonthly * 4100) / 100) * 100;
     const priceKhrYearly = p.priceKhrYearly ?? Math.round((priceYearly * 4100) / 100) * 100;
-    const listingsLimit = p.listingsLimit ?? (key === "PRO" ? 50 : 999);
-    const featuredLimit = p.featuredLimit ?? p.featuredSlots ?? (key === "PRO" ? 5 : 20);
-    const seats = p.seats ?? p.branchSlots ?? (key === "PRO" ? 3 : 10);
+    const listingsLimit = p.listingsLimit ?? (key === "BASIC" ? 15 : (key === "PRO" ? 50 : 999));
+    const featuredLimit = p.featuredLimit ?? p.featuredSlots ?? (key === "BASIC" ? 2 : (key === "PRO" ? 5 : 20));
+    const seats = p.seats ?? p.branchSlots ?? (key === "BASIC" ? 2 : (key === "PRO" ? 3 : 10));
 
     return {
       key,
@@ -2295,6 +2293,7 @@ export function SubscriptionPaywallCard({
       try {
         const ocrRes = await apiSend<{
           success: boolean;
+          previewUrl?: string;
           blocked?: boolean;
           isWrongMerchant?: boolean;
           data: {
@@ -2317,7 +2316,7 @@ export function SubscriptionPaywallCard({
             riskFlags: string[];
             message: string;
           };
-        }>("/api/tenant/payments/ocr", "POST", {
+        }>("/api/ocr", "POST", {
           image: dataUrl,
           plan: selectedPlan,
           cycle,
@@ -2335,9 +2334,8 @@ export function SubscriptionPaywallCard({
           if (detectedRef) {
             setManualRef(detectedRef);
             toast.success(`✨ Trx ID auto-extracted from receipt: ${detectedRef}`);
-          } else {
-            setManualRef("");
-            toast.error("Could not detect a valid Transaction ID from this receipt. Please upload a clear photo or screenshot of your bank transfer slip.");
+          } else if (!manualRef.trim()) {
+            toast.info("No new Trx ID auto-detected. You can manually enter your bank reference number.");
           }
 
           if (ocrRes.data.paidAt) {
@@ -2372,7 +2370,9 @@ export function SubscriptionPaywallCard({
           detectedPayee: ocrRes.verification?.detectedPayee || ocrRes.data.payee || undefined,
           riskFlags: ocrRes.verification.riskFlags,
         });
-      } catch {}
+      } catch (e) {
+        toast.error(e instanceof Error ? e.message : "Could not scan receipt slip automatically");
+      }
     } catch {
       toast.error("Could not read screenshot file");
     } finally {
@@ -2736,16 +2736,16 @@ export function SubscriptionPaywallCard({
                 Amount to Transfer ({currency})
               </span>
               <div className="mt-0.5 text-2xl font-black text-slate-900">
-                {currency === "USD" ? `$${priceUsd}.00 USD` : `៛${priceKhr.toLocaleString()} KHR`}
+                {currency === "USD" ? `$${priceUsd}.00 USD` : `៛${(priceKhr ?? 0).toLocaleString()} KHR`}
               </div>
               <p className="mt-0.5 text-xs text-slate-500">
-                {currency === "USD" ? `Equivalent: ៛${priceKhr.toLocaleString()} KHR` : `Equivalent: $${priceUsd}.00 USD`} · {currentPlan.title}
+                {currency === "USD" ? `Equivalent: ៛${(priceKhr ?? 0).toLocaleString()} KHR` : `Equivalent: $${priceUsd}.00 USD`} · {currentPlan.title}
               </p>
             </div>
 
             <p className="text-xs text-slate-600 leading-relaxed">
               1. Scan the KHQR code with <strong>ABA Mobile</strong> or any banking app.<br />
-              2. Transfer exact amount: <strong>{currency === "USD" ? `$${priceUsd}.00 USD` : `៛${priceKhr.toLocaleString()} KHR`}</strong>.<br />
+              2. Transfer exact amount: <strong>{currency === "USD" ? `$${priceUsd}.00 USD` : `៛${(priceKhr ?? 0).toLocaleString()} KHR`}</strong>.<br />
               3. Enter the Trx ID / APV reference or use the AI scanner to upload your slip.
             </p>
 
@@ -3055,7 +3055,7 @@ export function SubscriptionPaywallCard({
                         </>
                       ) : ocrData?.isUnderpaid ? (
                         <>
-                          Detected receipt amount (<strong className="font-mono text-rose-950">{ocrData.currency || currency} {ocrData.amount?.toLocaleString()}</strong>) is less than the required plan price. Submit for Telegram admin review to manually verify and approve.
+                          Detected receipt amount (<strong className="font-mono text-rose-950">{ocrData.currency || currency} {(ocrData.amount ?? 0).toLocaleString()}</strong>) is less than the required plan price. Submit for Telegram admin review to manually verify and approve.
                         </>
                       ) : (
                         <>
@@ -3198,9 +3198,9 @@ export function SubscriptionPaywallCard({
         qrSrcUsd={qrSrcUsd}
         qrSrcKhr={qrSrcKhr}
         planTitle={`${currentPlan.title} (${cycle === "YEARLY" ? "Yearly" : "Monthly"})`}
-        amountText={currency === "USD" ? `$${priceUsd}.00 USD` : `៛${priceKhr.toLocaleString()} KHR`}
+        amountText={currency === "USD" ? `$${priceUsd}.00 USD` : `៛${(priceKhr ?? 0).toLocaleString()} KHR`}
         amountTextUsd={`$${priceUsd}.00 USD`}
-        amountTextKhr={`៛${priceKhr.toLocaleString()} KHR`}
+        amountTextKhr={`៛${(priceKhr ?? 0).toLocaleString()} KHR`}
         currency={currency}
         onCurrencyChange={setCurrency}
         accountName={manual?.accountName || "SAM CHAN PANHA"}

@@ -102,7 +102,7 @@ public class AdminService {
         List<AdminDTO.TopTenantDTO> topTenants = allTenants.stream().map(t -> {
             List<VehicleEntity> vList = allVehicles.stream().filter(v -> t.getId().equals(v.getTenantId())).toList();
             long views = vList.stream().mapToLong(v -> v.getViews() != null ? v.getViews() : 0).sum();
-            Optional<SubscriptionEntity> subOpt = subscriptionRepository.findById(t.getId());
+            Optional<SubscriptionEntity> subOpt = subscriptionRepository.findByTenantId(t.getId());
             String plan = subOpt.map(SubscriptionEntity::getPlan).orElse("FREE");
             return AdminDTO.TopTenantDTO.builder()
                     .id(t.getId())
@@ -291,7 +291,7 @@ public class AdminService {
             long listingCount = vehicleRepository.countByTenantIdAndStatus(t.getId(), "PUBLISHED")
                     + vehicleRepository.countByTenantIdAndStatus(t.getId(), "PENDING_REVIEW");
 
-            Optional<SubscriptionEntity> subOpt = subscriptionRepository.findById(t.getId());
+            Optional<SubscriptionEntity> subOpt = subscriptionRepository.findByTenantId(t.getId());
             String plan = subOpt.map(SubscriptionEntity::getPlan).orElse(null);
             String subStatus = subOpt.map(SubscriptionEntity::getStatus).orElse(null);
             double mrr = 0.0;
@@ -434,12 +434,18 @@ public class AdminService {
             if (map.containsKey("autoApproveListings")) autoApproveListings = Boolean.parseBoolean(map.get("autoApproveListings").toString());
         }
 
-        List<TenantDTO.PlanDTO> plans = List.of(
+        List<TenantDTO.PlanDTO> defaultPlans = List.of(
                 TenantDTO.PlanDTO.builder()
                         .id("FREE").plan("FREE").name("Starter").priceUsd(0.0)
                         .priceUsdMonthly(0.0).priceUsdYearly(0.0).priceKhrMonthly(0.0).priceKhrYearly(0.0)
                         .featuredSlots(0).branchSlots(1).listingsLimit(10).featuredLimit(0).seats(1).enabled(true)
                         .features(List.of("10 Active Listings", "1 Branch Location", "Standard Support"))
+                        .build(),
+                TenantDTO.PlanDTO.builder()
+                        .id("BASIC").plan("BASIC").name("Basic Dealer").priceUsd(19.0)
+                        .priceUsdMonthly(19.0).priceUsdYearly(190.0).priceKhrMonthly(78000.0).priceKhrYearly(780000.0)
+                        .featuredSlots(2).branchSlots(1).listingsLimit(15).featuredLimit(2).seats(2).enabled(true)
+                        .features(List.of("15 Car Listings", "2 Featured Spots", "Basic Support"))
                         .build(),
                 TenantDTO.PlanDTO.builder()
                         .id("PRO").plan("PRO").name("Professional Dealership").priceUsd(49.0)
@@ -454,6 +460,24 @@ public class AdminService {
                         .features(List.of("Unlimited Listings", "20 Featured Spots", "10 Staff Seats", "Priority API Access", "Dedicated Account Manager"))
                         .build()
         );
+
+        // Honor admin plan configuration (active/disabled + naming + pricing)
+        // from the plan_pricing setting so disabled plans are not offered.
+        List<TenantDTO.PlanDTO> plans = new ArrayList<>(defaultPlans);
+        try {
+            java.util.Optional<PlatformSettingEntity> cfgOpt = platformSettingRepository.findById("plan_pricing");
+            if (cfgOpt.isPresent()) {
+                Map<String, com.khlan.dto.PlanDTO.PlanDefinitionDTO> configured =
+                        objectMapper.readValue(cfgOpt.get().getValueJson(),
+                                new com.fasterxml.jackson.core.type.TypeReference<Map<String, com.khlan.dto.PlanDTO.PlanDefinitionDTO>>() {});
+                plans.removeIf(p -> {
+                    com.khlan.dto.PlanDTO.PlanDefinitionDTO c = configured.get((p.getPlan() == null ? p.getId() : p.getPlan()).toUpperCase());
+                    return c != null && Boolean.FALSE.equals(c.getEnabled());
+                });
+            }
+        } catch (Exception e) {
+            log.warn("Could not apply plan_pricing enabled flags: {}", e.getMessage());
+        }
 
         return AdminDTO.PlatformSettingsDTO.builder()
                 .freeTrialEnabled(freeTrialEnabled)

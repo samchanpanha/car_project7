@@ -1,6 +1,8 @@
 import type { NextConfig } from "next";
 
-const BACKEND_URL = process.env.BACKEND_URL || "http://localhost:8080";
+const BACKEND_URL =
+  process.env.BACKEND_URL ||
+  (process.env.NODE_ENV === "development" ? "http://localhost:8080" : "http://backend:8080");
 
 const nextConfig: NextConfig = {
   output: "standalone",
@@ -20,18 +22,23 @@ const nextConfig: NextConfig = {
    * The rewrite applies to both server-side (SSR) and client-side fetch calls.
    */
   async rewrites() {
-    return [
-      {
-        // Uploads file-serving (GET /api/uploads/:file) → backend
-        source: "/api/uploads/:file",
-        destination: `${BACKEND_URL}/api/uploads/:file`,
-      },
-      {
-        // All other /api/* routes → Spring Boot backend
-        source: "/api/:path*",
-        destination: `${BACKEND_URL}/api/:path*`,
-      },
-    ];
+    return {
+      beforeFiles: [],
+      afterFiles: [
+        {
+          // Uploads file-serving (GET /api/uploads/:file) → backend
+          source: "/api/uploads/:file",
+          destination: `${BACKEND_URL}/api/uploads/:file`,
+        },
+      ],
+      fallback: [
+        {
+          // All other /api/* routes not handled by Next.js route handlers → Spring Boot backend
+          source: "/api/:path*",
+          destination: `${BACKEND_URL}/api/:path*`,
+        },
+      ],
+    };
   },
 };
 

@@ -36,6 +36,19 @@ public interface SubscriptionPaymentRepository extends JpaRepository<Subscriptio
 
     List<SubscriptionPaymentEntity> findByStatusOrderByCreatedAtDesc(String status);
 
+    @Query("SELECT p FROM SubscriptionPaymentEntity p WHERE " +
+           "p.manualRef = :rawRef OR " +
+           "p.manualRef = :trxKey OR " +
+           "p.manualRefKey = :rawRef OR " +
+           "p.manualRefKey = :trxKey OR " +
+           "p.ocrRef = :rawRef OR " +
+           "p.ocrRef = :trxKey OR " +
+           "p.reference = :rawRef")
+    List<SubscriptionPaymentEntity> findDuplicatesByAnyRef(
+            @Param("rawRef") String rawRef,
+            @Param("trxKey") String trxKey
+    );
+
     @Query("SELECT p FROM SubscriptionPaymentEntity p WHERE (:status IS NULL OR p.status = :status) ORDER BY p.createdAt DESC")
     Page<SubscriptionPaymentEntity> findPaymentsFiltered(@Param("status") String status, Pageable pageable);
 }

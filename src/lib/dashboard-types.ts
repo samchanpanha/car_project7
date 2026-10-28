@@ -270,6 +270,7 @@ export interface SellerTelegramDTO {
   channelUrl: string | null;
   groupUrl: string | null;
   chatId?: string | null;
+  botUsername?: string | null;
   /** 8-char unique referral code (minted on first GET if absent) */
   inviteCode: string;
   stats: {

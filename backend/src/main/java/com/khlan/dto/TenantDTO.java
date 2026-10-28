@@ -47,10 +47,16 @@ public class TenantDTO {
     @AllArgsConstructor
     @Builder
     public static class TenantSubscriptionDTO {
+        private String id;
         private String plan;
         private String status;
-        private String currentPeriodEnd;
+        private String billingCycle;
+        private Double priceUsd;
+        private Integer listingsLimit;
         private int featuredLimit;
+        private Integer seats;
+        private String startedAt;
+        private String currentPeriodEnd;
         private int branchLimit;
         private boolean unlimitedInventory;
     }
@@ -104,6 +110,17 @@ public class TenantDTO {
         private String role;
         private String status;
         private String createdAt;
+    }
+
+    @Data
+    @NoArgsConstructor
+    @AllArgsConstructor
+    @Builder
+    public static class TenantStaffResponseDTO {
+        private List<TenantMemberDTO> members;
+        private int seatsLimit;
+        private int seatsUsed;
+        private String plan;
     }
 
     @Data

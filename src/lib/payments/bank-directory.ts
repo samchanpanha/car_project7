@@ -36,7 +36,7 @@ export const KNOWN_BANKS: Record<string, BankMetadata> = {
     nameKm: "ធនាគារ វីង",
     swiftPrefix: "WINGKHPP",
     refLabel: "Transaction ID",
-    refPattern: /^(?:WING\d{8,14}|\d{9,13})$/i,
+    refPattern: /^(?:WING\d{8,14}|\d{9,16}|00024\d{7}[0-9A-Za-z]{4}|[0-9A-Za-z]{16})$/i,
     color: "#8dc63f",
   },
   CAND: {
@@ -216,7 +216,7 @@ export const KNOWN_BANKS: Record<string, BankMetadata> = {
     nameKm: "បាគង",
     swiftPrefix: "BAKONG",
     refLabel: "Transaction Hash / External Ref",
-    refPattern: /^(?:[0-9a-f]{8,64}|\d{10,16})$/i,
+    refPattern: /^(?:[0-9a-f]{8,64}|\d{10,16}|00024\d{7}[0-9A-Za-z]{4}|[0-9A-Za-z]{16})$/i,
     color: "#cc0000",
   },
 };

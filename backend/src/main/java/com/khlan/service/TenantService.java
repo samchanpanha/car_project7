@@ -108,14 +108,20 @@ public class TenantService {
                 .build();
 
         TenantDTO.TenantSubscriptionDTO subDTO = null;
-        Optional<SubscriptionEntity> subOpt = subscriptionRepository.findById(t.getId());
+        Optional<SubscriptionEntity> subOpt = subscriptionRepository.findByTenantId(t.getId());
         if (subOpt.isPresent()) {
             SubscriptionEntity sub = subOpt.get();
             int branchLimit = "ENTERPRISE".equalsIgnoreCase(sub.getPlan()) ? 10 : ("PRO".equalsIgnoreCase(sub.getPlan()) ? 3 : 1);
             boolean unlimitedInventory = sub.getListingsLimit() != null && sub.getListingsLimit() >= 1000;
             subDTO = TenantDTO.TenantSubscriptionDTO.builder()
+                    .id(sub.getId())
                     .plan(sub.getPlan())
                     .status(sub.getStatus())
+                    .billingCycle(sub.getBillingCycle() != null ? sub.getBillingCycle() : "MONTHLY")
+                    .priceUsd(sub.getPriceUsd() != null ? sub.getPriceUsd() : 0.0)
+                    .listingsLimit(sub.getListingsLimit() != null ? sub.getListingsLimit() : 15)
+                    .seats(sub.getSeats() != null ? sub.getSeats() : 1)
+                    .startedAt(sub.getStartedAt() != null ? sub.getStartedAt().toString() : null)
                     .currentPeriodEnd(sub.getCurrentPeriodEnd() != null ? sub.getCurrentPeriodEnd().toString() : null)
                     .featuredLimit(sub.getFeaturedLimit() != null ? sub.getFeaturedLimit() : 0)
                     .branchLimit(branchLimit)
@@ -233,7 +239,7 @@ public class TenantService {
         TenantContext ctx = requireTenantMember(userId);
         String tenantId = ctx.tenant().getId();
 
-        Optional<SubscriptionEntity> subOpt = subscriptionRepository.findById(tenantId);
+        Optional<SubscriptionEntity> subOpt = subscriptionRepository.findByTenantId(tenantId);
         String plan = subOpt.filter(s -> "ACTIVE".equals(s.getStatus())).map(SubscriptionEntity::getPlan).orElse("FREE");
         boolean isPro = "PRO".equalsIgnoreCase(plan) || "ENTERPRISE".equalsIgnoreCase(plan);
 
@@ -436,10 +442,30 @@ public class TenantService {
         tenantBranchRepository.delete(branch);
     }
 
+    private int resolveSeatsLimit(SubscriptionEntity sub) {
+        if (sub != null && sub.getSeats() != null && sub.getSeats() > 0) {
+            return sub.getSeats();
+        }
+        if (sub != null && sub.getPlan() != null) {
+            return switch (sub.getPlan().toUpperCase()) {
+                case "ENTERPRISE" -> 20;
+                case "PRO" -> 5;
+                case "BASIC" -> 2;
+                default -> 1;
+            };
+        }
+        return 1;
+    }
+
+    private String resolvePlan(SubscriptionEntity sub) {
+        return (sub != null && sub.getPlan() != null) ? sub.getPlan().toUpperCase() : "FREE";
+    }
+
     @Transactional(readOnly = true)
-    public List<TenantDTO.TenantMemberDTO> getStaff(String userId) {
+    public TenantDTO.TenantStaffResponseDTO getStaff(String userId) {
         TenantContext ctx = requireTenantMember(userId);
-        List<TenantMemberEntity> members = tenantMemberRepository.findByTenantId(ctx.tenant().getId());
+        String tenantId = ctx.tenant().getId();
+        List<TenantMemberEntity> members = tenantMemberRepository.findByTenantId(tenantId);
 
         List<TenantDTO.TenantMemberDTO> dtos = new ArrayList<>();
         for (TenantMemberEntity m : members) {
@@ -454,7 +480,21 @@ public class TenantService {
                     .createdAt(m.getCreatedAt() != null ? m.getCreatedAt().toString() : null)
                     .build());
         }
-        return dtos;
+
+        Optional<SubscriptionEntity> subOpt = subscriptionRepository.findByTenantId(tenantId);
+        SubscriptionEntity sub = subOpt.filter(s -> "ACTIVE".equalsIgnoreCase(s.getStatus())).orElse(null);
+        String plan = resolvePlan(sub);
+        int seatsLimit = resolveSeatsLimit(sub);
+        int seatsUsed = (int) dtos.stream()
+                .filter(m -> "ACTIVE".equalsIgnoreCase(m.getStatus()))
+                .count();
+
+        return TenantDTO.TenantStaffResponseDTO.builder()
+                .members(dtos)
+                .seatsLimit(seatsLimit)
+                .seatsUsed(seatsUsed)
+                .plan(plan)
+                .build();
     }
 
     @Transactional
@@ -466,6 +506,16 @@ public class TenantService {
         if (req.getPhone() == null || req.getPhone().isBlank()) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Phone number is required");
         }
+
+        Optional<SubscriptionEntity> subOpt = subscriptionRepository.findByTenantId(tenantId);
+        SubscriptionEntity sub = subOpt.filter(s -> "ACTIVE".equalsIgnoreCase(s.getStatus())).orElse(null);
+        String plan = resolvePlan(sub);
+        int seatsLimit = resolveSeatsLimit(sub);
+
+        List<TenantMemberEntity> currentMembers = tenantMemberRepository.findByTenantId(tenantId);
+        long activeCount = currentMembers.stream()
+                .filter(m -> "ACTIVE".equalsIgnoreCase(m.getStatus()))
+                .count();
 
         UserEntity user = userRepository.findByPhone(req.getPhone().trim())
                 .orElseGet(() -> {
@@ -487,8 +537,15 @@ public class TenantService {
             if ("OWNER".equals(member.getRole())) {
                 throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "The dealership owner cannot be re-invited");
             }
+            if (!"ACTIVE".equalsIgnoreCase(member.getStatus()) && activeCount >= seatsLimit) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Your " + plan + " plan allows " + seatsLimit + " seat" + (seatsLimit > 1 ? "s" : "") + ". Upgrade for more seats.");
+            }
             member.setRole(req.getRole() != null ? req.getRole() : "SALES_STAFF");
+            member.setStatus("ACTIVE");
         } else {
+            if (activeCount >= seatsLimit) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Your " + plan + " plan allows " + seatsLimit + " seat" + (seatsLimit > 1 ? "s" : "") + ". Upgrade for more seats.");
+            }
             String mid = "tm_" + UUID.randomUUID().toString().replace("-", "").substring(0, 16);
             member = TenantMemberEntity.builder()
                     .id(mid)
@@ -530,11 +587,25 @@ public class TenantService {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Cannot change role of dealership owner");
         }
 
+        if (req.getStatus() != null && !req.getStatus().isBlank()) {
+            String newStatus = req.getStatus().trim();
+            if ("ACTIVE".equalsIgnoreCase(newStatus) && !"ACTIVE".equalsIgnoreCase(member.getStatus())) {
+                Optional<SubscriptionEntity> subOpt = subscriptionRepository.findByTenantId(tenantId);
+                SubscriptionEntity sub = subOpt.filter(s -> "ACTIVE".equalsIgnoreCase(s.getStatus())).orElse(null);
+                String plan = resolvePlan(sub);
+                int seatsLimit = resolveSeatsLimit(sub);
+                long activeCount = tenantMemberRepository.findByTenantId(tenantId).stream()
+                        .filter(m -> "ACTIVE".equalsIgnoreCase(m.getStatus()))
+                        .count();
+                if (activeCount >= seatsLimit) {
+                    throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Your " + plan + " plan allows " + seatsLimit + " seat" + (seatsLimit > 1 ? "s" : "") + ". Upgrade for more seats.");
+                }
+            }
+            member.setStatus(newStatus);
+        }
+
         if (req.getRole() != null && !req.getRole().isBlank()) {
             member.setRole(req.getRole().trim());
-        }
-        if (req.getStatus() != null && !req.getStatus().isBlank()) {
-            member.setStatus(req.getStatus().trim());
         }
         tenantMemberRepository.save(member);
 

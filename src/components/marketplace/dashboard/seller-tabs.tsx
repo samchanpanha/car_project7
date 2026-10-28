@@ -421,6 +421,7 @@ export function SellerSubscription() {
         priceUsd={requesting ? (cycle === "YEARLY" ? requesting.priceUsdYearly : requesting.priceUsdMonthly) : 0}
         onDone={() => {
           sub.refetch();
+          setRequesting(null);
         }}
       />
 

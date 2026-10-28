@@ -22,8 +22,8 @@ import {
   Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle,
 } from "@/components/ui/dialog";
 import {
-  Bot, Check, Copy, ExternalLink, Link2, Loader2, Megaphone, MousePointerClick,
-  QrCode, Send, Share2, Sparkles, UsersRound,
+  Bot, Check, CheckCircle2, Copy, ExternalLink, Link2, Loader2, Megaphone, MousePointerClick,
+  QrCode, RefreshCw, Send, Share2, Sparkles, UsersRound,
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
@@ -54,12 +54,12 @@ function validateForm(form: FormState, t: TFn): FormErrors {
 
 export function SellerTelegram() {
   const t = useT();
+  const { me } = useAppStore();
   const { data, loading, error, refetch } = useFetch<SellerTelegramDTO>("/api/seller/telegram");
 
   // form + dirty tracking
   const [form, setForm] = useState<FormState>({ miniAppUrl: "", channelUrl: "", groupUrl: "", chatId: "" });
   const [formErrors, setFormErrors] = useState<FormErrors>({});
-  const [hydrated, setHydrated] = useState(false);
   const [saving, setSaving] = useState(false);
   const [testingBot, setTestingBot] = useState(false);
   // refreshed hub payload returned by PUT (wins over the fetch until refetch)
@@ -74,16 +74,15 @@ export function SellerTelegram() {
   }, []);
 
   useEffect(() => {
-    if (data && !hydrated) {
-      setForm({
-        miniAppUrl: data.miniAppUrl ?? "",
-        channelUrl: data.channelUrl ?? "",
-        groupUrl: data.groupUrl ?? "",
-        chatId: data.chatId ?? "",
-      });
-      setHydrated(true);
+    if (data) {
+      setForm((prev) => ({
+        miniAppUrl: data.miniAppUrl ?? prev.miniAppUrl,
+        channelUrl: data.channelUrl ?? prev.channelUrl,
+        groupUrl: data.groupUrl ?? prev.groupUrl,
+        chatId: data.chatId ?? prev.chatId,
+      }));
     }
-  }, [data, hydrated]);
+  }, [data]);
 
   // QR code PNG for the current universal invite link
   const universal = useMemo(
@@ -101,6 +100,8 @@ export function SellerTelegram() {
   }, [qrLink]);
 
   const dto = saved ?? data;
+  const botUsername = dto?.botUsername || "KhmerSmartRestaurantBot";
+  const userId = me?.user?.id || "usr_dealer_sokha";
 
   const setField = (key: keyof FormState, value: string) => {
     setForm((f) => ({ ...f, [key]: value }));
@@ -146,13 +147,13 @@ export function SellerTelegram() {
     }
     setTestingBot(true);
     try {
-      const res = await apiSend<{ success: boolean; message: string; chatId: string }>("/api/seller/telegram/test", "POST", {
+      const res = await apiSend<{ success?: boolean; ok?: boolean; message?: string; error?: string; chatId?: string }>("/api/seller/telegram/test", "POST", {
         chatId: targetChatId,
       });
-      if (res.success) {
+      if (res.success || res.ok) {
         toast.success(t("tgTestBotSuccess"));
       } else {
-        toast.error(res.message || t("tgTestBotFail"));
+        toast.error(res.error || res.message || t("tgTestBotFail"));
       }
     } catch (e) {
       toast.error(e instanceof Error ? e.message : t("tgTestBotFail"));
@@ -282,8 +283,76 @@ export function SellerTelegram() {
           </div>
         </div>
 
-        {/* Telegram Bot Lead Notification Chat ID */}
-        <div className="mt-4 pt-4 border-t border-slate-100">
+        {/* Telegram Bot Lead Notification & 1-Click Connect */}
+        <div className="mt-5 pt-4 border-t border-slate-100 space-y-4">
+          <div className="rounded-xl border border-sky-100 bg-gradient-to-r from-sky-50/80 to-blue-50/50 p-4">
+            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+              <div className="flex items-start gap-3">
+                <div className={cn(
+                  "p-2 rounded-lg text-white shadow-sm shrink-0",
+                  form.chatId.trim() ? "bg-emerald-600" : "bg-sky-600"
+                )}>
+                  <Bot className="h-5 w-5" aria-hidden />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <h4 className="text-xs font-bold text-slate-800">
+                      Telegram 1-Click Lead Alerts Linking
+                    </h4>
+                    {form.chatId.trim() ? (
+                      <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-semibold text-emerald-800 border border-emerald-200">
+                        <CheckCircle2 className="h-3 w-3" />
+                        Connected
+                      </span>
+                    ) : (
+                      <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-semibold text-amber-800 border border-amber-200">
+                        Not Linked
+                      </span>
+                    )}
+                  </div>
+                  <p className="mt-1 text-[11px] leading-relaxed text-slate-600">
+                    {form.chatId.trim()
+                      ? `Your account is linked to Chat ID: ${form.chatId}. Buyer test-drive appointments and lead inquiries are automatically dispatched directly to your Telegram.`
+                      : `Connect with @${botUsername} in 1 click. Tap 'Start' in Telegram to automatically link your Chat ID and receive real-time test-drive lead notifications.`}
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2 w-full sm:w-auto shrink-0">
+                <Button
+                  type="button"
+                  size="sm"
+                  asChild
+                  className="h-8 text-xs bg-sky-600 hover:bg-sky-700 text-white shadow-sm flex-1 sm:flex-initial"
+                >
+                  <a
+                    href={`https://t.me/${botUsername}?start=link_${userId}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                  >
+                    <Send className="h-3.5 w-3.5 mr-1.5" />
+                    {form.chatId.trim() ? "Re-link Bot" : "1-Click Connect"}
+                    <ExternalLink className="h-3 w-3 ml-1 opacity-70" />
+                  </a>
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    refetch();
+                    toast.info("Checking Telegram connection status...");
+                  }}
+                  disabled={loading}
+                  className="h-8 text-xs border-slate-200 text-slate-700 hover:bg-slate-100"
+                  title="Check and refresh connection status"
+                >
+                  <RefreshCw className={cn("h-3.5 w-3.5", loading && "animate-spin")} />
+                </Button>
+              </div>
+            </div>
+          </div>
+
           <div className="space-y-1.5">
             <div className="flex items-center justify-between">
               <Label htmlFor="tg-chatid" className="flex items-center gap-1.5 text-xs font-semibold text-slate-800">
