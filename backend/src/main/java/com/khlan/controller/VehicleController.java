@@ -33,6 +33,10 @@ public class VehicleController {
             @RequestParam(required = false) String make,
             @RequestParam(required = false) String model,
             @RequestParam(required = false) String city,
+            @RequestParam(required = false) String category,
+            @RequestParam(required = false) String listingCategory,
+            @RequestParam(required = false) String partCategory,
+            @RequestParam(required = false) String partTarget,
             @RequestParam(required = false) String bodyType,
             @RequestParam(required = false) String fuel,
             @RequestParam(required = false) String transmission,
@@ -61,9 +65,10 @@ public class VehicleController {
         Integer effectiveMinYear = minYear != null ? minYear : yearMin;
         Integer effectiveMaxYear = maxYear != null ? maxYear : yearMax;
         Integer effectiveMaxMileage = maxMileage != null ? maxMileage : mileageMax;
+        String effectiveCategory = listingCategory != null ? listingCategory : category;
 
         return ResponseEntity.ok(vehicleService.searchVehicles(
-                q, make, model, city, bodyType, fuel, transmission, drivetrain, condition,
+                q, make, model, city, effectiveCategory, partCategory, partTarget, bodyType, fuel, transmission, drivetrain, condition,
                 effectiveMinPrice, effectiveMaxPrice, effectiveMinYear, effectiveMaxYear, minMileage, effectiveMaxMileage,
                 featured, sellerId, dealerId, sort, page, limit
         ));

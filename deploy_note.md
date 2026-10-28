@@ -27,6 +27,8 @@ Set these in your deployment platform:
 - `APP_DEMO_MODE=false` (required in production to disable demo persona login)
 - `CORS_ALLOWED_ORIGINS=https://yourdomain.com`
 - `SPRING_REDIS_HOST`, `SPRING_REDIS_PORT` (required only for horizontal scaling/multi-instance realtime delivery)
+- `TELEGRAM_LOCAL_POLLING=true`: enables the unified 24/7 Telegram background poller inside Spring Boot (polls every 2s, automatically captures PayWay alerts, reconciles subscriptions, and updates inline approval buttons)
+- **Telegram Bot Privacy Mode**: In [@BotFather](https://t.me/BotFather), send `/setprivacy` → select `@KhLanOfficialBot` → choose **Disable** so Telegram's servers deliver unmentioned group PayWay alerts to the bot.
 
 ## 4. Verification
 

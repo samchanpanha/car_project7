@@ -227,7 +227,7 @@ export function generateDefaultModularConfigs(): Record<string, string> {
   const r2PublicUrl =
     process.env.CLOUDFLARE_R2_PUBLIC_URL || "https://pub-d32806cd92a44955a3772e3e6c2369a5.r2.dev";
 
-  const tgBotToken = process.env.TELEGRAM_BOT_TOKEN || "8961155344:AAEXIEeSWNp4kudB2YQEnpj7hsUkd-ignAc";
+  const tgBotToken = process.env.TELEGRAM_BOT_TOKEN || "8691160498:AAFkdDht6Wj7TAxRWxLTJPurDRP84BMwxb0";
   const tgGroupChatId = process.env.TELEGRAM_GROUP_CHAT_ID || "-1004489863210";
   const tgWebhookSecret = process.env.TELEGRAM_WEBHOOK_SECRET || "khlan_webhook_secret_2026";
 

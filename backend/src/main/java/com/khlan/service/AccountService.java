@@ -305,10 +305,13 @@ public class AccountService {
         String sellerId = (String) q.get("sellerId");
         String dealerId = (String) q.get("dealerId");
         String keyword = (String) q.get("q");
+        String listingCategory = (String) q.getOrDefault("listingCategory", q.get("category"));
+        String partCategory = (String) q.get("partCategory");
+        String partTarget = (String) q.get("partTarget");
         String sort = (String) q.get("sort");
 
         VehicleDTO.PagedVehiclesResponseDTO paged = vehicleService.searchVehicles(
-                keyword, make, model, city, bodyType, fuel, transmission, drivetrain, condition,
+                keyword, make, model, city, listingCategory, partCategory, partTarget, bodyType, fuel, transmission, drivetrain, condition,
                 minPrice, maxPrice, minYear, maxYear, minMileage, maxMileage, featured, sellerId, dealerId,
                 sort, 1, 12
         );

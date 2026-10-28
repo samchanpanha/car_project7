@@ -1237,7 +1237,7 @@ export function ListingEditorDialog({
                 >
                   <Input
                     type="number"
-                    min={0}
+                    min={form.priceMasked ? 0 : 1}
                     value={form.priceUsd}
                     onChange={(e) => set({ priceUsd: e.target.value })}
                     placeholder={form.priceMasked ? "—" : "18500"}

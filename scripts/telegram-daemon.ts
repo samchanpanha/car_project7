@@ -5,10 +5,11 @@
 
 import { db } from "../src/lib/db";
 import { getManualPaymentConfig, resolveTelegramConfig } from "../src/lib/api/payments";
-import { syncTelegramGroupUpdates } from "../src/lib/api/aba-sync";
+import { syncTelegramGroupUpdates, previewTelegramGroupUpdates } from "../src/lib/api/aba-sync";
 
 const POLL_INTERVAL_MS = 2500;
 const ERROR_BACKOFF_MS = 5000;
+const DRY_RUN = process.argv.includes("--dry-run");
 
 let isRunning = true;
 
@@ -33,6 +34,24 @@ async function run() {
 
   while (isRunning) {
     try {
+      if (DRY_RUN) {
+        const config = await getManualPaymentConfig();
+        const { botToken, chatId } = resolveTelegramConfig(config);
+        const targetChat = chatId || "-1004489863210";
+        if (!botToken) {
+          console.warn("[Dry Run] Waiting for bot token...");
+          await new Promise((r) => setTimeout(r, 10_000));
+          continue;
+        }
+        const previews = await previewTelegramGroupUpdates(botToken, targetChat);
+        console.log(`[Dry Run] ${previews.length} ABA PayWay message(s) parsed.`);
+        previews.forEach((p, i) => {
+          console.log(`  #${i + 1}: Trx=${p.trxId}, APV=${p.apv}, ${p.currency} ${p.amount} => $${p.amountUsd}, Payer=${p.payerName}, Date=${p.transactionDateRaw}`);
+        });
+        await new Promise((r) => setTimeout(r, 10_000));
+        continue;
+      }
+
       const config = await getManualPaymentConfig();
       const { botToken, chatId } = resolveTelegramConfig(config);
 

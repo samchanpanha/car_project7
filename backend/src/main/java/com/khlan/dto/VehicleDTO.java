@@ -4,7 +4,6 @@ import com.fasterxml.jackson.annotation.JsonInclude;
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
-import jakarta.validation.constraints.Positive;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -87,12 +86,23 @@ public class VehicleDTO {
     @JsonInclude(JsonInclude.Include.NON_NULL)
     public static class VehicleCardDTO {
         private String id;
+        private String listingCategory;
+        private String partCategory;
+        private String partTarget;
+        private String partCondition;
+        private String compatibleModels;
+        private String partNumber;
         private String make;
         private String model;
         private String variant;
         private int year;
         private double priceUsd;
+        private boolean priceMasked;
         private int mileageKm;
+        private Integer seats;
+        private String interiorColor;
+        private String fuelEconomy;
+        private Integer engineCc;
         private String transmission;
         private String fuel;
         private String bodyType;
@@ -117,12 +127,22 @@ public class VehicleDTO {
     @JsonInclude(JsonInclude.Include.NON_NULL)
     public static class VehicleDetailDTO {
         private String id;
+        private String listingCategory;
+        private String partCategory;
+        private String partTarget;
+        private String partCondition;
+        private String compatibleModels;
+        private String partNumber;
         private String make;
         private String model;
         private String variant;
         private int year;
         private double priceUsd;
+        private boolean priceMasked;
         private int mileageKm;
+        private Integer seats;
+        private String interiorColor;
+        private String fuelEconomy;
         private String transmission;
         private String fuel;
         private String bodyType;
@@ -163,17 +183,22 @@ public class VehicleDTO {
     @AllArgsConstructor
     @Builder
     public static class CreateVehicleRequest {
+        private String listingCategory;
+        private String partCategory;
+        private String partTarget;
+        private String partCondition;
+        private String compatibleModels;
+        private String partNumber;
         @NotBlank(message = "make is required")
         private String make;
         @NotBlank(message = "model is required")
         private String model;
         private String variant;
         @NotNull(message = "year is required")
-        @Min(1990)
+        @Min(1980)
         private Integer year;
-        @NotNull(message = "priceUsd is required")
-        @Positive
         private Double priceUsd;
+        private Boolean priceMasked;
         @NotNull(message = "mileageKm is required")
         @Min(0)
         private Integer mileageKm;
@@ -182,6 +207,9 @@ public class VehicleDTO {
         @NotBlank(message = "fuel is required")
         private String fuel;
         private Integer engineCc;
+        private Integer seats;
+        private String interiorColor;
+        private String fuelEconomy;
         private String drivetrain;
         @NotBlank(message = "bodyType is required")
         private String bodyType;
@@ -209,12 +237,22 @@ public class VehicleDTO {
     @AllArgsConstructor
     @Builder
     public static class UpdateVehicleRequest {
+        private String listingCategory;
+        private String partCategory;
+        private String partTarget;
+        private String partCondition;
+        private String compatibleModels;
+        private String partNumber;
         private String make;
         private String model;
         private String variant;
         private Integer year;
         private Double priceUsd;
+        private Boolean priceMasked;
         private Integer mileageKm;
+        private Integer seats;
+        private String interiorColor;
+        private String fuelEconomy;
         private String transmission;
         private String fuel;
         private Integer engineCc;

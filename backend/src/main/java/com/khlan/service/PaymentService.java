@@ -23,9 +23,12 @@ import java.net.http.HttpResponse;
 import java.security.MessageDigest;
 import java.time.Duration;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.time.OffsetDateTime;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
+import java.time.format.DateTimeFormatterBuilder;
+import java.util.Locale;
 import java.util.*;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -55,6 +58,11 @@ public class PaymentService {
     private final org.springframework.beans.factory.ObjectProvider<TelegramService> telegramServiceProvider;
 
     private static final String SETTING_KEY_PAYMENT_CONFIG = "payment_config";
+
+    @Transactional(readOnly = true)
+    public List<SubscriptionPaymentEntity> getPendingVerificationPayments() {
+        return subscriptionPaymentRepository.findByStatusOrderByCreatedAtDesc("AWAITING_VERIFICATION");
+    }
 
     @Transactional(readOnly = true)
     public List<PaymentDTO.SubscriptionPaymentDTO> getTenantPayments(String tenantId) {
@@ -725,11 +733,16 @@ public class PaymentService {
         return toDTO(payment, tenant != null ? tenant.getName() : null, true);
     }
 
-    private static final Pattern ABA_TRX_PATTERN = Pattern.compile("(?i)(?:Trx\\.?\\s*ID|Transaction\\s*ID|Txn\\s*ID|TrxID|Trx)[:\\s#]*([A-Za-z0-9_-]{6,32})");
-    private static final Pattern ABA_APV_PATTERN = Pattern.compile("(?i)\\bAPV[:\\s#]*([A-Za-z0-9_-]{4,16})");
+    private static final Pattern ABA_TRX_PATTERN = Pattern.compile("(?i)(?:Trx\\.?\\s*ID|Transaction\\s*ID|Txn\\s*ID|Txn\\.?\\s*#?|TrxID|Trx|Ref\\.?\\s*ID|Reference\\s*ID|Payment\\s*ID|Ext\\.?\\s*Trx\\.?\\s*ID)[:\\s#]*([A-Za-z0-9_-]{6,36})");
+    private static final Pattern ABA_APV_PATTERN = Pattern.compile("(?i)(?:\\bAPV|Approval\\s*Code)[:\\s#]*([A-Za-z0-9_-]{4,16})");
     private static final Pattern ABA_KHR_PATTERN = Pattern.compile("(?i)(?:៛|KHR)\\s*([0-9,]+(?:\\.[0-9]{2})?)|([0-9,]+(?:\\.[0-9]{2})?)\\s*(?:៛|KHR)");
     private static final Pattern ABA_USD_PATTERN = Pattern.compile("(?i)(?:\\$|USD)\\s*([0-9,]+(?:\\.[0-9]{2})?)|([0-9,]+(?:\\.[0-9]{2})?)\\s*(?:\\$|USD)");
-    private static final Pattern ABA_PAYER_PATTERN = Pattern.compile("(?i)paid by\\s+([A-Za-z0-9\\s(*)\\-]+?)(?:\\s+on\\s+|\\s+via\\s+|\\.)");
+    private static final Pattern ABA_PAYER_ACCOUNT_PATTERN = Pattern.compile("(?i)paid by\\s+(.+?)\\s+\\(([^)]+)\\)\\s+on\\s+");
+    private static final Pattern ABA_PAYER_PATTERN = Pattern.compile("(?i)(?:paid by|from|by)\\s+(.+?)(?:\\s+on\\s+|\\s+via\\s+|\\s+at\\s+|\\.)");
+    private static final Pattern ABA_DATE_PATTERN = Pattern.compile("(?i)\\bon\\s+([A-Za-z]{3}\\s+\\d{1,2},?\\s+(?:\\d{4},?\\s+)?\\d{1,2}:\\d{2}\\s*(?:AM|PM))");
+    private static final Pattern ABA_BANK_PATTERN = Pattern.compile("(?i)\\bvia\\s+(.+?)\\s+at\\s+");
+    private static final Pattern ABA_MERCHANT_PATTERN = Pattern.compile("(?i)\\bat\\s+(.+?)\\s*\\.?\\s+Trx\\.?\\s*ID");
+    private static final ZoneId ABA_TIME_ZONE = ZoneId.of("Asia/Phnom_Penh");
 
     @Transactional(readOnly = true)
     public PaymentDTO.AbaTransactionsResponse getAbaTransactions(String status, String search, String day,
@@ -837,6 +850,12 @@ public class PaymentService {
                 .totalUsd(Math.round(totalUsd * 100.0) / 100.0)
                 .build();
 
+        Object daemonStatus = null;
+        TelegramService tg = telegramServiceProvider.getIfAvailable();
+        if (tg != null) {
+            daemonStatus = tg.getDaemonStatus();
+        }
+
         return PaymentDTO.AbaTransactionsResponse.builder()
                 .transactions(dtos)
                 .dailyBreakdown(dailyBreakdown)
@@ -848,6 +867,7 @@ public class PaymentService {
                 .duplicateCount(duplicateCount)
                 .collisionCount(collisionCount)
                 .totalUsdVolume(Math.round(totalUsd * 100.0) / 100.0)
+                .daemonStatus(daemonStatus)
                 .build();
     }
 
@@ -869,7 +889,9 @@ public class PaymentService {
         }
 
         if ("verify".equalsIgnoreCase(action)) {
-            List<AbaTransactionEntity> all = abaTransactionRepository.findAll();
+            List<AbaTransactionEntity> all = abaTransactionRepository
+                    .findAllByOrderByTransactionDateDesc(PageRequest.of(0, 1000))
+                    .getContent();
             long total = all.size();
             long dups = all.stream().filter(t -> Boolean.TRUE.equals(t.getIsDuplicate())).count();
             long collisions = all.stream().filter(t -> Boolean.TRUE.equals(t.getSameTimeCollision())).count();
@@ -878,6 +900,9 @@ public class PaymentService {
             List<SubscriptionPaymentEntity> pending = subscriptionPaymentRepository.findByStatusOrderByCreatedAtDesc("AWAITING_VERIFICATION");
             int autoReconciled = 0;
             for (AbaTransactionEntity tx : all) {
+                if (backfillAbaTransactionDetails(tx, tx.getRawMessage())) {
+                    abaTransactionRepository.save(tx);
+                }
                 if ("UNMATCHED".equalsIgnoreCase(tx.getStatus())) {
                     for (SubscriptionPaymentEntity p : pending) {
                         if (matchesPayment(tx, p)) {
@@ -956,6 +981,8 @@ public class PaymentService {
     @Transactional
     public Map<String, Object> ingestAbaMessage(String rawMessage, String adminUserId, Integer messageId, String chatId) {
         String text = rawMessage.trim();
+        text = text.replaceFirst("(?i)^/(?:aba|payway)(?:@\\w+)?\\s*", "");
+        text = text.replaceFirst("(?i)^@\\w+\\s*", "");
         Matcher trxMatcher = ABA_TRX_PATTERN.matcher(text);
         if (!trxMatcher.find()) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Could not parse Trx ID from ABA notification text");
@@ -965,6 +992,7 @@ public class PaymentService {
         Optional<AbaTransactionEntity> existingOpt = abaTransactionRepository.findByTrxId(trxId);
         if (existingOpt.isPresent()) {
             AbaTransactionEntity existing = existingOpt.get();
+            backfillAbaTransactionDetails(existing, text);
             existing.setIsDuplicate(true);
             existing.setDuplicateCount((existing.getDuplicateCount() != null ? existing.getDuplicateCount() : 0) + 1);
             existing.setVerificationNote("Duplicate alert received (count: " + existing.getDuplicateCount() + ")");
@@ -1000,17 +1028,18 @@ public class PaymentService {
         }
         double amountUsd = "KHR".equalsIgnoreCase(currency) ? Math.round((amount / 4100.0) * 100.0) / 100.0 : amount;
 
-        String payerName = null;
-        Matcher payerMatcher = ABA_PAYER_PATTERN.matcher(text);
-        if (payerMatcher.find()) {
-            payerName = payerMatcher.group(1).trim();
-        }
+        String payerName = extractAbaPayerName(text);
+        String payerAccount = extractAbaPayerAccount(text);
+        String bankCode = extractAbaBank(text);
+        String merchantName = extractAbaMerchant(text);
+        String transactionDateRaw = extractAbaTransactionDateRaw(text);
 
-        OffsetDateTime now = OffsetDateTime.now();
+        OffsetDateTime now = OffsetDateTime.now(ABA_TIME_ZONE);
+        OffsetDateTime transactionDate = parseAbaTransactionDate(transactionDateRaw, now);
         boolean sameTimeCollision = false;
         List<AbaTransactionEntity> recent = abaTransactionRepository.findAllByOrderByTransactionDateDesc(PageRequest.of(0, 10)).getContent();
         for (AbaTransactionEntity r : recent) {
-            if (r.getTransactionDate() != null && Math.abs(Duration.between(r.getTransactionDate(), now).toSeconds()) <= 2
+            if (r.getTransactionDate() != null && Math.abs(Duration.between(r.getTransactionDate(), transactionDate).toSeconds()) <= 2
                     && Math.abs((r.getAmount() != null ? r.getAmount() : 0.0) - amount) < 0.01) {
                 sameTimeCollision = true;
                 break;
@@ -1043,8 +1072,11 @@ public class PaymentService {
                 .currency(currency)
                 .amountUsd(amountUsd)
                 .payerName(payerName)
-                .bankCode("ABA")
-                .transactionDate(now)
+                .payerAccount(payerAccount)
+                .bankCode(bankCode)
+                .merchantName(merchantName)
+                .transactionDateRaw(transactionDateRaw)
+                .transactionDate(transactionDate)
                 .status(status)
                 .subscriptionPaymentId(matchedPaymentId)
                 .matchedAt(matchedPaymentId != null ? now : null)
@@ -1066,140 +1098,108 @@ public class PaymentService {
         );
     }
 
+    private boolean backfillAbaTransactionDetails(AbaTransactionEntity transaction, String text) {
+        if (text == null || text.isBlank()) return false;
+        boolean updated = false;
+        if (transaction.getPayerAccount() == null) {
+            String payerAccount = extractAbaPayerAccount(text);
+            if (payerAccount != null) {
+                transaction.setPayerAccount(payerAccount);
+                updated = true;
+            }
+        }
+        String payerName = extractAbaPayerName(text);
+        if (payerName != null && (transaction.getPayerName() == null
+                || transaction.getPayerName().contains("(*") || transaction.getPayerName().contains(" ("))) {
+            transaction.setPayerName(payerName);
+            updated = true;
+        }
+        String bankCode = extractAbaBank(text);
+        if (bankCode != null && (transaction.getBankCode() == null || "ABA".equalsIgnoreCase(transaction.getBankCode()))) {
+            transaction.setBankCode(bankCode);
+            updated = true;
+        }
+        if (transaction.getMerchantName() == null) {
+            String merchantName = extractAbaMerchant(text);
+            if (merchantName != null) {
+                transaction.setMerchantName(merchantName);
+                updated = true;
+            }
+        }
+        String transactionDateRaw = extractAbaTransactionDateRaw(text);
+        if (transaction.getTransactionDateRaw() == null && transactionDateRaw != null) {
+            transaction.setTransactionDateRaw(transactionDateRaw);
+            transaction.setTransactionDate(parseAbaTransactionDate(transactionDateRaw, transaction.getTransactionDate()));
+            updated = true;
+        }
+        return updated;
+    }
+
+    private String extractAbaPayerName(String text) {
+        Matcher accountMatcher = ABA_PAYER_ACCOUNT_PATTERN.matcher(text);
+        if (accountMatcher.find()) return accountMatcher.group(1).trim();
+        Matcher payerMatcher = ABA_PAYER_PATTERN.matcher(text);
+        return payerMatcher.find() ? payerMatcher.group(1).trim() : null;
+    }
+
+    private String extractAbaPayerAccount(String text) {
+        Matcher matcher = ABA_PAYER_ACCOUNT_PATTERN.matcher(text);
+        return matcher.find() ? matcher.group(2).trim() : null;
+    }
+
+    private String extractAbaBank(String text) {
+        Matcher matcher = ABA_BANK_PATTERN.matcher(text);
+        if (!matcher.find()) return null;
+        String channel = matcher.group(1).trim();
+        Matcher bankName = Pattern.compile("\\((.*)\\)").matcher(channel);
+        return bankName.find() ? bankName.group(1).trim() : channel;
+    }
+
+    private String extractAbaMerchant(String text) {
+        Matcher matcher = ABA_MERCHANT_PATTERN.matcher(text);
+        return matcher.find() ? matcher.group(1).trim().replaceAll("[.\\s]+$", "") : null;
+    }
+
+    private String extractAbaTransactionDateRaw(String text) {
+        Matcher matcher = ABA_DATE_PATTERN.matcher(text);
+        return matcher.find() ? matcher.group(1).trim() : null;
+    }
+
+    private OffsetDateTime parseAbaTransactionDate(String rawDate, OffsetDateTime fallback) {
+        if (rawDate == null) return fallback;
+        String normalized = rawDate.replaceFirst("^(\\p{Alpha}{3}\\s+\\d{1,2}),?\\s+(?=\\d{1,2}:)", "$1, "
+                + fallback.atZoneSameInstant(ABA_TIME_ZONE).getYear() + ", ");
+        normalized = normalized.replaceFirst("^(\\p{Alpha}{3}\\s+\\d{1,2}),?\\s+(\\d{4}),?\\s+", "$1, $2, ");
+        DateTimeFormatter formatter = new DateTimeFormatterBuilder()
+                .parseCaseInsensitive()
+                .appendPattern("MMM d, yyyy, h:mm a")
+                .toFormatter(Locale.ENGLISH);
+        try {
+            return LocalDateTime.parse(normalized, formatter).atZone(ABA_TIME_ZONE).toOffsetDateTime();
+        } catch (java.time.format.DateTimeParseException e) {
+            log.warn("Could not parse ABA transaction date '{}'; using fallback timestamp", rawDate);
+            return fallback;
+        }
+    }
+
     @Transactional
     public Map<String, Object> syncTelegramUpdates(String adminUserId) {
         TelegramService telegramService = telegramServiceProvider.getIfAvailable();
-        Map<String, Object> outcome = new LinkedHashMap<>();
-        int processed = 0;
-        int newTransactions = 0;
-        int matchedPayments = 0;
-        int duplicatesPrevented = 0;
-        int sameTimeCollisions = 0;
-        int approvalsProcessed = 0;
-        int rejectionsProcessed = 0;
-        int commandsProcessed = 0;
-        List<String> errors = new ArrayList<>();
-
         if (telegramService == null) {
-            errors.add("TelegramService not available");
-        } else {
-            String token = telegramService.resolveBotToken(null);
-            if (token == null || token.isBlank()) {
-                errors.add("Telegram bot token is not configured");
-            } else {
-                try {
-                    long offset = getTelegramUpdateOffset();
-                    HttpClient client = HttpClient.newBuilder()
-                            .connectTimeout(Duration.ofSeconds(6))
-                            .build();
-
-                    String uri = "https://api.telegram.org/bot" + token + "/getUpdates?limit=100&timeout=0" + (offset > 0 ? "&offset=" + offset : "");
-                    HttpRequest req = HttpRequest.newBuilder()
-                            .uri(URI.create(uri))
-                            .timeout(Duration.ofSeconds(8))
-                            .GET()
-                            .build();
-
-                    HttpResponse<String> res = client.send(req, HttpResponse.BodyHandlers.ofString());
-                    com.fasterxml.jackson.databind.JsonNode root = objectMapper.readTree(res.body());
-
-                    if (root.path("ok").asBoolean() && root.path("result").isArray()) {
-                        long maxUpdateId = offset;
-                        for (com.fasterxml.jackson.databind.JsonNode update : root.path("result")) {
-                            long updateId = update.path("update_id").asLong();
-                            if (updateId >= maxUpdateId) {
-                                maxUpdateId = updateId + 1;
-                            }
-                            processed++;
-
-                            // 1. Process Callback Queries
-                            if (update.has("callback_query")) {
-                                com.fasterxml.jackson.databind.JsonNode cb = update.get("callback_query");
-                                String data = cb.path("data").asText(null);
-                                String cbId = cb.path("id").asText(null);
-                                if (data != null && data.contains(":")) {
-                                    String[] parts = data.split(":", 2);
-                                    String action = parts[0];
-                                    String paymentId = parts[1];
-                                    try {
-                                        handlePaymentAction(paymentId, action, "Processed via Telegram Inline Button Sync", adminUserId);
-                                        if ("approve".equalsIgnoreCase(action)) {
-                                            approvalsProcessed++;
-                                            matchedPayments++;
-                                        } else if ("reject".equalsIgnoreCase(action)) {
-                                            rejectionsProcessed++;
-                                        }
-                                    } catch (Exception e) {
-                                        log.warn("Failed to process inline button callback: {}", e.getMessage());
-                                    }
-                                    answerTelegramCallback(token, cbId, "Processed " + action);
-                                }
-                                continue;
-                            }
-
-                            // 2. Process Messages
-                            com.fasterxml.jackson.databind.JsonNode msg = update.has("message") ? update.get("message") : update.get("channel_post");
-                            if (msg != null) {
-                                String text = msg.path("text").asText(null);
-                                if (text == null) text = msg.path("caption").asText(null);
-                                int messageId = msg.path("message_id").asInt(0);
-                                String msgChatId = msg.path("chat").path("id").asText(null);
-
-                                if (text != null) {
-                                    if (isAbaPayWayText(text)) {
-                                        try {
-                                            Map<String, Object> ingRes = ingestAbaMessage(text, adminUserId, messageId, msgChatId);
-                                            if (Boolean.TRUE.equals(ingRes.get("isDuplicate"))) {
-                                                duplicatesPrevented++;
-                                            } else {
-                                                newTransactions++;
-                                            }
-                                            if (Boolean.TRUE.equals(ingRes.get("matched"))) {
-                                                matchedPayments++;
-                                            }
-                                            if (Boolean.TRUE.equals(ingRes.get("isSameTimeCollision"))) {
-                                                sameTimeCollisions++;
-                                            }
-                                        } catch (Exception e) {
-                                            log.warn("Failed to ingest ABA text: {}", e.getMessage());
-                                        }
-                                    } else if (text.startsWith("/")) {
-                                        commandsProcessed++;
-                                    }
-                                }
-                            }
-                        }
-                        if (maxUpdateId > offset) {
-                            saveTelegramUpdateOffset(maxUpdateId);
-                        }
-                    } else {
-                        String desc = root.path("description").asText("Failed to fetch updates");
-                        if (!desc.contains("terminated by other getUpdates")) {
-                            errors.add(desc);
-                        }
-                    }
-                } catch (Exception e) {
-                    log.error("Failed to sync Telegram group updates", e);
-                    errors.add(e.getMessage());
-                }
-            }
+            return Map.of(
+                    "success", false,
+                    "mode", "sync",
+                    "outcome", Map.of(
+                            "processed", 0,
+                            "newTransactions", 0,
+                            "matchedPayments", 0,
+                            "duplicatesPrevented", 0,
+                            "sameTimeCollisions", 0,
+                            "errors", List.of("TelegramService not available")
+                    )
+            );
         }
-
-        outcome.put("processed", processed);
-        outcome.put("newTransactions", newTransactions);
-        outcome.put("matchedPayments", matchedPayments);
-        outcome.put("duplicatesPrevented", duplicatesPrevented);
-        outcome.put("sameTimeCollisions", sameTimeCollisions);
-        outcome.put("approvalsProcessed", approvalsProcessed);
-        outcome.put("rejectionsProcessed", rejectionsProcessed);
-        outcome.put("commandsProcessed", commandsProcessed);
-        outcome.put("errors", errors);
-
-        return Map.of(
-                "success", true,
-                "mode", "sync",
-                "outcome", outcome
-        );
+        return telegramService.syncUpdates(adminUserId != null ? adminUserId : "usr_admin_root", true);
     }
 
     private boolean isAbaPayWayText(String text) {
@@ -1294,6 +1294,8 @@ public class PaymentService {
 
         return PaymentDTO.AbaTransactionDTO.builder()
                 .id(t.getId())
+                .rawMessage(t.getRawMessage())
+                .source(t.getSource())
                 .trxId(t.getTrxId())
                 .apv(t.getApv())
                 .amount(t.getAmount())
@@ -1303,13 +1305,16 @@ public class PaymentService {
                 .payerAccount(t.getPayerAccount())
                 .bankCode(t.getBankCode())
                 .merchantName(t.getMerchantName())
+                .transactionDateRaw(t.getTransactionDateRaw())
                 .transactionDate(t.getTransactionDate() != null ? t.getTransactionDate().toString() : OffsetDateTime.now().toString())
                 .status(t.getStatus())
                 .subscriptionPaymentId(t.getSubscriptionPaymentId())
                 .matchedAt(t.getMatchedAt() != null ? t.getMatchedAt().toString() : null)
+                .matchedBy(t.getMatchedBy())
                 .isDuplicate(t.getIsDuplicate())
                 .duplicateCount(t.getDuplicateCount())
                 .sameTimeCollision(t.getSameTimeCollision())
+                .collisionTrxIds(t.getCollisionTrxIds())
                 .verificationNote(t.getVerificationNote())
                 .createdAt(t.getCreatedAt() != null ? t.getCreatedAt().toString() : OffsetDateTime.now().toString())
                 .subscriptionPayment(subMap)

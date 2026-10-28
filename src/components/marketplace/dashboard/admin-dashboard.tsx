@@ -1648,6 +1648,19 @@ interface AbaDailyStatDTO {
   collisionCount: number;
 }
 
+interface AbaDaemonStatusDTO {
+  active: boolean;
+  status: "ACTIVE" | "POLLING" | "ERROR" | "DISABLED";
+  lastPollAt?: string | null;
+  lastSuccessAt?: string | null;
+  totalUpdatesProcessed?: number;
+  nextUpdateOffset?: number;
+  lastError?: string | null;
+  canReadAllGroupMessages?: boolean;
+  botUsername?: string | null;
+  targetChatId?: string | null;
+}
+
 interface AbaResponseDTO {
   transactions: AbaTxDTO[];
   dailyBreakdown: AbaDailyStatDTO[];
@@ -1661,6 +1674,7 @@ interface AbaResponseDTO {
     totalKhr: number;
     totalUsd: number;
   };
+  daemonStatus?: AbaDaemonStatusDTO;
 }
 
 function AdminAbaTransactionsView({ onVerified }: { onVerified?: () => void }) {
@@ -1750,30 +1764,14 @@ function AdminAbaTransactionsView({ onVerified }: { onVerified?: () => void }) {
     }
   };
 
-  // Auto-sync polling every 6 seconds while on this tab
+  // Auto-sync polling every 6 seconds while on this tab (queries latest DB state processed by 24/7 backend daemon)
   useEffect(() => {
     const timer = setInterval(() => {
-      fetch("/api/admin/aba-transactions", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "sync" }),
-      })
-        .then((r) => r.json())
-        .then((res) => {
-          if (
-            (res?.outcome?.newTransactions ?? 0) > 0 ||
-            (res?.outcome?.approvalsProcessed ?? 0) > 0 ||
-            (res?.outcome?.rejectionsProcessed ?? 0) > 0
-          ) {
-            refetch();
-            pendingPayments.refetch();
-            onVerified?.();
-          }
-        })
-        .catch(() => {});
+      refetch();
+      pendingPayments.refetch();
     }, 6_000);
     return () => clearInterval(timer);
-  }, []);
+  }, [refetch]);
 
   const syncGroup = async () => {
     setSyncing(true);
@@ -1793,6 +1791,15 @@ function AdminAbaTransactionsView({ onVerified }: { onVerified?: () => void }) {
         };
       }>("/api/admin/aba-transactions", "POST", { action: "sync" });
 
+      const syncErrors = res.outcome?.errors ?? [];
+      if (!res.success || syncErrors.length > 0) {
+        const detail = syncErrors.length > 0 ? syncErrors.join("; ") : "Telegram sync failed.";
+        toast.error(`Telegram sync did not complete: ${detail}`);
+        refetch();
+        pendingPayments.refetch();
+        return;
+      }
+
       const parts: string[] = [];
       if (res.outcome.newTransactions > 0) parts.push(`${res.outcome.newTransactions} new transaction(s)`);
       if (res.outcome.matchedPayments > 0) parts.push(`${res.outcome.matchedPayments} auto-matched`);
@@ -1801,11 +1808,26 @@ function AdminAbaTransactionsView({ onVerified }: { onVerified?: () => void }) {
       if (res.outcome.duplicatesPrevented > 0) parts.push(`${res.outcome.duplicatesPrevented} duplicate(s) blocked`);
       if (res.outcome.sameTimeCollisions > 0) parts.push(`${res.outcome.sameTimeCollisions} collision(s) flagged`);
 
-      toast.success(
-        parts.length > 0
-          ? `Sync Complete: ${parts.join(", ")}!`
-          : "Sync Complete: Checked Telegram group. All transactions and approval buttons are up-to-date!",
-      );
+      if (parts.length > 0) {
+        toast.success(`Sync Complete: ${parts.join(", ")}!`);
+      } else if (res.outcome.processed === 0) {
+        toast.info(
+          "No pending Telegram updates were found. Sync only receives new bot updates; use Paste ABA Alert to import an older payment.",
+          { duration: 9000 },
+        );
+      } else {
+        toast.info(
+          `Checked ${res.outcome.processed} Telegram update(s); no new ABA transactions or approvals were found.`,
+        );
+      }
+
+      if (data?.daemonStatus && data.daemonStatus.canReadAllGroupMessages === false) {
+        toast.warning(
+          "Notice: BotFather Group Privacy is currently ON. If ABA PayWay alerts are posted without bot mentions, send /setprivacy -> Disable in @BotFather.",
+          { duration: 8000 },
+        );
+      }
+
       refetch();
       pendingPayments.refetch();
       onVerified?.();
@@ -1833,8 +1855,20 @@ function AdminAbaTransactionsView({ onVerified }: { onVerified?: () => void }) {
         day: selectedDay || undefined,
       });
 
+      if (!res.success || !res.report) {
+        throw new Error("The transaction audit did not return a valid report.");
+      }
+      if (data && res.report.totalTransactions !== data.summary.totalCount) {
+        toast.error(
+          `Audit count mismatch: the transaction list shows ${data.summary.totalCount}, but the audit scanned ${res.report.totalTransactions}. No audit success was reported.`,
+          { duration: 10000 },
+        );
+        refetch();
+        return;
+      }
+
       toast.success(
-        `Audit Complete: ${res.report.totalTransactions} transactions scanned. ${res.report.duplicateCount} duplicates verified, ${res.report.sameTimeCollisionCount} same-time collision(s) checked, ${res.report.autoMatchedCount} reconciled!`,
+        `Audit Complete: ${res.report.totalTransactions} transaction(s) scanned; ${res.report.duplicateCount} duplicate transaction(s), ${res.report.sameTimeCollisionCount} same-time conflict(s), ${res.report.autoMatchedCount} matched.`,
       );
       refetch();
       pendingPayments.refetch();
@@ -1867,6 +1901,9 @@ function AdminAbaTransactionsView({ onVerified }: { onVerified?: () => void }) {
 
   const summary = data?.summary;
   const dailyBreakdown = data?.dailyBreakdown || [];
+  const daemon = data?.daemonStatus;
+  const isDaemonActive = daemon?.active && daemon?.status !== "DISABLED";
+  const canReadAll = daemon?.canReadAllGroupMessages === true;
 
   return (
     <div className="space-y-4">
@@ -1879,17 +1916,31 @@ function AdminAbaTransactionsView({ onVerified }: { onVerified?: () => void }) {
                 <Send className="h-4 w-4 text-sky-600" />
                 Telegram Group Payment Syncer & Reconciler
               </h3>
-              <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-bold text-emerald-800">
-                <span className="relative flex h-2 w-2">
-                  <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75"></span>
-                  <span className="relative inline-flex h-2 w-2 rounded-full bg-emerald-500"></span>
+              {isDaemonActive && canReadAll ? (
+                <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-100 px-2.5 py-0.5 text-[10px] font-bold text-emerald-800" title={`24/7 Polling: updates processed=${daemon?.totalUpdatesProcessed ?? 0}`}>
+                  <span className="relative flex h-2 w-2">
+                    <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75"></span>
+                    <span className="relative inline-flex h-2 w-2 rounded-full bg-emerald-500"></span>
+                  </span>
+                  24/7 Live Daemon Active · Polling (2s)
                 </span>
-                24/7 Live Daemon Active
-              </span>
+              ) : isDaemonActive && !canReadAll ? (
+                <span className="inline-flex items-center gap-1.5 rounded-full bg-amber-100 px-2.5 py-0.5 text-[10px] font-bold text-amber-900 border border-amber-300" title="Bot privacy mode is enabled in BotFather. Send /setprivacy -> Disable in @BotFather.">
+                  <span className="relative flex h-2 w-2">
+                    <span className="relative inline-flex h-2 w-2 rounded-full bg-amber-500"></span>
+                  </span>
+                  24/7 Daemon Active · Group Privacy ON (BotFather Action Needed)
+                </span>
+              ) : (
+                <span className="inline-flex items-center gap-1.5 rounded-full bg-slate-100 px-2.5 py-0.5 text-[10px] font-bold text-slate-700">
+                  <span className="relative flex h-2 w-2 rounded-full bg-slate-400"></span>
+                  Daemon Offline / Polling Paused
+                </span>
+              )}
             </div>
             <p className="mt-1 text-xs text-slate-600 leading-relaxed">
               Captures all automated <span className="font-semibold text-slate-800">PayWay by ABA</span> alerts from Telegram group{" "}
-              <code className="rounded bg-sky-100 px-1.5 py-0.5 font-mono text-[11px] text-sky-900">-1004489863210</code> (MyABApayway) day-by-day.
+              <code className="rounded bg-sky-100 px-1.5 py-0.5 font-mono text-[11px] text-sky-900">{daemon?.targetChatId || "-1004489863210"}</code> (MyABApayway) day-by-day.
               Automatically checks deduplication, verifies concurrent same-time transactions, and auto-activates subscriptions.
             </p>
           </div>
@@ -1935,6 +1986,24 @@ function AdminAbaTransactionsView({ onVerified }: { onVerified?: () => void }) {
             </Button>
           </div>
         </div>
+
+        {/* Prominent warning if Telegram privacy mode is dropping unmentioned group alerts */}
+        {daemon && daemon.canReadAllGroupMessages === false && (
+          <div className="mt-2.5 rounded-lg border border-amber-300 bg-amber-50 p-2.5 text-xs text-amber-950 flex items-start gap-2 shadow-xs">
+            <TriangleAlert className="h-4 w-4 text-amber-600 shrink-0 mt-0.5" />
+            <div className="space-y-0.5 leading-relaxed">
+              <p className="font-bold text-amber-900">
+                Action Required: Telegram Group Privacy Mode is Enabled
+              </p>
+              <p className="text-[11px] text-amber-800">
+                Telegram&apos;s privacy filter drops unmentioned group messages before the bot can see them.
+                To allow <strong>@{daemon.botUsername || "KhLanOfficialBot"}</strong> to automatically capture PayWay alerts in group <code>{daemon.targetChatId || "-1004489863210"}</code>, open <strong>@BotFather</strong> in Telegram → send <code>/setprivacy</code> → select <code>@{daemon.botUsername || "KhLanOfficialBot"}</code> → select <strong>Disable</strong>.
+                (In the meantime, you can mention <code>@{daemon.botUsername || "KhLanOfficialBot"}</code>, use <code>/aba &lt;alert&gt;</code>, or use <em>Paste ABA Alert</em>).
+              </p>
+            </div>
+          </div>
+        )}
+
         <div className="mt-2.5 rounded-lg border border-sky-200/90 bg-sky-100/70 p-2.5 text-xs text-sky-950 space-y-1">
           <p className="font-bold flex items-center gap-1.5 text-sky-950">
             <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600" />
@@ -1946,8 +2015,8 @@ function AdminAbaTransactionsView({ onVerified }: { onVerified?: () => void }) {
               <p className="mt-1">• <strong>Group Commands:</strong> Type <code>/pending</code> to list awaiting payments with buttons, or <code>/approve &lt;TrxID&gt;</code> / <code>/reject &lt;TrxID&gt;</code> to decide directly.</p>
             </div>
             <div>
-              <p>• <strong>Group Privacy Tip:</strong> In @BotFather, send <code>/setprivacy</code> → select <code>@KhmerSmartRestaurantBot</code> → select <strong>Disable</strong> to allow the bot to read all PayWay alerts in group <code>-1004489863210</code> automatically.</p>
-              <p className="mt-1">• <strong>Direct Capture:</strong> You can also type <code>/aba &lt;paste alert&gt;</code> or mention <code>@KhmerSmartRestaurantBot</code> in the group, or forward any ABA alert to the bot in private chat.</p>
+              <p>• <strong>Group Privacy Tip:</strong> In @BotFather, send <code>/setprivacy</code> → select your configured Telegram bot (for example <code>@KhLanOfficialBot</code>) → select <strong>Disable</strong> to allow it to read all PayWay alerts in group <code>-1004489863210</code> automatically.</p>
+              <p className="mt-1">• <strong>Direct Capture:</strong> You can also type <code>/aba &lt;paste alert&gt;</code>, mention your bot in the group, or forward any ABA alert to it in private chat.</p>
             </div>
           </div>
         </div>
@@ -3984,5 +4053,3 @@ function AdminNacosConfigCard() {
     </SectionCard>
   );
 }
-
-

@@ -76,6 +76,12 @@ public class AdminPaymentController {
         return ResponseEntity.ok(paymentService.getAbaTransactions(status, search, day, duplicate, collision, limit));
     }
 
+    @GetMapping("/aba-transactions/daemon-status")
+    @Operation(summary = "Get 24/7 Telegram Daemon live health, polling state, and privacy mode status")
+    public ResponseEntity<Map<String, Object>> getAbaDaemonStatus() {
+        return ResponseEntity.ok(telegramService.getDaemonStatus());
+    }
+
     @PostMapping("/aba-transactions")
     @Operation(summary = "Execute ABA transaction actions (sync, verify, ingest, clear)")
     public ResponseEntity<Map<String, Object>> handleAbaTransactionAction(

@@ -47,8 +47,21 @@ public class VehicleEntity {
     @Column(name = "price_usd", nullable = false)
     private Double priceUsd;
 
+    @Column(name = "price_masked", nullable = false)
+    @Builder.Default
+    private Boolean priceMasked = false;
+
     @Column(name = "mileage_km", nullable = false)
     private Integer mileageKm;
+
+    @Column
+    private Integer seats;
+
+    @Column(name = "interior_color", length = 32)
+    private String interiorColor;
+
+    @Column(name = "fuel_economy", length = 64)
+    private String fuelEconomy;
 
     @Column(nullable = false, length = 32)
     private String transmission;
@@ -112,6 +125,25 @@ public class VehicleEntity {
 
     @Column(name = "import_origin", length = 32)
     private String importOrigin;
+
+    @Column(name = "listing_category", nullable = false, length = 32)
+    @Builder.Default
+    private String listingCategory = "CAR";
+
+    @Column(name = "part_category", length = 64)
+    private String partCategory;
+
+    @Column(name = "part_target", length = 32)
+    private String partTarget;
+
+    @Column(name = "part_condition", length = 32)
+    private String partCondition;
+
+    @Column(name = "compatible_models", columnDefinition = "TEXT")
+    private String compatibleModels;
+
+    @Column(name = "part_number", length = 64)
+    private String partNumber;
 
     @Column(name = "tenant_id", length = 64)
     private String tenantId;

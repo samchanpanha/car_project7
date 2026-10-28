@@ -275,6 +275,8 @@ public class PaymentDTO {
     @JsonInclude(JsonInclude.Include.NON_NULL)
     public static class AbaTransactionDTO {
         private String id;
+        private String rawMessage;
+        private String source;
         private String trxId;
         private String apv;
         private Double amount;
@@ -284,13 +286,16 @@ public class PaymentDTO {
         private String payerAccount;
         private String bankCode;
         private String merchantName;
+        private String transactionDateRaw;
         private String transactionDate;
         private String status;
         private String subscriptionPaymentId;
         private String matchedAt;
+        private String matchedBy;
         private Boolean isDuplicate;
         private Integer duplicateCount;
         private Boolean sameTimeCollision;
+        private String collisionTrxIds;
         private String verificationNote;
         private String createdAt;
         private Map<String, Object> subscriptionPayment;
@@ -342,5 +347,6 @@ public class PaymentDTO {
         private long duplicateCount;
         private long collisionCount;
         private Double totalUsdVolume;
+        private Object daemonStatus;
     }
 }

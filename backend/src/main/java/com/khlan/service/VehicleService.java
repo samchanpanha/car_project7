@@ -31,12 +31,46 @@ public class VehicleService {
     private final TenantBranchRepository tenantBranchRepository;
     private final VehicleHistoryReportRepository vehicleHistoryReportRepository;
 
+    private String normalizeListingCategory(String listingCategory) {
+        String normalized = listingCategory == null || listingCategory.isBlank()
+                ? "CAR"
+                : listingCategory.trim().toUpperCase(Locale.ROOT);
+        if (!Set.of("CAR", "MOTOR", "SPARE_PART").contains(normalized)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "listingCategory must be CAR, MOTOR, or SPARE_PART");
+        }
+        return normalized;
+    }
+
+    private void validateListingCategory(String listingCategory, Integer year, String partCategory) {
+        if (year == null) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "year is required");
+        }
+        int minimumYear = "MOTOR".equals(listingCategory) ? 1980 : 1990;
+        if (year < minimumYear) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    listingCategory + " year must be " + minimumYear + " or later");
+        }
+        if ("SPARE_PART".equals(listingCategory) && (partCategory == null || partCategory.isBlank())) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "partCategory is required for spare part listings");
+        }
+    }
+
+    private void validateListingPrice(double priceUsd, boolean priceMasked) {
+        if (!Double.isFinite(priceUsd) || priceUsd < 0 || (!priceMasked && priceUsd == 0)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    priceMasked ? "priceUsd must not be negative" : "priceUsd must be greater than 0 unless price is masked");
+        }
+    }
+
     @Transactional(readOnly = true)
     public VehicleDTO.PagedVehiclesResponseDTO searchVehicles(
             String q,
             String make,
             String model,
             String city,
+            String listingCategory,
+            String partCategory,
+            String partTarget,
             String bodyType,
             String fuel,
             String transmission,
@@ -112,6 +146,10 @@ public class VehicleService {
             if (dealerId != null && !dealerId.isBlank()) {
                 predicates.add(cb.equal(root.get("sellerId"), dealerId));
             }
+
+            addInPredicate(cb, root.get("listingCategory"), listingCategory, predicates);
+            addInPredicate(cb, root.get("partCategory"), partCategory, predicates);
+            addInPredicate(cb, root.get("partTarget"), partTarget, predicates);
 
             // Comma-separated enums
             addInPredicate(cb, root.get("bodyType"), bodyType, predicates);
@@ -196,6 +234,12 @@ public class VehicleService {
 
     @Transactional
     public String createVehicle(VehicleDTO.CreateVehicleRequest req, UserEntity seller) {
+        String listingCategory = normalizeListingCategory(req.getListingCategory());
+        validateListingCategory(listingCategory, req.getYear(), req.getPartCategory());
+        boolean priceMasked = Boolean.TRUE.equals(req.getPriceMasked());
+        double priceUsd = req.getPriceUsd() != null ? req.getPriceUsd() : 0.0;
+        validateListingPrice(priceUsd, priceMasked);
+
         String vehicleId = "veh_" + UUID.randomUUID().toString().replace("-", "").substring(0, 16);
 
         VehicleEntity vehicle = VehicleEntity.builder()
@@ -206,8 +250,12 @@ public class VehicleService {
                 .model(req.getModel())
                 .variant(req.getVariant())
                 .year(req.getYear())
-                .priceUsd(req.getPriceUsd())
+                .priceUsd(priceUsd)
+                .priceMasked(priceMasked)
                 .mileageKm(req.getMileageKm())
+                .seats(req.getSeats())
+                .interiorColor(req.getInteriorColor())
+                .fuelEconomy(req.getFuelEconomy())
                 .transmission(req.getTransmission())
                 .fuel(req.getFuel())
                 .engineCc(req.getEngineCc())
@@ -224,6 +272,12 @@ public class VehicleService {
                 .ownershipCount(req.getOwnershipCount())
                 .accidentDeclared(req.getAccidentDeclared() != null ? req.getAccidentDeclared() : "UNKNOWN")
                 .importOrigin(req.getImportOrigin())
+                .listingCategory(listingCategory)
+                .partCategory(req.getPartCategory())
+                .partTarget(req.getPartTarget())
+                .partCondition(req.getPartCondition())
+                .compatibleModels(req.getCompatibleModels())
+                .partNumber(req.getPartNumber())
                 .branchId(req.getBranchId())
                 .status("PUBLISHED")
                 .featured(false)
@@ -276,12 +330,37 @@ public class VehicleService {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Not authorized to edit this vehicle");
         }
 
+        String listingCategory = req.getListingCategory() != null
+                ? normalizeListingCategory(req.getListingCategory())
+                : normalizeListingCategory(vehicle.getListingCategory());
+        int year = req.getYear() != null ? req.getYear() : vehicle.getYear();
+        String partCategory = req.getPartCategory() != null ? req.getPartCategory() : vehicle.getPartCategory();
+        if (req.getListingCategory() != null || req.getYear() != null) {
+            validateListingCategory(listingCategory, year, partCategory);
+        }
+
+        boolean priceMasked = req.getPriceMasked() != null
+                ? req.getPriceMasked()
+                : Boolean.TRUE.equals(vehicle.getPriceMasked());
+        double priceUsd = req.getPriceUsd() != null ? req.getPriceUsd() : vehicle.getPriceUsd();
+        validateListingPrice(priceUsd, priceMasked);
+
+        vehicle.setListingCategory(listingCategory);
+        vehicle.setPriceMasked(priceMasked);
+        if (req.getPartCategory() != null) vehicle.setPartCategory(req.getPartCategory());
+        if (req.getPartTarget() != null) vehicle.setPartTarget(req.getPartTarget());
+        if (req.getPartCondition() != null) vehicle.setPartCondition(req.getPartCondition());
+        if (req.getCompatibleModels() != null) vehicle.setCompatibleModels(req.getCompatibleModels());
+        if (req.getPartNumber() != null) vehicle.setPartNumber(req.getPartNumber());
         if (req.getMake() != null) vehicle.setMake(req.getMake());
         if (req.getModel() != null) vehicle.setModel(req.getModel());
         if (req.getVariant() != null) vehicle.setVariant(req.getVariant());
         if (req.getYear() != null) vehicle.setYear(req.getYear());
         if (req.getPriceUsd() != null) vehicle.setPriceUsd(req.getPriceUsd());
         if (req.getMileageKm() != null) vehicle.setMileageKm(req.getMileageKm());
+        if (req.getSeats() != null) vehicle.setSeats(req.getSeats());
+        if (req.getInteriorColor() != null) vehicle.setInteriorColor(req.getInteriorColor());
+        if (req.getFuelEconomy() != null) vehicle.setFuelEconomy(req.getFuelEconomy());
         if (req.getTransmission() != null) vehicle.setTransmission(req.getTransmission());
         if (req.getFuel() != null) vehicle.setFuel(req.getFuel());
         if (req.getEngineCc() != null) vehicle.setEngineCc(req.getEngineCc());
@@ -372,12 +451,23 @@ public class VehicleService {
 
         return VehicleDTO.VehicleCardDTO.builder()
                 .id(v.getId())
+                .listingCategory(v.getListingCategory())
+                .partCategory(v.getPartCategory())
+                .partTarget(v.getPartTarget())
+                .partCondition(v.getPartCondition())
+                .compatibleModels(v.getCompatibleModels())
+                .partNumber(v.getPartNumber())
                 .make(v.getMake())
                 .model(v.getModel())
                 .variant(v.getVariant())
                 .year(v.getYear())
                 .priceUsd(v.getPriceUsd())
+                .priceMasked(Boolean.TRUE.equals(v.getPriceMasked()))
                 .mileageKm(v.getMileageKm())
+                .seats(v.getSeats())
+                .interiorColor(v.getInteriorColor())
+                .fuelEconomy(v.getFuelEconomy())
+                .engineCc(v.getEngineCc())
                 .transmission(v.getTransmission())
                 .fuel(v.getFuel())
                 .bodyType(v.getBodyType())
@@ -416,12 +506,22 @@ public class VehicleService {
 
         return VehicleDTO.VehicleDetailDTO.builder()
                 .id(card.getId())
+                .listingCategory(card.getListingCategory())
+                .partCategory(card.getPartCategory())
+                .partTarget(card.getPartTarget())
+                .partCondition(card.getPartCondition())
+                .compatibleModels(card.getCompatibleModels())
+                .partNumber(card.getPartNumber())
                 .make(card.getMake())
                 .model(card.getModel())
                 .variant(card.getVariant())
                 .year(card.getYear())
                 .priceUsd(card.getPriceUsd())
+                .priceMasked(card.isPriceMasked())
                 .mileageKm(card.getMileageKm())
+                .seats(card.getSeats())
+                .interiorColor(card.getInteriorColor())
+                .fuelEconomy(card.getFuelEconomy())
                 .transmission(card.getTransmission())
                 .fuel(card.getFuel())
                 .bodyType(card.getBodyType())

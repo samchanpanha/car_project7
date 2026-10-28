@@ -127,11 +127,18 @@ export function parseAbaPayWayMessage(
   }
 
   // 6. Bank Code / Payment Channel
-  // "via ABA KHQR (AMRTKHPPXXX) at"
+  // "via ABA KHQR (AMRTKHPPXXX) at" or "via ABA KHQR (Wing Bank (Cambodia) Plc) at"
   let bankCode: string | null = null;
-  const bankMatch = /via\s+([\s\S]+?)\s+at\s+/i.exec(text);
+  // Use a more robust regex that handles nested parentheses by matching until the last " at" before Trx.ID
+  const bankMatch = /via\s+([\s\S]+?)\s+(?=at\s+[^.]*Trx\.?\s*ID)/i.exec(text);
   if (bankMatch) {
     bankCode = bankMatch[1].replace(/\r?\n/g, " ").trim();
+  } else {
+    // Fallback to original pattern if the lookahead fails
+    const fallbackBankMatch = /via\s+([\s\S]+?)\s+at\s+/i.exec(text);
+    if (fallbackBankMatch) {
+      bankCode = fallbackBankMatch[1].replace(/\r?\n/g, " ").trim();
+    }
   }
 
   // 7. Merchant Name

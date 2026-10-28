@@ -135,12 +135,6 @@ export interface TenantAnalyticsDTO {
     pendingAppointments?: number;
     staleLeads?: number;
     avgResponseHours?: number;
-    staleLeadDetails?: {
-      type: string;
-      id: string;
-      vehicleId: string;
-      hoursPending: number;
-    }[];
   };
   timeline: {
     date: string;
@@ -163,6 +157,12 @@ export interface TenantAnalyticsDTO {
     count: number;
     views: number;
     leads: number;
+  }[];
+  staleLeadDetails?: {
+    type: string;
+    id: string;
+    vehicleId: string;
+    hoursPending: number;
   }[];
 }
 

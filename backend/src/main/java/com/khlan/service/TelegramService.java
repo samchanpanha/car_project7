@@ -3,6 +3,7 @@ package com.khlan.service;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.core.type.TypeReference;
+import com.khlan.dto.PaymentDTO;
 import com.khlan.dto.RealtimeEventDTO;
 import com.khlan.dto.TelegramDTO;
 import com.khlan.entity.*;
@@ -29,6 +30,8 @@ import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
 import java.time.format.DateTimeFormatter;
 import java.util.*;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.locks.ReentrantLock;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -60,6 +63,14 @@ public class TelegramService {
     private boolean localPollingEnabled;
 
     private volatile long nextUpdateOffset = 0;
+    private final ReentrantLock pollLock = new ReentrantLock();
+    private volatile boolean isPolling = false;
+    private volatile OffsetDateTime lastPollAt = null;
+    private volatile OffsetDateTime lastSuccessAt = null;
+    private volatile long totalUpdatesProcessed = 0;
+    private volatile String lastError = null;
+    private volatile Boolean botPrivacyDisabled = null;
+    private volatile OffsetDateTime lastBotCheckAt = null;
 
     private static final String CODE_ALPHABET = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
     private static final SecureRandom RANDOM = new SecureRandom();
@@ -200,6 +211,8 @@ public class TelegramService {
 
     @EventListener(ApplicationReadyEvent.class)
     public void autoRegisterWebhookOnStartup() {
+        loadPersistedOffset();
+
         String url = (configuredWebhookUrl != null && !configuredWebhookUrl.isBlank())
                 ? configuredWebhookUrl
                 : System.getenv("TELEGRAM_WEBHOOK_URL");
@@ -209,51 +222,382 @@ public class TelegramService {
             log.info("Telegram auto webhook registration result: {}", res);
         } else {
             // When no static webhook is configured, clear any stale webhook and enable active long-polling
-            log.info("No static TELEGRAM_WEBHOOK_URL configured. Clearing webhook and enabling long-polling.");
+            log.info("No static TELEGRAM_WEBHOOK_URL configured. Clearing webhook and enabling 24/7 background polling.");
             clearWebhook();
             localPollingEnabled = true;
         }
+
+        checkBotPrivacyStatus();
+    }
+
+    private void loadPersistedOffset() {
+        try {
+            platformSettingRepository.findById("telegram.updateOffset")
+                    .ifPresent(s -> {
+                        try {
+                            long val = Long.parseLong(s.getValueJson().trim().replace("\"", ""));
+                            if (val > nextUpdateOffset) {
+                                nextUpdateOffset = val;
+                                log.info("Loaded Telegram update offset: {}", nextUpdateOffset);
+                            }
+                        } catch (Exception ignored) {}
+                    });
+        } catch (Exception e) {
+            log.warn("Could not load persisted Telegram update offset: {}", e.getMessage());
+        }
+    }
+
+    private void savePersistedOffset(long offset) {
+        try {
+            platformSettingRepository.save(PlatformSettingEntity.builder()
+                    .key("telegram.updateOffset")
+                    .valueJson(String.valueOf(offset))
+                    .build());
+        } catch (Exception e) {
+            log.warn("Could not save persisted Telegram update offset: {}", e.getMessage());
+        }
+    }
+
+    public Boolean checkBotPrivacyStatus() {
+        try {
+            TelegramDTO.TelegramBotStatusDTO status = testBotConnection(null);
+            if (status.isConnected()) {
+                this.botPrivacyDisabled = Boolean.TRUE.equals(status.getCanReadAllGroupMessages());
+                this.lastBotCheckAt = OffsetDateTime.now();
+                if (Boolean.FALSE.equals(this.botPrivacyDisabled)) {
+                    log.warn("[Telegram 24/7 Daemon] ATTENTION: Bot privacy mode is ENABLED in @BotFather for @{}. Telegram drops unmentioned group messages! Send /setprivacy -> Disable in @BotFather to receive automated PayWay alerts.", status.getBotUsername());
+                } else {
+                    log.info("[Telegram 24/7 Daemon] Bot @{} has privacy mode DISABLED. Can read all group PayWay alerts automatically.", status.getBotUsername());
+                }
+                return this.botPrivacyDisabled;
+            }
+        } catch (Exception e) {
+            log.warn("Could not verify bot privacy mode: {}", e.getMessage());
+        }
+        return this.botPrivacyDisabled;
+    }
+
+    public Map<String, Object> getDaemonStatus() {
+        boolean active = localPollingEnabled;
+        String status = !active ? "DISABLED" : (isPolling ? "POLLING" : (lastError != null ? "ERROR" : "ACTIVE"));
+
+        if (botPrivacyDisabled == null && active) {
+            checkBotPrivacyStatus();
+        }
+
+        Map<String, Object> map = new LinkedHashMap<>();
+        map.put("active", active);
+        map.put("status", status);
+        map.put("lastPollAt", lastPollAt != null ? lastPollAt.toString() : null);
+        map.put("lastSuccessAt", lastSuccessAt != null ? lastSuccessAt.toString() : null);
+        map.put("totalUpdatesProcessed", totalUpdatesProcessed);
+        map.put("nextUpdateOffset", nextUpdateOffset);
+        map.put("lastError", lastError);
+        map.put("canReadAllGroupMessages", Boolean.TRUE.equals(botPrivacyDisabled));
+        map.put("botUsername", getEffectiveBotUsername());
+        map.put("targetChatId", resolveGroupChatId(null));
+        return map;
     }
 
     @Scheduled(fixedDelay = 2000, initialDelay = 3000)
     public void pollTelegramUpdatesForLocalTesting() {
         if (!localPollingEnabled) return;
+        syncUpdates("sys_247_daemon", false);
+    }
+
+    public Map<String, Object> syncUpdates(String triggeredBy, boolean forceSync) {
         String token = resolveBotToken(null);
-        if (token == null || token.isBlank()) return;
+        if (token == null || token.isBlank()) {
+            return Map.of(
+                    "success", false,
+                    "mode", "sync",
+                    "outcome", Map.of(
+                            "processed", 0,
+                            "newTransactions", 0,
+                            "matchedPayments", 0,
+                            "duplicatesPrevented", 0,
+                            "sameTimeCollisions", 0,
+                            "errors", List.of("Telegram bot token is not configured")
+                    )
+            );
+        }
+
+        Map<String, Object> outcome = new LinkedHashMap<>();
+        int processed = 0;
+        int newTransactions = 0;
+        int matchedPayments = 0;
+        int duplicatesPrevented = 0;
+        int sameTimeCollisions = 0;
+        int approvalsProcessed = 0;
+        int rejectionsProcessed = 0;
+        int commandsProcessed = 0;
+        List<String> errors = new ArrayList<>();
+
+        boolean acquired = false;
+        try {
+            acquired = pollLock.tryLock(forceSync ? 10 : 0, TimeUnit.SECONDS);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        }
+
+        if (!acquired) {
+            if (forceSync) {
+                return Map.of(
+                        "success", true,
+                        "mode", "sync",
+                        "outcome", Map.of(
+                                "processed", 0,
+                                "newTransactions", 0,
+                                "matchedPayments", 0,
+                                "duplicatesPrevented", 0,
+                                "sameTimeCollisions", 0,
+                                "errors", List.of("Sync is currently executing in background")
+                        )
+                );
+            }
+            return Map.of("skipped", true, "reason", "Concurrent poll in progress");
+        }
 
         try {
-            String endpoint = "https://api.telegram.org/bot" + token + "/getUpdates?timeout=2";
-            if (nextUpdateOffset > 0) endpoint += "&offset=" + nextUpdateOffset;
+            this.isPolling = true;
+            this.lastPollAt = OffsetDateTime.now();
+
+            if (nextUpdateOffset == 0) {
+                loadPersistedOffset();
+            }
+
+            if (lastBotCheckAt == null || Duration.between(lastBotCheckAt, OffsetDateTime.now()).toMinutes() >= 5) {
+                checkBotPrivacyStatus();
+            }
+
+            String endpoint = "https://api.telegram.org/bot" + token + "/getUpdates?limit=100&timeout=" + (forceSync ? "0" : "2");
+            if (nextUpdateOffset > 0) {
+                endpoint += "&offset=" + nextUpdateOffset;
+            }
+
+            HttpClient client = HttpClient.newBuilder()
+                    .connectTimeout(Duration.ofSeconds(6))
+                    .build();
 
             HttpRequest req = HttpRequest.newBuilder()
                     .uri(URI.create(endpoint))
                     .timeout(Duration.ofSeconds(8))
                     .GET()
                     .build();
-            HttpResponse<String> res = HttpClient.newHttpClient().send(req, HttpResponse.BodyHandlers.ofString());
+
+            HttpResponse<String> res = client.send(req, HttpResponse.BodyHandlers.ofString());
             JsonNode data = objectMapper.readTree(res.body());
+
             if (!data.path("ok").asBoolean()) {
                 String desc = data.path("description").asText("");
                 if (desc.contains("webhook is active")) {
-                    log.info("Detected active webhook conflict while polling. Clearing webhook to allow getUpdates.");
                     clearWebhook();
                 }
-                return;
-            }
-
-            for (JsonNode upd : data.path("result")) {
-                long updateId = upd.path("update_id").asLong(0);
-                if (updateId > 0) nextUpdateOffset = updateId + 1;
-
-                try {
-                    Map<String, Object> updateMap = objectMapper.convertValue(upd, new TypeReference<Map<String, Object>>() {});
-                    handleWebhookUpdate(updateMap);
-                } catch (Exception e) {
-                    log.error("Could not process polled update {}: {}", updateId, e.getMessage());
+                this.lastError = desc;
+                if (!desc.contains("terminated by other getUpdates")) {
+                    errors.add(desc);
                 }
+            } else {
+                this.lastSuccessAt = OffsetDateTime.now();
+                this.lastError = null;
+
+                long maxUpdateId = nextUpdateOffset;
+                JsonNode results = data.path("result");
+
+                if (results.isArray()) {
+                    for (JsonNode upd : results) {
+                        long updateId = upd.path("update_id").asLong(0);
+                        if (updateId >= maxUpdateId) {
+                            maxUpdateId = updateId + 1;
+                        }
+                        processed++;
+                        log.info("[Telegram Ingest] Received Telegram update #{}: {}", updateId, upd);
+
+                        // 1. Process Callback Queries (Buttons clicked in Telegram group)
+                        if (upd.has("callback_query")) {
+                            JsonNode cb = upd.get("callback_query");
+                            String cbId = cb.path("id").asText(null);
+                            String cbData = cb.path("data").asText(null);
+                            if (cbData != null && cbData.contains(":")) {
+                                String[] parts = cbData.split(":", 2);
+                                String action = parts[0];
+                                String paymentId = parts[1];
+                                try {
+                                    paymentService.handlePaymentAction(paymentId, action, "Processed via Telegram Inline Button (" + triggeredBy + ")", "usr_admin_bot");
+                                    if ("approve".equalsIgnoreCase(action)) {
+                                        approvalsProcessed++;
+                                        matchedPayments++;
+                                    } else if ("reject".equalsIgnoreCase(action)) {
+                                        rejectionsProcessed++;
+                                    }
+                                    answerCallbackQuery(token, cbId, "✅ " + action.toUpperCase() + " processed", false);
+
+                                    JsonNode cbMsg = cb.path("message");
+                                    if (!cbMsg.isMissingNode()) {
+                                        Object chatId = cbMsg.path("chat").path("id").asText();
+                                        Object msgId = cbMsg.path("message_id").asInt();
+                                        String oldText = cbMsg.path("text").asText("");
+                                        String decisionText = "approve".equalsIgnoreCase(action) ? "✅ Approved" : "❌ Rejected";
+                                        String newText = oldText.isEmpty() ? decisionText : oldText + "\n\n• <b>Decision</b>: " + decisionText + " by Admin";
+                                        editMessageText(token, chatId, msgId, newText);
+                                    }
+                                } catch (Exception e) {
+                                    log.error("Failed to process inline button callback {}: {}", cbId, e.getMessage());
+                                    answerCallbackQuery(token, cbId, "⚠️ Failed: " + e.getMessage(), true);
+                                }
+                            }
+                            continue;
+                        }
+
+                        // 2. Process Messages & Channel Posts
+                        JsonNode msg = upd.has("message") ? upd.get("message") : upd.get("channel_post");
+                        if (msg != null && !msg.isMissingNode()) {
+                            String text = msg.path("text").asText(null);
+                            if (text == null) text = msg.path("caption").asText(null);
+                            int messageId = msg.path("message_id").asInt(0);
+                            String chatId = msg.path("chat").path("id").asText(null);
+
+                            if (text != null && !text.isBlank()) {
+                                String trimmed = text.trim();
+                                if (trimmed.startsWith("/start")) {
+                                    handleStartCommand(chatId, trimmed);
+                                    commandsProcessed++;
+                                } else if (trimmed.equalsIgnoreCase("/id") || trimmed.equalsIgnoreCase("/chatid") || trimmed.equalsIgnoreCase("/whoami")) {
+                                    sendDirectMessage(chatId, "👋 <b>Your Telegram Chat ID:</b> <code>" + chatId + "</code>");
+                                    commandsProcessed++;
+                                } else if (trimmed.startsWith("/pending")) {
+                                    handlePendingCommand(chatId);
+                                    commandsProcessed++;
+                                } else if (isAbaPayWayMessage(trimmed)) {
+                                    log.info("[Telegram Ingest] Matched ABA PayWay pattern in chat {} (msg #{}): '{}'", chatId, messageId, trimmed);
+                                    try {
+                                        Map<String, Object> ingRes = paymentService.ingestAbaMessage(trimmed, triggeredBy, messageId, chatId);
+                                        log.info("[Telegram Ingest] Ingest outcome: {}", ingRes);
+                                        if (Boolean.TRUE.equals(ingRes.get("isDuplicate"))) {
+                                            duplicatesPrevented++;
+                                        } else {
+                                            newTransactions++;
+                                        }
+                                        if (Boolean.TRUE.equals(ingRes.get("matched"))) {
+                                            matchedPayments++;
+                                            notifyPaymentAutoMatched(chatId, messageId, ingRes);
+                                        }
+                                        if (Boolean.TRUE.equals(ingRes.get("isSameTimeCollision"))) {
+                                            sameTimeCollisions++;
+                                        }
+                                    } catch (Exception e) {
+                                        log.warn("Failed to ingest ABA message: {}", e.getMessage());
+                                        errors.add("Failed to parse message #" + messageId + ": " + e.getMessage());
+                                    }
+                                } else {
+                                    log.info("[Telegram Ingest] Received non-PayWay message in chat {} (msg #{}): '{}'", chatId, messageId, trimmed);
+                                    if (trimmed.startsWith("/")) {
+                                        commandsProcessed++;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                if (maxUpdateId > nextUpdateOffset) {
+                    nextUpdateOffset = maxUpdateId;
+                    savePersistedOffset(nextUpdateOffset);
+                }
+
+                this.totalUpdatesProcessed += processed;
             }
         } catch (Exception e) {
-            log.debug("Telegram polling error: {}", e.getMessage());
+            this.lastError = e.getMessage();
+            log.error("Error during Telegram sync ({}): {}", triggeredBy, e.getMessage());
+            errors.add(e.getMessage());
+        } finally {
+            this.isPolling = false;
+            pollLock.unlock();
+        }
+
+        outcome.put("processed", processed);
+        outcome.put("newTransactions", newTransactions);
+        outcome.put("matchedPayments", matchedPayments);
+        outcome.put("duplicatesPrevented", duplicatesPrevented);
+        outcome.put("sameTimeCollisions", sameTimeCollisions);
+        outcome.put("approvalsProcessed", approvalsProcessed);
+        outcome.put("rejectionsProcessed", rejectionsProcessed);
+        outcome.put("commandsProcessed", commandsProcessed);
+        outcome.put("errors", errors);
+
+        return Map.of(
+                "success", true,
+                "mode", "sync",
+                "outcome", outcome
+        );
+    }
+
+    public boolean isAbaPayWayMessage(String text) {
+        if (text == null || text.isBlank()) return false;
+        String l = text.toLowerCase();
+        if (l.startsWith("/aba") || l.startsWith("/payway") || l.contains("@khlanofficialbot")) {
+            return true;
+        }
+        return l.contains("payway")
+                || l.contains("aba khqr")
+                || l.contains("khqr")
+                || (l.contains("trx") && l.contains("apv"))
+                || (l.contains("trx") && (l.contains("paid by") || l.contains("aba") || l.contains("៛") || l.contains("$") || l.contains("khr") || l.contains("usd")))
+                || (l.contains("apv") && (l.contains("paid by") || l.contains("aba") || l.contains("៛") || l.contains("$") || l.contains("khr") || l.contains("usd")))
+                || ((l.contains("trx. id") || l.contains("trx id") || l.contains("transaction id") || l.contains("trxid") || l.contains("txn id") || l.contains("txn"))
+                    && (l.contains("paid by") || l.contains("៛") || l.contains("$") || l.contains("khr") || l.contains("usd") || l.contains("aba")));
+    }
+
+    private void handlePendingCommand(String chatId) {
+        if (chatId == null || chatId.isBlank()) return;
+        try {
+            List<SubscriptionPaymentEntity> pending = paymentService.getPendingVerificationPayments();
+            if (pending.isEmpty()) {
+                sendDirectMessage(chatId, "✅ <b>KhLan Payment Queue</b>\n\nNo pending subscription payments awaiting verification.");
+                return;
+            }
+            sendDirectMessage(chatId, "📋 <b>KhLan Pending Payments (" + pending.size() + ")</b>\nReviewing awaiting dealer subscriptions:");
+            for (SubscriptionPaymentEntity p : pending) {
+                sendPaymentNotification(p, null, p.getEvidenceUrl());
+            }
+        } catch (Exception e) {
+            log.error("Failed to handle /pending command", e);
+        }
+    }
+
+    private void notifyPaymentAutoMatched(String chatId, int messageId, Map<String, Object> ingRes) {
+        if (chatId == null || chatId.isBlank()) return;
+        String token = resolveBotToken(null);
+        if (token == null) return;
+        try {
+            Object txObj = ingRes.get("transaction");
+            String trxId = "N/A";
+            String amountStr = "";
+            if (txObj instanceof PaymentDTO.AbaTransactionDTO tx) {
+                trxId = tx.getTrxId() != null ? tx.getTrxId() : "";
+                if (tx.getAmountUsd() != null) amountStr = " ($" + tx.getAmountUsd() + ")";
+            }
+            String msg = "✅ <b>Subscription Auto-Activated!</b>\n"
+                    + "• Trx ID: <code>" + trxId + "</code>" + amountStr + "\n"
+                    + "• Reconciled & Verified automatically by KhLan 24/7 Syncer.";
+
+            Map<String, Object> body = new LinkedHashMap<>();
+            body.put("chat_id", chatId);
+            body.put("text", msg);
+            body.put("parse_mode", "HTML");
+            if (messageId > 0) {
+                body.put("reply_to_message_id", messageId);
+            }
+            HttpRequest req = HttpRequest.newBuilder()
+                    .uri(URI.create("https://api.telegram.org/bot" + token + "/sendMessage"))
+                    .timeout(Duration.ofSeconds(6))
+                    .header("Content-Type", "application/json")
+                    .POST(HttpRequest.BodyPublishers.ofString(objectMapper.writeValueAsString(body)))
+                    .build();
+            HttpClient.newHttpClient().send(req, HttpResponse.BodyHandlers.discarding());
+        } catch (Exception e) {
+            log.debug("Could not send auto-matched confirmation: {}", e.getMessage());
         }
     }
 

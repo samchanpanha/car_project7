@@ -198,6 +198,12 @@ export function SellView() {
   };
 
   const submit = async () => {
+    const validationError = validateStep();
+    if (validationError) {
+      toast.warning(validationError);
+      return;
+    }
+
     setSubmitting(true);
     try {
       const isPart = form.listingCategory === "SPARE_PART";
@@ -542,7 +548,7 @@ export function SellView() {
                   <Field label={t("specMileage")}>
                     <Input
                       type="number"
-                      min={0}
+                      min={form.priceMasked ? 0 : 1}
                       value={form.mileageKm}
                       onChange={(e) => set({ mileageKm: e.target.value })}
                       placeholder="5000"

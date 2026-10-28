@@ -1576,7 +1576,12 @@ export async function syncTelegramGroupUpdates(
 
     if (!json.ok || !Array.isArray(json.result)) {
       if (json.description?.includes("terminated by other getUpdates request")) {
-        // The 24/7 background daemon has active ownership of the update stream.
+        // Another worker (usually Spring Boot with TELEGRAM_LOCAL_POLLING=true)
+        // owns the same bot token's update stream. Only one process can
+        // consume getUpdates for a bot token; document this in deployment.
+        outcome.errors.push(
+          "Telegram update stream is owned by another getUpdates client. Set TELEGRAM_LOCAL_POLLING=false when using pnpm tg:daemon, or enable the backend poller and stop the daemon.",
+        );
         return outcome;
       }
       outcome.errors.push(json.description || "Failed to fetch updates from Telegram");
@@ -1615,8 +1620,14 @@ export async function syncTelegramGroupUpdates(
       const cleanMsgChatId = chatIdStr.replace(/^-100/, "").replace(/^-/, "");
       const cleanTargetChatId = (targetChatId || "").replace(/^-100/, "").replace(/^-/, "");
 
+      // Diagnostic log for sync troubleshooting: shows which groups updates arrive from.
+      console.log(`[ABA sync] msg #${msg.message_id} chat=${chatIdStr} type=${msg.chat?.type} target=${targetChatId}`);
+
       // Accept from target group OR private 1-on-1 with bot
       if (!isPrivate && cleanTargetChatId && cleanMsgChatId !== cleanTargetChatId) {
+        console.warn(
+          `[ABA sync] skipped msg #${msg.message_id}: chat ${chatIdStr} does not match configured target ${targetChatId}`,
+        );
         continue;
       }
 
@@ -1641,6 +1652,9 @@ export async function syncTelegramGroupUpdates(
         const parsed = parseAbaPayWayMessage(messageText, msgDate);
 
         if (parsed) {
+          console.log(
+            `[ABA sync] parsed Trx=${parsed.trxId}, ${parsed.currency} ${parsed.amount} ($${parsed.amountUsd}), payer=${parsed.payerName}, date=${parsed.transactionDateRaw}`,
+          );
           const res = await recordAbaTransaction(parsed, {
             messageId: msg.message_id,
             chatId: chatIdStr,
@@ -1841,3 +1855,36 @@ export async function verifyAndReconcileTransactions(options?: {
   return report;
 }
 
+
+/**
+ * Dry-run preview helper for the Telegram payment daemon. Fetches recent group
+ * updates, parses recognized ABA PayWay alerts, and returns the structured
+ * fields WITHOUT recording transactions or activating subscriptions.
+ */
+export async function previewTelegramGroupUpdates(
+  botToken: string,
+  targetChatId: string = "-1004489863210",
+): Promise<ParsedAbaTransaction[]> {
+  const previews: ParsedAbaTransaction[] = [];
+  try {
+    const res = await fetch(`https://api.telegram.org/bot${botToken}/getUpdates?limit=20&timeout=0`);
+    const json = (await res.json()) as { ok: boolean; result?: any[]; description?: string };
+    if (!json.ok || !Array.isArray(json.result)) return previews;
+
+    for (const update of json.result) {
+      const msg = update.message || update.channel_post;
+      if (!msg) continue;
+      const messageText = msg.text || msg.caption || "";
+      if (!messageText) continue;
+
+      if (isAbaPayWayMessage(messageText)) {
+        const msgDate = msg.date ? new Date(msg.date * 1000) : new Date();
+        const parsed = parseAbaPayWayMessage(messageText, msgDate);
+        if (parsed) previews.push(parsed);
+      }
+    }
+  } catch (err) {
+    console.error("previewTelegramGroupUpdates error:", err instanceof Error ? err.message : err);
+  }
+  return previews;
+}

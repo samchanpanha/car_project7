@@ -55,6 +55,7 @@ public class CronSchedulerService {
     public void scheduledAbaSync() {
         log.info("[Scheduler] Running automatic ABA PayWay background sync...");
         try {
+            paymentService.syncTelegramUpdates("sys_cron_aba");
             reconcileAbaTransactions();
         } catch (Exception e) {
             log.error("[Scheduler] Error running automatic ABA sync", e);

@@ -868,7 +868,7 @@ public class AdminService {
                 ));
 
         // 3. Telegram config
-        String tgToken = System.getenv().getOrDefault("TELEGRAM_BOT_TOKEN", "8961155344:AAEXIEeSWNp4kudB2YQEnpj7hsUkd-ignAc");
+        String tgToken = System.getenv().getOrDefault("TELEGRAM_BOT_TOKEN", "8691160498:AAFkdDht6Wj7TAxRWxLTJPurDRP84BMwxb0");
         String tgChat = System.getenv().getOrDefault("TELEGRAM_GROUP_CHAT_ID", "-1004489863210");
         String tgSecret = System.getenv().getOrDefault("TELEGRAM_WEBHOOK_SECRET", "khlan_webhook_secret_2026");
 
