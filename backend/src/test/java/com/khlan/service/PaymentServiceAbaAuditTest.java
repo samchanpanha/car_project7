@@ -48,6 +48,8 @@ class PaymentServiceAbaAuditTest {
     private RealtimeService realtimeService;
     @Mock
     private ObjectProvider<TelegramService> telegramServiceProvider;
+    @Mock
+    private ObjectProvider<CronSchedulerService> cronSchedulerProvider;
 
     @InjectMocks
     private PaymentService paymentService;

@@ -1650,7 +1650,11 @@ interface AbaDailyStatDTO {
 
 interface AbaDaemonStatusDTO {
   active: boolean;
+  pollingEnabled?: boolean;
+  mode?: "POLLING" | "WEBHOOK" | "DISABLED";
   status: "ACTIVE" | "POLLING" | "ERROR" | "DISABLED";
+  botTokenConfigured?: boolean;
+  groupChatConfigured?: boolean;
   lastPollAt?: string | null;
   lastSuccessAt?: string | null;
   totalUpdatesProcessed?: number;
@@ -1659,6 +1663,29 @@ interface AbaDaemonStatusDTO {
   canReadAllGroupMessages?: boolean;
   botUsername?: string | null;
   targetChatId?: string | null;
+}
+
+interface AbaSyncOutcomeDTO {
+  processed: number;
+  newTransactions: number;
+  matchedPayments: number;
+  duplicatesPrevented: number;
+  sameTimeCollisions: number;
+  approvalsProcessed?: number;
+  rejectionsProcessed?: number;
+  commandsProcessed?: number;
+  reconciledPayments?: number;
+  errors?: string[];
+}
+
+interface AbaSyncResponseDTO {
+  success?: boolean;
+  skipped?: boolean;
+  reason?: string;
+  rescan?: boolean;
+  note?: string;
+  reconciledPayments?: number;
+  outcome?: AbaSyncOutcomeDTO;
 }
 
 interface AbaResponseDTO {
@@ -1773,51 +1800,57 @@ function AdminAbaTransactionsView({ onVerified }: { onVerified?: () => void }) {
     return () => clearInterval(timer);
   }, [refetch]);
 
-  const syncGroup = async () => {
+  const syncGroup = async (action: "sync" | "rescan" = "sync") => {
     setSyncing(true);
     try {
-      const res = await apiSend<{
-        success: boolean;
-        outcome: {
-          processed: number;
-          newTransactions: number;
-          matchedPayments: number;
-          duplicatesPrevented: number;
-          sameTimeCollisions: number;
-          approvalsProcessed?: number;
-          rejectionsProcessed?: number;
-          commandsProcessed?: number;
-          errors?: string[];
-        };
-      }>("/api/admin/aba-transactions", "POST", { action: "sync" });
+      const res = await apiSend<AbaSyncResponseDTO>("/api/admin/aba-transactions", "POST", { action });
 
-      const syncErrors = res.outcome?.errors ?? [];
-      if (!res.success || syncErrors.length > 0) {
-        const detail = syncErrors.length > 0 ? syncErrors.join("; ") : "Telegram sync failed.";
+      if (res.skipped) {
+        toast.info(res.reason || "A Telegram sync is already running in the background. Try again in a moment.");
+        refetch();
+        pendingPayments.refetch();
+        return;
+      }
+
+      const outcome = res.outcome;
+      if (!res.success || !outcome) {
+        const detail = outcome?.errors?.length ? outcome.errors.join("; ") : "Telegram sync failed.";
         toast.error(`Telegram sync did not complete: ${detail}`);
         refetch();
         pendingPayments.refetch();
         return;
       }
 
-      const parts: string[] = [];
-      if (res.outcome.newTransactions > 0) parts.push(`${res.outcome.newTransactions} new transaction(s)`);
-      if (res.outcome.matchedPayments > 0) parts.push(`${res.outcome.matchedPayments} auto-matched`);
-      if ((res.outcome.approvalsProcessed ?? 0) > 0) parts.push(`${res.outcome.approvalsProcessed} approved via Telegram`);
-      if ((res.outcome.rejectionsProcessed ?? 0) > 0) parts.push(`${res.outcome.rejectionsProcessed} rejected via Telegram`);
-      if (res.outcome.duplicatesPrevented > 0) parts.push(`${res.outcome.duplicatesPrevented} duplicate(s) blocked`);
-      if (res.outcome.sameTimeCollisions > 0) parts.push(`${res.outcome.sameTimeCollisions} collision(s) flagged`);
+      const syncErrors = outcome.errors ?? [];
+      if (syncErrors.length > 0) {
+        toast.error(`Telegram sync reported errors: ${syncErrors.join("; ")}`, { duration: 10000 });
+        refetch();
+        pendingPayments.refetch();
+        return;
+      }
 
+      const parts: string[] = [];
+      if (outcome.newTransactions > 0) parts.push(`${outcome.newTransactions} new transaction(s)`);
+      if (outcome.matchedPayments > 0) parts.push(`${outcome.matchedPayments} auto-matched`);
+      if ((outcome.reconciledPayments ?? 0) > 0) parts.push(`${outcome.reconciledPayments} reconciled from existing alerts`);
+      if ((outcome.approvalsProcessed ?? 0) > 0) parts.push(`${outcome.approvalsProcessed} approved via Telegram`);
+      if ((outcome.rejectionsProcessed ?? 0) > 0) parts.push(`${outcome.rejectionsProcessed} rejected via Telegram`);
+      if (outcome.duplicatesPrevented > 0) parts.push(`${outcome.duplicatesPrevented} duplicate(s) blocked`);
+      if (outcome.sameTimeCollisions > 0) parts.push(`${outcome.sameTimeCollisions} collision(s) flagged`);
+
+      const prefix = action === "rescan" ? "Rescan Complete" : "Sync Complete";
       if (parts.length > 0) {
-        toast.success(`Sync Complete: ${parts.join(", ")}!`);
-      } else if (res.outcome.processed === 0) {
+        toast.success(`${prefix}: ${parts.join(", ")}!`);
+      } else if (outcome.processed === 0) {
         toast.info(
-          "No pending Telegram updates were found. Sync only receives new bot updates; use Paste ABA Alert to import an older payment.",
+          action === "rescan"
+            ? "No unconfirmed Telegram updates remain. Telegram only retains undelivered updates for about 24 hours, so older alerts must be imported with Paste ABA Alert."
+            : "No new Telegram updates were found. Sync only receives alerts posted after the last sync; use Rescan for recent undelivered alerts or Paste ABA Alert for older payments.",
           { duration: 9000 },
         );
       } else {
         toast.info(
-          `Checked ${res.outcome.processed} Telegram update(s); no new ABA transactions or approvals were found.`,
+          `Checked ${outcome.processed} Telegram update(s); no new ABA transactions or approvals were found.`,
         );
       }
 
@@ -1942,6 +1975,9 @@ function AdminAbaTransactionsView({ onVerified }: { onVerified?: () => void }) {
               Captures all automated <span className="font-semibold text-slate-800">PayWay by ABA</span> alerts from Telegram group{" "}
               <code className="rounded bg-sky-100 px-1.5 py-0.5 font-mono text-[11px] text-sky-900">{daemon?.targetChatId || "-1004489863210"}</code> (MyABApayway) day-by-day.
               Automatically checks deduplication, verifies concurrent same-time transactions, and auto-activates subscriptions.
+              <span className="block mt-1 text-[11px] text-slate-500">
+                <strong>Sync Group Now</strong> pulls only new alerts and reconciles pending payments. <strong>Rescan Unconfirmed</strong> re-fetches alerts Telegram still retains (about 24h). Older alerts must be imported with <em>Paste ABA Alert</em>.
+              </span>
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
@@ -1977,9 +2013,21 @@ function AdminAbaTransactionsView({ onVerified }: { onVerified?: () => void }) {
             </Button>
             <Button
               size="sm"
-              onClick={syncGroup}
+              variant="outline"
+              onClick={() => syncGroup("rescan")}
+              disabled={syncing || verifying || clearing}
+              className="border-sky-300 bg-white text-sky-800 hover:bg-sky-100/70 text-xs font-semibold cursor-pointer shadow-xs"
+              title="Re-fetch every Telegram update still retained (roughly the last 24 hours) and reconcile them"
+            >
+              <RefreshCw className={cn("h-3.5 w-3.5 mr-1.5 text-sky-600", syncing && "animate-spin")} />
+              Rescan Unconfirmed
+            </Button>
+            <Button
+              size="sm"
+              onClick={() => syncGroup("sync")}
               disabled={syncing || verifying || clearing}
               className="bg-sky-600 hover:bg-sky-700 text-white font-semibold cursor-pointer shadow-xs text-xs"
+              title="Pull only new Telegram updates (posted since the last sync) and reconcile pending payments"
             >
               <RefreshCw className={cn("h-3.5 w-3.5 mr-1.5", syncing && "animate-spin")} />
               {syncing ? "Syncing Group..." : "Sync Group Now"}
@@ -1999,6 +2047,35 @@ function AdminAbaTransactionsView({ onVerified }: { onVerified?: () => void }) {
                 Telegram&apos;s privacy filter drops unmentioned group messages before the bot can see them.
                 To allow <strong>@{daemon.botUsername || "KhLanOfficialBot"}</strong> to automatically capture PayWay alerts in group <code>{daemon.targetChatId || "-1004489863210"}</code>, open <strong>@BotFather</strong> in Telegram → send <code>/setprivacy</code> → select <code>@{daemon.botUsername || "KhLanOfficialBot"}</code> → select <strong>Disable</strong>.
                 (In the meantime, you can mention <code>@{daemon.botUsername || "KhLanOfficialBot"}</code>, use <code>/aba &lt;alert&gt;</code>, or use <em>Paste ABA Alert</em>).
+              </p>
+            </div>
+          </div>
+        )}
+
+        {/* Surface backend sync / configuration errors instead of showing a healthy daemon */}
+        {daemon && (daemon.lastError || daemon.botTokenConfigured === false || daemon.groupChatConfigured === false) && (
+          <div className="mt-2.5 rounded-lg border border-rose-300 bg-rose-50 p-2.5 text-xs text-rose-950 flex items-start gap-2 shadow-xs">
+            <TriangleAlert className="h-4 w-4 text-rose-600 shrink-0 mt-0.5" />
+            <div className="space-y-0.5 leading-relaxed">
+              <p className="font-bold text-rose-900">Telegram sync needs attention</p>
+              {daemon.botTokenConfigured === false && (
+                <p className="text-[11px] text-rose-800">
+                  No bot token is configured. Set <code>TELEGRAM_BOT_TOKEN</code> (or save it in Admin Settings) and restart the backend.
+                </p>
+              )}
+              {daemon.groupChatConfigured === false && (
+                <p className="text-[11px] text-rose-800">
+                  No target group chat ID is configured. Set <code>TELEGRAM_GROUP_CHAT_ID</code> (or save it in Admin Settings).
+                </p>
+              )}
+              {daemon.lastError && (
+                <p className="text-[11px] text-rose-800">
+                  Last error: <span className="font-mono">{daemon.lastError}</span>
+                </p>
+              )}
+              <p className="text-[11px] text-rose-700">
+                Last successful poll: {daemon.lastSuccessAt ? new Date(daemon.lastSuccessAt).toLocaleString() : "never"}.
+                Alerts are only retried while Telegram still retains the update (roughly 24 hours); older alerts must be imported with <em>Paste ABA Alert</em>.
               </p>
             </div>
           </div>
@@ -2238,7 +2315,7 @@ function AdminAbaTransactionsView({ onVerified }: { onVerified?: () => void }) {
                 View All Days
               </Button>
             )}
-            <Button size="sm" onClick={syncGroup} className="bg-sky-600 text-white hover:bg-sky-700 text-xs">
+            <Button size="sm" onClick={() => syncGroup("sync")} className="bg-sky-600 text-white hover:bg-sky-700 text-xs">
               Sync Group Now
             </Button>
           </div>

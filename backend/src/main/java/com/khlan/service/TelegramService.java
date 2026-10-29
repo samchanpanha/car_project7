@@ -32,8 +32,6 @@ import java.time.format.DateTimeFormatter;
 import java.util.*;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.locks.ReentrantLock;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
 
 @Slf4j
 @Service
@@ -63,6 +61,7 @@ public class TelegramService {
     private boolean localPollingEnabled;
 
     private volatile long nextUpdateOffset = 0;
+    private volatile boolean offsetLoaded = false;
     private final ReentrantLock pollLock = new ReentrantLock();
     private volatile boolean isPolling = false;
     private volatile OffsetDateTime lastPollAt = null;
@@ -71,11 +70,10 @@ public class TelegramService {
     private volatile String lastError = null;
     private volatile Boolean botPrivacyDisabled = null;
     private volatile OffsetDateTime lastBotCheckAt = null;
+    private volatile String detectedBotUsername = null;
 
     private static final String CODE_ALPHABET = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
     private static final SecureRandom RANDOM = new SecureRandom();
-    private static final Pattern ABA_TRX_PATTERN = Pattern.compile("(?i)(?:Trx\\s*ID|Transaction\\s*ID)[:\\s]*([A-Za-z0-9]{8,24})");
-    private static final Pattern ABA_AMOUNT_PATTERN = Pattern.compile("(?i)(?:USD|\\$|KHR|៛)\\s*([0-9]+(?:\\.[0-9]{2})?)");
 
     @Transactional
     public TelegramDTO.SellerTelegramDTO getSellerTelegram(String userId) {
@@ -220,11 +218,15 @@ public class TelegramService {
             localPollingEnabled = false;
             Map<String, Object> res = setupWebhook(url.trim());
             log.info("Telegram auto webhook registration result: {}", res);
-        } else {
-            // When no static webhook is configured, clear any stale webhook and enable active long-polling
+        } else if (localPollingEnabled) {
+            // No static webhook configured and polling explicitly enabled: clear any stale
+            // webhook, otherwise Telegram returns "webhook is active" and getUpdates fails.
             log.info("No static TELEGRAM_WEBHOOK_URL configured. Clearing webhook and enabling 24/7 background polling.");
             clearWebhook();
-            localPollingEnabled = true;
+        } else {
+            // TELEGRAM_LOCAL_POLLING=false: an external poller (e.g. `pnpm tg:daemon`) owns
+            // getUpdates. Never clear its webhook or flip polling on behind the operator's back.
+            log.info("Telegram local polling disabled by configuration (TELEGRAM_LOCAL_POLLING=false); leaving webhook/polling state untouched.");
         }
 
         checkBotPrivacyStatus();
@@ -244,6 +246,8 @@ public class TelegramService {
                     });
         } catch (Exception e) {
             log.warn("Could not load persisted Telegram update offset: {}", e.getMessage());
+        } finally {
+            offsetLoaded = true;
         }
     }
 
@@ -264,6 +268,9 @@ public class TelegramService {
             if (status.isConnected()) {
                 this.botPrivacyDisabled = Boolean.TRUE.equals(status.getCanReadAllGroupMessages());
                 this.lastBotCheckAt = OffsetDateTime.now();
+                if (status.getBotUsername() != null && !status.getBotUsername().isBlank()) {
+                    this.detectedBotUsername = status.getBotUsername().trim().replaceFirst("^@", "");
+                }
                 if (Boolean.FALSE.equals(this.botPrivacyDisabled)) {
                     log.warn("[Telegram 24/7 Daemon] ATTENTION: Bot privacy mode is ENABLED in @BotFather for @{}. Telegram drops unmentioned group messages! Send /setprivacy -> Disable in @BotFather to receive automated PayWay alerts.", status.getBotUsername());
                 } else {
@@ -278,8 +285,27 @@ public class TelegramService {
     }
 
     public Map<String, Object> getDaemonStatus() {
-        boolean active = localPollingEnabled;
-        String status = !active ? "DISABLED" : (isPolling ? "POLLING" : (lastError != null ? "ERROR" : "ACTIVE"));
+        String token = resolveBotToken(null);
+        boolean botTokenConfigured = token != null && !token.isBlank();
+        String groupChatId = resolveGroupChatId(null);
+        boolean groupChatConfigured = groupChatId != null && !groupChatId.isBlank();
+        boolean active = localPollingEnabled && botTokenConfigured;
+
+        String status;
+        if (!localPollingEnabled) {
+            status = "DISABLED";
+        } else if (!botTokenConfigured) {
+            status = "ERROR";
+            if (lastError == null) {
+                lastError = "Telegram bot token is not configured. Set it in Admin Settings / Payment Config or TELEGRAM_BOT_TOKEN.";
+            }
+        } else if (isPolling) {
+            status = "POLLING";
+        } else if (lastError != null) {
+            status = "ERROR";
+        } else {
+            status = "ACTIVE";
+        }
 
         if (botPrivacyDisabled == null && active) {
             checkBotPrivacyStatus();
@@ -287,7 +313,11 @@ public class TelegramService {
 
         Map<String, Object> map = new LinkedHashMap<>();
         map.put("active", active);
+        map.put("pollingEnabled", localPollingEnabled);
+        map.put("mode", !localPollingEnabled ? "DISABLED" : "POLLING");
         map.put("status", status);
+        map.put("botTokenConfigured", botTokenConfigured);
+        map.put("groupChatConfigured", groupChatConfigured);
         map.put("lastPollAt", lastPollAt != null ? lastPollAt.toString() : null);
         map.put("lastSuccessAt", lastSuccessAt != null ? lastSuccessAt.toString() : null);
         map.put("totalUpdatesProcessed", totalUpdatesProcessed);
@@ -295,7 +325,7 @@ public class TelegramService {
         map.put("lastError", lastError);
         map.put("canReadAllGroupMessages", Boolean.TRUE.equals(botPrivacyDisabled));
         map.put("botUsername", getEffectiveBotUsername());
-        map.put("targetChatId", resolveGroupChatId(null));
+        map.put("targetChatId", groupChatId);
         return map;
     }
 
@@ -306,8 +336,29 @@ public class TelegramService {
     }
 
     public Map<String, Object> syncUpdates(String triggeredBy, boolean forceSync) {
+        return syncUpdates(triggeredBy, forceSync, false);
+    }
+
+    /**
+     * Re-fetches every update Telegram still retains (unconfirmed, max ~24h).
+     * Used by the admin "Rescan" action to recover alerts that were never ingested.
+     */
+    public Map<String, Object> rescanUnconfirmedUpdates(String triggeredBy) {
+        long previousOffset = nextUpdateOffset;
+        Map<String, Object> result = syncUpdates(triggeredBy, true, true);
+        Map<String, Object> merged = new LinkedHashMap<>(result);
+        merged.put("previousOffset", previousOffset);
+        merged.put("rescan", true);
+        merged.put("note", "Only updates still retained by Telegram (max ~24h) can be re-fetched.");
+        return merged;
+    }
+
+    public Map<String, Object> syncUpdates(String triggeredBy, boolean forceSync, boolean rescan) {
         String token = resolveBotToken(null);
         if (token == null || token.isBlank()) {
+            this.lastPollAt = OffsetDateTime.now();
+            this.lastError = "Telegram bot token is not configured. Set it in Admin Settings / Payment Config or TELEGRAM_BOT_TOKEN.";
+            log.warn("[Telegram Ingest] Cannot sync: no bot token configured (triggered by {}).", triggeredBy);
             return Map.of(
                     "success", false,
                     "mode", "sync",
@@ -362,7 +413,16 @@ public class TelegramService {
             this.isPolling = true;
             this.lastPollAt = OffsetDateTime.now();
 
-            if (nextUpdateOffset == 0) {
+            if (rescan) {
+                // Deliberately rewind so Telegram re-delivers every update it still holds.
+                // Ingest is idempotent (trxId dedupe), so previously processed alerts are safe.
+                log.info("[Telegram Ingest] Rescan requested by {}: resetting offset from {} to 0", triggeredBy, nextUpdateOffset);
+                nextUpdateOffset = 0;
+                offsetLoaded = true;
+                savePersistedOffset(0);
+            }
+
+            if (!offsetLoaded) {
                 loadPersistedOffset();
             }
 
@@ -394,7 +454,9 @@ public class TelegramService {
                     clearWebhook();
                 }
                 this.lastError = desc;
-                if (!desc.contains("terminated by other getUpdates")) {
+                if (desc.contains("terminated by other getUpdates")) {
+                    errors.add("Another process is polling this Telegram bot (409 Conflict). Stop the extra poller or set TELEGRAM_LOCAL_POLLING=false.");
+                } else {
                     errors.add(desc);
                 }
             } else {
@@ -405,12 +467,17 @@ public class TelegramService {
                 JsonNode results = data.path("result");
 
                 if (results.isArray()) {
+                    boolean haltBatch = false;
                     for (JsonNode upd : results) {
                         long updateId = upd.path("update_id").asLong(0);
-                        if (updateId >= maxUpdateId) {
-                            maxUpdateId = updateId + 1;
+                        if (haltBatch) {
+                            log.warn("[Telegram Ingest] Halting batch before update #{}; offset stays at {} so Telegram re-delivers the failed alert.", updateId, maxUpdateId);
+                            break;
                         }
                         processed++;
+                        // When an ABA alert cannot be persisted we must NOT confirm its update,
+                        // otherwise Telegram permanently deletes it and the payment is lost.
+                        boolean retryRequired = false;
                         log.info("[Telegram Ingest] Received Telegram update #{}: {}", updateId, upd);
 
                         // 1. Process Callback Queries (Buttons clicked in Telegram group)
@@ -446,6 +513,7 @@ public class TelegramService {
                                     answerCallbackQuery(token, cbId, "⚠️ Failed: " + e.getMessage(), true);
                                 }
                             }
+                            maxUpdateId = Math.max(maxUpdateId, updateId + 1);
                             continue;
                         }
 
@@ -488,6 +556,7 @@ public class TelegramService {
                                     } catch (Exception e) {
                                         log.warn("Failed to ingest ABA message: {}", e.getMessage());
                                         errors.add("Failed to parse message #" + messageId + ": " + e.getMessage());
+                                        retryRequired = true;
                                     }
                                 } else {
                                     log.info("[Telegram Ingest] Received non-PayWay message in chat {} (msg #{}): '{}'", chatId, messageId, trimmed);
@@ -496,6 +565,13 @@ public class TelegramService {
                                     }
                                 }
                             }
+                        }
+
+                        if (retryRequired) {
+                            haltBatch = true;
+                            log.warn("[Telegram Ingest] ABA ingest failed for update #{}; offset will not advance so the alert can be retried.", updateId);
+                        } else {
+                            maxUpdateId = Math.max(maxUpdateId, updateId + 1);
                         }
                     }
                 }
@@ -653,9 +729,18 @@ public class TelegramService {
             }
         }
 
-        // 2. Check message (e.g. ABA PayWay bank receipt alert posted to group or seller bot commands)
-        if (update.containsKey("message")) {
-            Map<String, Object> msg = (Map<String, Object>) update.get("message");
+        // 2. Check message / channel post (ABA PayWay bank receipt alerts, seller bot commands)
+        Map<String, Object> msg = null;
+        if (update.get("message") instanceof Map<?, ?> m) {
+            @SuppressWarnings("unchecked")
+            Map<String, Object> cast = (Map<String, Object>) m;
+            msg = cast;
+        } else if (update.get("channel_post") instanceof Map<?, ?> cp) {
+            @SuppressWarnings("unchecked")
+            Map<String, Object> cast = (Map<String, Object>) cp;
+            msg = cast;
+        }
+        if (msg != null) {
             String text = (String) msg.get("text");
             if (text == null) text = (String) msg.get("caption");
 
@@ -672,9 +757,26 @@ public class TelegramService {
                 return Map.of("ok", true, "type", "CHAT_ID_REPLIED");
             }
 
-            if (text != null && text.contains("ABA") && text.contains("Trx")) {
-                parseAndRecordAbaMessage(msg, text);
-                return Map.of("ok", true, "type", "ABA_TRANSACTION_RECORDED");
+            if (text != null && text.trim().toLowerCase().startsWith("/pending")) {
+                handlePendingCommand(chatId);
+                return Map.of("ok", true, "type", "PENDING_COMMAND_HANDLED");
+            }
+
+            if (text != null && isAbaPayWayMessage(text.trim())) {
+                int messageId = msg.get("message_id") instanceof Number n ? n.intValue() : 0;
+                try {
+                    Map<String, Object> ing = paymentService.ingestAbaMessage(text.trim(), "telegram_webhook", messageId, chatId);
+                    return Map.of(
+                            "ok", true,
+                            "type", "ABA_TRANSACTION_RECORDED",
+                            "matched", Boolean.TRUE.equals(ing.get("matched")),
+                            "isDuplicate", Boolean.TRUE.equals(ing.get("isDuplicate"))
+                    );
+                } catch (Exception e) {
+                    log.warn("Failed to ingest ABA message from webhook: {}", e.getMessage());
+                    return Map.of("ok", false, "type", "ABA_INGEST_FAILED",
+                            "error", e.getMessage() != null ? e.getMessage() : "Failed to ingest ABA message");
+                }
             }
         }
 
@@ -774,7 +876,7 @@ public class TelegramService {
             Map<String, Object> body = new LinkedHashMap<>();
             body.put("url", effectiveUrl);
             if (secret != null && !secret.isBlank()) body.put("secret_token", secret.trim());
-            body.put("allowed_updates", List.of("message", "callback_query"));
+            body.put("allowed_updates", List.of("message", "channel_post", "callback_query"));
 
             HttpRequest req = HttpRequest.newBuilder()
                     .uri(URI.create("https://api.telegram.org/bot" + token + "/setWebhook"))
@@ -788,40 +890,6 @@ public class TelegramService {
         } catch (Exception e) {
             log.error("Failed to set Telegram webhook", e);
             return Map.of("ok", false, "error", e.getMessage());
-        }
-    }
-
-    private void parseAndRecordAbaMessage(Map<String, Object> msg, String text) {
-        try {
-            Matcher trxMatcher = ABA_TRX_PATTERN.matcher(text);
-            String trxId = trxMatcher.find() ? trxMatcher.group(1) : "ABA" + System.currentTimeMillis();
-
-            if (abaTransactionRepository.findByTrxId(trxId).isPresent()) {
-                log.info("ABA transaction {} already recorded", trxId);
-                return;
-            }
-
-            Matcher amtMatcher = ABA_AMOUNT_PATTERN.matcher(text);
-            double amount = amtMatcher.find() ? Double.parseDouble(amtMatcher.group(1)) : 0.0;
-            String currency = text.contains("KHR") || text.contains("៛") ? "KHR" : "USD";
-            double amountUsd = "KHR".equals(currency) ? amount / 4100.0 : amount;
-
-            AbaTransactionEntity entity = AbaTransactionEntity.builder()
-                    .id("aba_" + UUID.randomUUID().toString().replace("-", "").substring(0, 16))
-                    .rawMessage(text)
-                    .trxId(trxId)
-                    .amount(amount)
-                    .currency(currency)
-                    .amountUsd(amountUsd)
-                    .bankCode("ABA")
-                    .status("UNMATCHED")
-                    .transactionDate(OffsetDateTime.now())
-                    .build();
-
-            abaTransactionRepository.save(entity);
-            log.info("Recorded new ABA transaction: trxId={}, amountUsd={}", trxId, amountUsd);
-        } catch (Exception e) {
-            log.error("Failed to parse and record ABA message", e);
         }
     }
 
@@ -863,7 +931,7 @@ public class TelegramService {
         if (baseMiniApp == null || baseMiniApp.isBlank()) {
             String botUser = platform.getBotUsername() != null && !platform.getBotUsername().isBlank()
                     ? platform.getBotUsername().trim()
-                    : "KhmerSmartRestaurantBot";
+                    : "KhLanOfficialBot";
             baseMiniApp = "https://t.me/" + botUser + "/app";
         }
 
@@ -1246,7 +1314,10 @@ public class TelegramService {
                 return cfg.getBotUsername().trim().replaceFirst("^@", "");
             }
         } catch (Exception ignored) {}
-        return "KhmerSmartRestaurantBot";
+        if (detectedBotUsername != null && !detectedBotUsername.isBlank()) {
+            return detectedBotUsername;
+        }
+        return "KhLanOfficialBot";
     }
 
     public TelegramDTO.AdminTelegramConfigDTO getPlatformConfig() {
@@ -1272,12 +1343,15 @@ public class TelegramService {
 
         String effectiveToken = resolveBotToken(null);
         String effectiveChatId = resolveGroupChatId(null);
+        String fallbackBotUsername = (detectedBotUsername != null && !detectedBotUsername.isBlank())
+                ? detectedBotUsername
+                : "KhLanOfficialBot";
 
         return TelegramDTO.AdminTelegramConfigDTO.builder()
-                .botUsername("KhmerSmartRestaurantBot")
+                .botUsername(fallbackBotUsername)
                 .botToken(effectiveToken)
                 .chatId(effectiveChatId != null ? effectiveChatId : "-1004489863210")
-                .miniAppUrl("https://t.me/KhmerSmartRestaurantBot/app")
+                .miniAppUrl("https://t.me/" + fallbackBotUsername + "/app")
                 .channelUrl("https://t.me/KhLanOfficial")
                 .groupUrl("https://t.me/KhLanGroup")
                 .tmaEnabled(true)

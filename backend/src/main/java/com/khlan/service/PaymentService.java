@@ -56,6 +56,7 @@ public class PaymentService {
     private final ReceiptSlipParser receiptSlipParser;
     private final RealtimeService realtimeService;
     private final org.springframework.beans.factory.ObjectProvider<TelegramService> telegramServiceProvider;
+    private final org.springframework.beans.factory.ObjectProvider<CronSchedulerService> cronSchedulerProvider;
 
     private static final String SETTING_KEY_PAYMENT_CONFIG = "payment_config";
 
@@ -639,6 +640,20 @@ public class PaymentService {
         UserEntity admin = userRepository.findById(adminUserId).orElse(null);
         String adminName = admin != null ? admin.getName() : "Admin";
 
+        // Idempotency guard: Telegram inline buttons can be double-clicked and reconciliation
+        // can retry the same payment. Never extend the subscription twice for one payment.
+        if (("verify".equalsIgnoreCase(action) || "approve".equalsIgnoreCase(action))
+                && "VERIFIED".equalsIgnoreCase(payment.getStatus())) {
+            log.info("Payment {} is already VERIFIED; skipping duplicate activation.", paymentId);
+            TenantEntity tenant = tenantRepository.findById(payment.getTenantId()).orElse(null);
+            return toDTO(payment, tenant != null ? tenant.getName() : null, true);
+        }
+        if ("reject".equalsIgnoreCase(action) && "REJECTED".equalsIgnoreCase(payment.getStatus())) {
+            log.info("Payment {} is already REJECTED; skipping duplicate rejection.", paymentId);
+            TenantEntity tenant = tenantRepository.findById(payment.getTenantId()).orElse(null);
+            return toDTO(payment, tenant != null ? tenant.getName() : null, true);
+        }
+
         if ("verify".equalsIgnoreCase(action) || "approve".equalsIgnoreCase(action)) {
             payment.setStatus("VERIFIED");
             payment.setReviewedById(adminUserId);
@@ -942,7 +957,50 @@ public class PaymentService {
             return ingestAbaMessage(rawMessage, adminUserId, null, null);
         }
 
-        return syncTelegramUpdates(adminUserId);
+        if ("rescan".equalsIgnoreCase(action)) {
+            return syncAndReconcile(adminUserId, true);
+        }
+
+        return syncAndReconcile(adminUserId, false);
+    }
+
+    /**
+     * Manual sync must do everything the scheduled job does: pull new Telegram updates
+     * AND reconcile previously unmatched ABA transactions with pending payments.
+     */
+    @SuppressWarnings("unchecked")
+    private Map<String, Object> syncAndReconcile(String adminUserId, boolean rescan) {
+        Map<String, Object> result;
+        if (rescan) {
+            TelegramService telegramService = telegramServiceProvider.getIfAvailable();
+            result = telegramService != null
+                    ? telegramService.rescanUnconfirmedUpdates(adminUserId)
+                    : syncTelegramUpdates(adminUserId);
+        } else {
+            result = syncTelegramUpdates(adminUserId);
+        }
+
+        int reconciled = 0;
+        try {
+            CronSchedulerService cron = cronSchedulerProvider.getIfAvailable();
+            if (cron != null) {
+                reconciled = cron.reconcileAbaTransactions();
+            }
+        } catch (Exception e) {
+            log.warn("ABA reconciliation after sync failed: {}", e.getMessage());
+        }
+
+        Map<String, Object> merged = new LinkedHashMap<>(result);
+        merged.put("reconciledPayments", reconciled);
+        if (rescan) {
+            merged.put("mode", "rescan");
+        }
+        if (result.get("outcome") instanceof Map<?, ?> outcome) {
+            Map<String, Object> outcomeCopy = new LinkedHashMap<>((Map<String, Object>) outcome);
+            outcomeCopy.put("reconciledPayments", reconciled);
+            merged.put("outcome", outcomeCopy);
+        }
+        return merged;
     }
 
     @Transactional

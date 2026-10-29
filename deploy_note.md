@@ -30,6 +30,14 @@ Set these in your deployment platform:
 - `TELEGRAM_LOCAL_POLLING=true`: enables the unified 24/7 Telegram background poller inside Spring Boot (polls every 2s, automatically captures PayWay alerts, reconciles subscriptions, and updates inline approval buttons)
 - **Telegram Bot Privacy Mode**: In [@BotFather](https://t.me/BotFather), send `/setprivacy` → select `@KhLanOfficialBot` → choose **Disable** so Telegram's servers deliver unmentioned group PayWay alerts to the bot.
 
+### Telegram sync: polling vs. webhook
+
+- Use **one** `getUpdates` consumer per bot token. The Spring Boot poller is the default (`TELEGRAM_LOCAL_POLLING=true`). If you run the legacy `pnpm tg:daemon` instead, set `TELEGRAM_LOCAL_POLLING=false`; otherwise both processes compete and Telegram returns `409 Conflict: terminated by other getUpdates request`.
+- When `TELEGRAM_LOCAL_POLLING=false` and no `TELEGRAM_WEBHOOK_URL` is set, the backend leaves webhook/polling state untouched so it cannot disrupt the external poller.
+- The backend only confirms (advances past) a Telegram update after its ABA alert is persisted. A failed ingest halts the batch so Telegram re-delivers the alert on the next poll.
+- Telegram retains unconfirmed updates for roughly 24 hours. Use **Rescan Unconfirmed** in the ABA Transactions admin screen (`POST /api/admin/aba-transactions {"action":"rescan"}`) to re-fetch them. Older alerts must be imported with **Paste ABA Alert** (`{"action":"ingest","rawMessage":"..."}`).
+- `GET /api/admin/aba-transactions/daemon-status` reports `status`, `lastError`, `botTokenConfigured`, `groupChatConfigured`, and `nextUpdateOffset`; the admin UI surfaces these values.
+
 ## 4. Verification
 
 - `http://localhost/api/health`
