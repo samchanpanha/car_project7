@@ -129,4 +129,51 @@ export type AppDbClient = PrismaClient & {
   pendingStorageSync: any;
 };
 
-export const db: AppDbClient = ensureClient() as AppDbClient;
+let cachedClient: AppDbClient | undefined;
+
+function getClient(): AppDbClient {
+  if (!cachedClient) cachedClient = ensureClient() as AppDbClient;
+  return cachedClient;
+}
+
+/**
+ * Lazily-initialized Prisma client.
+ *
+ * `db` is a Proxy that only constructs the underlying `PrismaClient` on the
+ * FIRST property access instead of at module-evaluation time. Importing this
+ * module is therefore side-effect free, which matters because:
+ *
+ *  - Unit tests (vitest) import pure helpers from modules that transitively
+ *    pull in `@/lib/db` (e.g. lib/auth.ts, lib/platform-settings.ts,
+ *    lib/payments/ocr.ts). An eager client made every such suite crash at
+ *    collection time with "@prisma/client did not initialize yet".
+ *  - `next build` imports route modules during the "collect page data" phase;
+ *    an eager client turned a missing engine/DB into a hard build failure.
+ *  - Serverless/standalone cold starts no longer pay for a client they may
+ *    never use on a given request.
+ *
+ * Runtime behaviour in production is unchanged: Prisma itself already opens
+ * connections lazily on the first query.
+ */
+export const db: AppDbClient = new Proxy({} as AppDbClient, {
+  get(_target, prop) {
+    const client = getClient();
+    const value = Reflect.get(client, prop);
+    // Prisma exposes both delegate objects (`.vehicle`) and methods
+    // (`.$transaction`, `.$queryRawUnsafe`). Methods must stay bound to the
+    // real client so `this` is correct when called through the proxy.
+    return typeof value === "function" ? (value as (...a: unknown[]) => unknown).bind(client) : value;
+  },
+  set(_target, prop, value) {
+    return Reflect.set(getClient(), prop, value);
+  },
+  has(_target, prop) {
+    return Reflect.has(getClient(), prop);
+  },
+  ownKeys() {
+    return Reflect.ownKeys(getClient());
+  },
+  getOwnPropertyDescriptor(_target, prop) {
+    return Reflect.getOwnPropertyDescriptor(getClient(), prop);
+  },
+});

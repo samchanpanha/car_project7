@@ -313,12 +313,32 @@ public class CronSchedulerService {
                 .build());
     }
 
+    /**
+     * Authorize an externally-triggered maintenance sweep.
+     *
+     * FAILS CLOSED: if no {@code cron.secret} is configured the endpoint is
+     * rejected rather than left open. Previously a blank secret skipped the
+     * check entirely, and because {@code cron.secret} had no default in
+     * application.yml, {@code /api/cron/**} — which SecurityConfig also leaves
+     * public — could be triggered by anyone to force ABA bank reconciliation or
+     * fire subscription-expiry/reminder sweeps.
+     */
     private void validateCronAuth(String authHeader) {
-        if (cronSecret != null && !cronSecret.isBlank()) {
-            if (authHeader == null || !authHeader.equals("Bearer " + cronSecret)) {
-                throw new org.springframework.web.server.ResponseStatusException(
-                        org.springframework.http.HttpStatus.UNAUTHORIZED, "Unauthorized cron trigger");
-            }
+        if (cronSecret == null || cronSecret.isBlank()) {
+            log.error("[Cron] cron.secret is not configured — rejecting external trigger. "
+                    + "Set CRON_SECRET and send 'Authorization: Bearer <secret>'.");
+            throw new org.springframework.web.server.ResponseStatusException(
+                    org.springframework.http.HttpStatus.UNAUTHORIZED, "Cron triggers are not configured");
+        }
+
+        String expected = "Bearer " + cronSecret;
+        boolean ok = authHeader != null && java.security.MessageDigest.isEqual(
+                expected.getBytes(java.nio.charset.StandardCharsets.UTF_8),
+                authHeader.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+
+        if (!ok) {
+            throw new org.springframework.web.server.ResponseStatusException(
+                    org.springframework.http.HttpStatus.UNAUTHORIZED, "Unauthorized cron trigger");
         }
     }
 }

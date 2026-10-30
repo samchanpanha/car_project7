@@ -32,7 +32,10 @@ yarn-error.log*
 .pnpm-debug.log*
 
 # env files (can opt-in for committing if needed)
+# `.env` holds live credentials — keep it out of git and out of the Docker
+# build context. `.env.example` is the shareable template.
 .env*
+!.env.example
 
 # vercel
 .vercel
@@ -68,3 +71,14 @@ target/
 *.war
 *.class
 .flattened-pom.xml
+# Python bytecode (scripts/*.py, .agent/skills/**/scripts)
+__pycache__/
+**/__pycache__/
+*.py[cod]
+
+# Transient runtime artifacts
+*.pid
+.zscripts/dev.pid
+
+# Agent/tool scratch output (regenerable, never imported by the app)
+/tool-results/

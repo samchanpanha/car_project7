@@ -3,6 +3,7 @@ package com.khlan.service;
 import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.security.Keys;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
@@ -14,16 +15,38 @@ import java.security.MessageDigest;
 import java.util.Date;
 import java.util.HexFormat;
 
+@Slf4j
 @Service
 public class SessionTokenService {
 
     private final String authSecret;
     private static final long SESSION_TTL_MS = 30L * 24 * 60 * 60 * 1000; // 30 days
 
+    /**
+     * The public development fallback shared with the Next.js frontend
+     * (`src/lib/auth.ts`: `process.env.AUTH_SECRET || "khlan-dev-secret-change-me"`).
+     * Kept identical on both sides so a default docker-compose/local stack can
+     * actually verify each other's session tokens; flagged loudly at startup.
+     */
+    private static final String INSECURE_DEV_SECRET = "khlan-dev-secret-change-me";
+
     public SessionTokenService(@Value("${jwt.secret:khlan-dev-secret-change-me}") String authSecret) {
         // Fallback to Next.js default secret if standard jwt.secret is present or check AUTH_SECRET env
         String envSecret = System.getenv("AUTH_SECRET");
         this.authSecret = (envSecret != null && !envSecret.isBlank()) ? envSecret : authSecret;
+
+        if (this.authSecret == null || this.authSecret.isBlank()) {
+            // Never run with an empty key: an empty HMAC secret would let anyone
+            // forge a `khlan_auth` session cookie for any user id.
+            throw new IllegalStateException(
+                    "jwt.secret / AUTH_SECRET must not be blank — refusing to start with a forgeable session key");
+        }
+        if (INSECURE_DEV_SECRET.equals(this.authSecret)) {
+            log.warn("[Security] Session/JWT signing is using the well-known development default '{}'. "
+                    + "Any party able to read the source tree can forge session cookies. "
+                    + "Set JWT_SECRET (or AUTH_SECRET) to a long random value in every deployed environment.",
+                    INSECURE_DEV_SECRET);
+        }
     }
 
     /**

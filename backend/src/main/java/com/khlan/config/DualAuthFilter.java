@@ -27,6 +27,9 @@ public class DualAuthFilter extends OncePerRequestFilter {
     private final SessionTokenService sessionTokenService;
     private final UserRepository userRepository;
 
+    /** Resolved once — {@code APP_DEMO_MODE} is a process-level constant. */
+    private volatile Boolean demoModeEnabledCache;
+
     public static final String AUTH_COOKIE = "khlan_auth";
     public static final String PERSONA_COOKIE = "khlan_persona";
     public static final String SESSION_HEADER = "x-khlan-session";
@@ -115,12 +118,42 @@ public class DualAuthFilter extends OncePerRequestFilter {
         return null;
     }
 
+    /**
+     * Demo personas (`khlan_persona` cookie / `x-khlan-persona` header) let a
+     * caller become any of {@link #ALLOWED_PERSONA_IDS} — including
+     * {@code usr_admin} — with no credential at all.
+     *
+     * This therefore FAILS CLOSED: when {@code APP_DEMO_MODE} is not set
+     * explicitly, demo persona authentication is DISABLED. It previously
+     * defaulted to {@code true}, and because docker-compose did not pass
+     * {@code APP_DEMO_MODE} to the backend container, every containerized
+     * deployment silently shipped an unauthenticated admin bypass (send
+     * {@code x-khlan-persona: usr_admin} on any request).
+     *
+     * Set {@code APP_DEMO_MODE=true} deliberately for local/demo environments.
+     */
     private boolean isDemoModeEnabled() {
+        Boolean cached = demoModeEnabledCache;
+        if (cached != null) return cached;
+
         String value = System.getenv("APP_DEMO_MODE");
         if (value == null) value = System.getProperty("app.demo.mode");
+
+        boolean enabled;
         if (value == null || value.isBlank()) {
-            return true; // Keep local/demo behavior unless explicitly disabled
+            enabled = false; // fail closed — never infer "demo" from absence of config
+            log.warn("[Security] APP_DEMO_MODE is not set — demo persona authentication is DISABLED. "
+                    + "Set APP_DEMO_MODE=true explicitly for local/demo environments.");
+        } else {
+            enabled = Boolean.parseBoolean(value.trim());
+            if (enabled) {
+                log.warn("[Security] APP_DEMO_MODE=true — demo persona authentication is ENABLED. "
+                        + "Any request may impersonate {} via the '{}' header/cookie. "
+                        + "NEVER enable this in production.", ALLOWED_PERSONA_IDS, PERSONA_HEADER);
+            }
         }
-        return Boolean.parseBoolean(value.trim());
+
+        demoModeEnabledCache = enabled;
+        return enabled;
     }
 }

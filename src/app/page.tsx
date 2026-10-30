@@ -37,8 +37,11 @@ function FavoritesBoot() {
   const { data } = useFetch<{ vehicleIds: string[] }>("/api/favorites");
   useEffect(() => {
     if (data?.vehicleIds) setFavorites(data.vehicleIds);
-
-  }, [data?.vehicleIds.join(",")]);
+    // `vehicleIds` can be absent when the endpoint answers with an unexpected
+    // body (e.g. an HTML error page coerced to `{}`), so guard the optional
+    // chain all the way through — `data?.vehicleIds.join()` would throw a
+    // TypeError during render and take down the whole page tree.
+  }, [data?.vehicleIds?.join(",")]);
   return null;
 }
 

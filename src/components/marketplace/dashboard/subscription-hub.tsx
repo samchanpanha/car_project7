@@ -6,6 +6,7 @@ import { useFetch, apiSend } from "@/lib/client-hooks";
 import { useRealtimeEvent } from "@/hooks/use-realtime";
 import { formatUsd } from "@/lib/format";
 import type { PlanDTO, TenantDashboardDTO, SubscriptionDTO } from "@/lib/dashboard-types";
+import { TENANT_DASHBOARD_ENDPOINT } from "@/lib/dashboard-types";
 import { RequestSubscriptionDialog, PendingPaymentBanner } from "./payment-flow";
 import { EmptyState, FetchErrorState } from "./bits";
 import { Button } from "@/components/ui/button";
@@ -24,7 +25,7 @@ import { cn } from "@/lib/utils";
 export function SubscriptionHub({ isDealer = true }: { isDealer?: boolean }) {
   const t = useT();
   const me = useAppStore((s) => s.me);
-  const { data, loading, error, refetch } = useFetch<TenantDashboardDTO>("/api/tenant/dashboard");
+  const { data, loading, error, refetch } = useFetch<TenantDashboardDTO>(TENANT_DASHBOARD_ENDPOINT);
 
   const [cycle, setCycle] = useState<"MONTHLY" | "YEARLY">("MONTHLY");
   const [requestPlan, setRequestPlan] = useState<PlanDTO | null>(null);

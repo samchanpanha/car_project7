@@ -13,11 +13,23 @@ const nextConfig: NextConfig = {
   reactStrictMode: false,
 
   /**
-   * Proxy all /api/* requests to the Spring Boot backend.
+   * Proxy /api/* requests to the Spring Boot backend.
    *
-   * Next.js rewrites happen BEFORE its own route handlers, so any matching
-   * /api/* path is forwarded to backend:8080 without ever reaching the
-   * Next.js API route files.  Those route files have been removed.
+   * Precedence matters here, so keep the two buckets straight:
+   *
+   *   beforeFiles → filesystem (public/, static, App Router route handlers)
+   *               → afterFiles → dynamic routes → fallback
+   *
+   * The catch-all lives in `fallback`, which runs LAST. That is deliberate:
+   * it lets a Next.js route handler win over the proxy. `src/app/api/ocr/route.ts`
+   * depends on this — it must execute in-process (Sharp + Tesseract.js) and must
+   * NOT be forwarded to the backend, which has no /api/ocr endpoint.
+   *
+   * Anything under /api/* with no matching route handler (vehicles, auth, tenant,
+   * admin, payments, realtime, uploads, …) falls through to Spring Boot.
+   *
+   * `afterFiles` is used for /api/uploads/:file so the object-storage file
+   * serving is proxied explicitly rather than relying on fallthrough.
    *
    * The rewrite applies to both server-side (SSR) and client-side fetch calls.
    */

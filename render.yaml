@@ -1,8 +1,9 @@
 services:
   # -------------------------------------------------------------
-  # Next.js All-in-One Web Service on Render
-  # Runs Next.js standalone web server, embedded SQLite DB,
-  # and optional Telegram sync daemon in a single Docker container.
+  # Next.js Web Service on Render (Dockerfile `web` stage).
+  # Talks to the Spring Boot backend via BACKEND_URL and to a managed
+  # PostgreSQL via DATABASE_URL — the earlier "embedded SQLite" description is
+  # stale: prisma/schema.prisma now uses provider = "postgresql".
   # -------------------------------------------------------------
   - type: web
     name: khlan-marketplace
@@ -14,10 +15,26 @@ services:
       # Application & Database Configuration
       - key: NODE_ENV
         value: production
+      # Prisma's datasource provider is `postgresql` (see prisma/schema.prisma),
+      # so a `file:` SQLite URL is invalid here and Prisma refuses to start.
+      # Supply a managed PostgreSQL connection string in the Render dashboard.
       - key: DATABASE_URL
-        value: file:/app/db/custom.db
-      - key: NEXTAUTH_SECRET
+        sync: false
+      # Signs/verifies the `khlan_auth` session cookie. The code reads
+      # AUTH_SECRET (src/lib/auth.ts, SessionTokenService) — NEXTAUTH_SECRET was
+      # never consulted by anything, so Render deployments silently ran on the
+      # public "khlan-dev-secret-change-me" fallback.
+      - key: AUTH_SECRET
         generateValue: true
+      # NOTE: do NOT add a second generated secret (e.g. JWT_SECRET) here —
+      # `generateValue: true` picks an independent random value per key, and the
+      # backend prefers AUTH_SECRET anyway. One shared AUTH_SECRET is the single
+      # source of truth for session signing on both sides.
+      # Demo persona login grants any caller usr_admin with no password.
+      - key: APP_DEMO_MODE
+        value: "false"
+      - key: CORS_ALLOWED_ORIGINS
+        value: https://khlan-marketplace.onrender.com
       - key: NEXTAUTH_URL
         value: https://khlan-marketplace.onrender.com
 

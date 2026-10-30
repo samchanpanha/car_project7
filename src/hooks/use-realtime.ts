@@ -32,6 +32,14 @@ export function useRealtime() {
   const eventSourceRef = useRef<EventSource | null>(null);
   const reconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const retryCountRef = useRef(0);
+  /**
+   * Holds the newest `connect` implementation. The reconnect timer created
+   * inside `es.onerror` must call this ref rather than the `connect` binding
+   * captured when the handler was created — otherwise a reconnect after `me`
+   * changed would replay a stale closure (and referencing `connect` inside its
+   * own initializer trips the react-hooks/immutability rule).
+   */
+  const connectRef = useRef<() => void>(() => {});
 
   const connect = useCallback(() => {
     if (typeof window === "undefined") return;
@@ -116,10 +124,16 @@ export function useRealtime() {
       const delay = Math.min(15000, 1000 * Math.pow(2, retryCountRef.current));
       retryCountRef.current += 1;
       reconnectTimeoutRef.current = setTimeout(() => {
-        connect();
+        connectRef.current();
       }, delay);
     };
   }, [me]);
+
+  // Keep the ref pointed at the latest `connect` so the backoff timer above
+  // always re-runs the current implementation.
+  useEffect(() => {
+    connectRef.current = connect;
+  }, [connect]);
 
   useEffect(() => {
     connect();
@@ -143,7 +157,13 @@ export function useRealtimeEvent(
   handler: (event: RealtimeEvent) => void,
 ) {
   const handlerRef = useRef(handler);
-  handlerRef.current = handler;
+
+  // Refs must not be written during render (react-hooks/refs): syncing in an
+  // effect keeps the listener below pointed at the newest handler without
+  // mutating a ref while React is rendering.
+  useEffect(() => {
+    handlerRef.current = handler;
+  }, [handler]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;

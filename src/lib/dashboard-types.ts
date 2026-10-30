@@ -321,6 +321,17 @@ export type TelegramDest = "MINIAPP" | "CHANNEL" | "GROUP";
 
 // ---------- Tenant / Dealer ----------
 
+/**
+ * Canonical endpoint returning {@link TenantDashboardDTO}.
+ *
+ * The Spring Boot backend serves this payload at `/api/tenant/me` (with
+ * `/api/tenant/dashboard` kept as an alias). Some panels used to request the
+ * alias only, which 404'd and left the Subscription Hub / Dealer Staff views
+ * stuck in an error state — so every caller shares this constant instead of
+ * hard-coding a path that can drift from the backend route table.
+ */
+export const TENANT_DASHBOARD_ENDPOINT = "/api/tenant/me";
+
 export interface TenantDashboardDTO {
   tenant: {
     id: string;

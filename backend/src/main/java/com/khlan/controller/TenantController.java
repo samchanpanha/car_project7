@@ -37,7 +37,14 @@ public class TenantController {
         return user.getId();
     }
 
-    @GetMapping("/api/tenant/me")
+    /**
+     * Canonical tenant dashboard payload.
+     *
+     * `/api/tenant/dashboard` is kept as an alias because the frontend
+     * Subscription Hub and Dealer Staff panels request that path; without it
+     * those calls fell through to a 404 and the panels rendered an error state.
+     */
+    @GetMapping({"/api/tenant/me", "/api/tenant/dashboard"})
     public ResponseEntity<TenantDTO.TenantDashboardDTO> getDashboard(@AuthenticationPrincipal UserEntity user) {
         return ResponseEntity.ok(tenantService.getDashboard(requireUserId(user)));
     }

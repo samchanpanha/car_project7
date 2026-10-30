@@ -64,11 +64,35 @@ telegram:
   webhook-url: ${TELEGRAM_WEBHOOK_URL:}
   local-polling: ${TELEGRAM_LOCAL_POLLING:true}
 
-# JWT Security Configuration
+# JWT / Session Security Configuration
+#
+# IMPORTANT: this secret signs BOTH the backend's JWTs and the HMAC
+# `khlan_auth` session cookie that the Next.js frontend issues/verifies
+# (src/lib/auth.ts uses `process.env.AUTH_SECRET || "khlan-dev-secret-change-me"`).
+#
+# It must therefore be STABLE and SHARED between the frontend and backend
+# containers. It previously defaulted to `${random.uuid}${random.uuid}`, which
+# meant that in a docker-compose deployment (where neither JWT_SECRET nor
+# AUTH_SECRET was passed):
+#   - every backend restart minted a new secret, invalidating all sessions;
+#   - tokens signed by the frontend never verified on the backend and
+#     vice-versa, so real (non-demo) logins were silently broken;
+#   - replicas of the backend could not read each other's tokens.
+# The default now matches the frontend's development fallback so the two sides
+# agree out of the box; set JWT_SECRET/AUTH_SECRET in any real deployment.
 jwt:
-  secret: ${JWT_SECRET:${random.uuid}${random.uuid}}
+  secret: ${JWT_SECRET:${AUTH_SECRET:khlan-dev-secret-change-me}}
   access-token-expiration-ms: 86400000 # 24 hours
   refresh-token-expiration-ms: 604800000 # 7 days
+
+# Shared secret protecting the externally-triggerable maintenance endpoints
+# under /api/cron/** (see CronSchedulerService.validateCronAuth).
+# Callers must send `Authorization: Bearer <cron.secret>`.
+# A non-blank default keeps the check enforced even when CRON_SECRET is unset —
+# with an empty value validateCronAuth() skipped the check entirely, leaving
+# the ABA reconciliation and subscription-reminder sweeps world-triggerable.
+cron:
+  secret: ${CRON_SECRET:khlan-cron-secret-change-me}
 
 # Observability & Metrics
 management:

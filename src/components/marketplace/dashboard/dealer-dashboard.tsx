@@ -11,6 +11,7 @@ import type {
   SessionDTO, TenantDashboardDTO, TenantVehicleRowDTO, TenantLeadDTO, TenantAppointmentDTO,
   TenantMemberDTO, TenantStaffResponseDTO, PlanDTO, SubscriptionDTO,
 } from "@/lib/dashboard-types";
+import { TENANT_DASHBOARD_ENDPOINT } from "@/lib/dashboard-types";
 import type { VehicleStatus } from "@/lib/types";
 import { DashboardShell, type DashboardTabDef } from "./shell";
 import { RequestSubscriptionDialog, TenantPaymentHistory, PendingPaymentBanner, SubscriptionPaywallCard } from "./payment-flow";
@@ -904,7 +905,7 @@ function DealerStaff({ isManagerOrOwner = true }: { isManagerOrOwner?: boolean }
   const t = useT();
   const navigate = useAppStore((s) => s.navigate);
   const { data, loading, error, refetch } = useFetch<TenantStaffResponseDTO | TenantMemberDTO[]>("/api/tenant/staff");
-  const { data: dashData } = useFetch<TenantDashboardDTO>("/api/tenant/dashboard");
+  const { data: dashData } = useFetch<TenantDashboardDTO>(TENANT_DASHBOARD_ENDPOINT);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [inviteOpen, setInviteOpen] = useState(false);
   const [invName, setInvName] = useState("");

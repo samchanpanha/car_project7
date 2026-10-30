@@ -49,6 +49,29 @@ assert_contains() {
 }
 
 # ------------------------------------------------------------------------------
+# Stage 0: Preflight — demo persona authentication
+#
+# Every admin assertion below authenticates with `x-khlan-persona: usr_admin`.
+# That header is only honoured when the backend runs with APP_DEMO_MODE=true
+# (DualAuthFilter). Demo mode now FAILS CLOSED when the variable is unset, so
+# warn loudly instead of letting ~30 checks report confusing 401/403 failures.
+# ------------------------------------------------------------------------------
+log_section "Stage 0: Preflight — Demo Persona Authentication"
+DEMO_MODE="$(docker compose exec -T backend printenv APP_DEMO_MODE 2>/dev/null || echo "")"
+if [ "$DEMO_MODE" = "true" ]; then
+  echo -e "  [${GREEN}PASS${NC}] Backend APP_DEMO_MODE=true — persona-header auth is available for these checks."
+  PASSED=$((PASSED + 1))
+else
+  echo -e "  [${YELLOW}WARN${NC}] Backend APP_DEMO_MODE is '${DEMO_MODE:-<unset>}'."
+  echo -e "        This suite signs in with 'x-khlan-persona: usr_admin', which the backend"
+  echo -e "        only accepts in demo mode. Admin checks below will report 401/403."
+  echo -e "        To run this suite against a demo stack:"
+  echo -e "          echo 'APP_DEMO_MODE=true' >> .env && docker compose up -d backend"
+  echo -e "        (Do NOT enable demo mode on any internet-reachable deployment — it is an"
+  echo -e "         unauthenticated admin bypass. Prefer a real session token for prod checks.)"
+fi
+
+# ------------------------------------------------------------------------------
 # Stage 1: Container Fleet Status
 # ------------------------------------------------------------------------------
 log_section "Stage 1: Container Fleet Health & Up Status"

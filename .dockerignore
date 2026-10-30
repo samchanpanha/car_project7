@@ -8,9 +8,22 @@ node_modules
 out
 build
 
+# ------------------------------------------------------------
+# SECRETS — never bake these into an image layer.
+# `COPY . .` in the builder stage previously pulled the tracked .env (live
+# Cloudflare R2 keys + Telegram bot token) into the image, where it stays
+# readable by anyone who can pull the image, forever.
+# All runtime configuration is injected by docker-compose `environment:`.
+# ------------------------------------------------------------
+.env
+.env.*
+!.env.example
+*.pem
+
 # Git and IDE
 .git
 .gitignore
+.github
 .vscode
 .idea
 .claude
@@ -36,6 +49,38 @@ uploads/*
 *.traineddata
 *.bak*
 
+# ------------------------------------------------------------
+# Not part of the frontend image — excluded to shrink the build context.
+# The Spring Boot backend is built from its own context (./backend).
+# nginx/ and monitoring/ are bind-mounted from the host by docker-compose,
+# so they do not need to be inside the image either.
+# ------------------------------------------------------------
+backend
+nginx
+monitoring
+Caddyfile
+render.yaml
+docker-compose.yml
+Dockerfile
+
+# NOTE: docker-entrypoint.sh must stay in the build context — both the `web`
+# and `daemon` stages do `COPY docker-entrypoint.sh /usr/local/bin/`.
+
+# Agent / planning artifacts
+.agent
+agent-ctx
+scratch
+tool-results
+download
+mini-services
+
+# Large planning docs (build context only, never imported by the app)
+PLAN.md
+worklog.md
+ARCHITECTURE_MIGRATION_PLAN.md
+PROMOTIONAL_VIDEO_SCRIPTS.md
+SYSTEM_USER_GUIDE.md
+deploy_note.md
+
 # Misc
 .DS_Store
-*.pem
