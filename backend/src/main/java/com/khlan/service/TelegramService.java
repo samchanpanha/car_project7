@@ -2,7 +2,6 @@ package com.khlan.service;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.core.type.TypeReference;
 import com.khlan.dto.PaymentDTO;
 import com.khlan.dto.RealtimeEventDTO;
 import com.khlan.dto.TelegramDTO;
@@ -40,7 +39,6 @@ public class TelegramService {
 
     private final SellerProfileRepository sellerProfileRepository;
     private final TelegramInviteEventRepository telegramInviteEventRepository;
-    private final AbaTransactionRepository abaTransactionRepository;
     private final PaymentService paymentService;
     private final PlatformSettingRepository platformSettingRepository;
     private final AuditLogRepository auditLogRepository;
@@ -678,15 +676,13 @@ public class TelegramService {
     }
 
     @Transactional
-    @SuppressWarnings("unchecked")
     public Map<String, Object> handleWebhookUpdate(Map<String, Object> update) {
         log.info("Received Telegram webhook update: keys={}", update.keySet());
 
         // 1. Check callback query (inline button clicks e.g., approve:<id> or reject:<id>)
-        if (update.containsKey("callback_query")) {
-            Map<String, Object> cb = (Map<String, Object>) update.get("callback_query");
-            String cbId = (String) cb.get("id");
-            String data = (String) cb.get("data");
+        if (update.get("callback_query") instanceof Map<?, ?> cb) {
+            String cbId = cb.get("id") instanceof String id ? id : null;
+            String data = cb.get("data") instanceof String value ? value : null;
             if (data != null && data.contains(":")) {
                 String[] parts = data.split(":", 2);
                 String action = parts[0];
@@ -700,11 +696,12 @@ public class TelegramService {
                     String resultText = "approve".equalsIgnoreCase(action) ? "✅ Approved" : "❌ Rejected";
                     answerCallbackQuery(token, cbId, resultText, false);
 
-                    Map<String, Object> msg = cb.get("message") instanceof Map ? (Map<String, Object>) cb.get("message") : null;
+                    Map<?, ?> msg = cb.get("message") instanceof Map<?, ?> message ? message : null;
                     if (msg != null) {
-                        Object chatId = ((Map<String, Object>) msg.get("chat")).get("id");
+                        Map<?, ?> chat = msg.get("chat") instanceof Map<?, ?> chatMap ? chatMap : null;
+                        Object chatId = chat != null ? chat.get("id") : null;
                         Object messageId = msg.get("message_id");
-                        String oldText = (String) msg.get("text");
+                        String oldText = msg.get("text") instanceof String text ? text : null;
                         if (chatId != null && messageId != null) {
                             String newText;
                             if (oldText != null && oldText.contains("Status")) {
@@ -730,22 +727,14 @@ public class TelegramService {
         }
 
         // 2. Check message / channel post (ABA PayWay bank receipt alerts, seller bot commands)
-        Map<String, Object> msg = null;
-        if (update.get("message") instanceof Map<?, ?> m) {
-            @SuppressWarnings("unchecked")
-            Map<String, Object> cast = (Map<String, Object>) m;
-            msg = cast;
-        } else if (update.get("channel_post") instanceof Map<?, ?> cp) {
-            @SuppressWarnings("unchecked")
-            Map<String, Object> cast = (Map<String, Object>) cp;
-            msg = cast;
-        }
+        Map<?, ?> msg = update.get("message") instanceof Map<?, ?> message ? message
+                : update.get("channel_post") instanceof Map<?, ?> channelPost ? channelPost : null;
         if (msg != null) {
-            String text = (String) msg.get("text");
-            if (text == null) text = (String) msg.get("caption");
+            String text = msg.get("text") instanceof String messageText ? messageText : null;
+            if (text == null && msg.get("caption") instanceof String caption) text = caption;
 
             Object chatObj = msg.get("chat");
-            String chatId = chatObj instanceof Map ? String.valueOf(((Map<?, ?>) chatObj).get("id")) : null;
+            String chatId = chatObj instanceof Map<?, ?> chat ? String.valueOf(chat.get("id")) : null;
 
             if (text != null && text.trim().startsWith("/start")) {
                 handleStartCommand(chatId, text.trim());
@@ -1482,4 +1471,3 @@ public class TelegramService {
         }
     }
 }
-

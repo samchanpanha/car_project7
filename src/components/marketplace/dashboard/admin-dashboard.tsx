@@ -1800,7 +1800,7 @@ function AdminAbaTransactionsView({ onVerified }: { onVerified?: () => void }) {
     return () => clearInterval(timer);
   }, [refetch]);
 
-  const syncGroup = async (action: "sync" | "rescan" = "sync") => {
+  const syncGroup = async (action: "sync" | "rescan" | "syncAllHistory" = "sync") => {
     setSyncing(true);
     try {
       const res = await apiSend<AbaSyncResponseDTO>("/api/admin/aba-transactions", "POST", { action });
@@ -1838,13 +1838,15 @@ function AdminAbaTransactionsView({ onVerified }: { onVerified?: () => void }) {
       if (outcome.duplicatesPrevented > 0) parts.push(`${outcome.duplicatesPrevented} duplicate(s) blocked`);
       if (outcome.sameTimeCollisions > 0) parts.push(`${outcome.sameTimeCollisions} collision(s) flagged`);
 
-      const prefix = action === "rescan" ? "Rescan Complete" : "Sync Complete";
+      const prefix = action === "rescan" ? "Rescan Complete" : (action === "syncAllHistory" ? "Sync All History Complete" : "Sync Complete");
       if (parts.length > 0) {
         toast.success(`${prefix}: ${parts.join(", ")}!`);
       } else if (outcome.processed === 0) {
         toast.info(
           action === "rescan"
             ? "No unconfirmed Telegram updates remain. Telegram only retains undelivered updates for about 24 hours, so older alerts must be imported with Paste ABA Alert."
+            : action === "syncAllHistory"
+            ? "No history updates were found from Telegram. Older alerts must be imported with Paste ABA Alert if they are outside the retention window."
             : "No new Telegram updates were found. Sync only receives alerts posted after the last sync; use Rescan for recent undelivered alerts or Paste ABA Alert for older payments.",
           { duration: 9000 },
         );
@@ -1976,7 +1978,7 @@ function AdminAbaTransactionsView({ onVerified }: { onVerified?: () => void }) {
               <code className="rounded bg-sky-100 px-1.5 py-0.5 font-mono text-[11px] text-sky-900">{daemon?.targetChatId || "-1004489863210"}</code> (MyABApayway) day-by-day.
               Automatically checks deduplication, verifies concurrent same-time transactions, and auto-activates subscriptions.
               <span className="block mt-1 text-[11px] text-slate-500">
-                <strong>Sync Group Now</strong> pulls only new alerts and reconciles pending payments. <strong>Rescan Unconfirmed</strong> re-fetches alerts Telegram still retains (about 24h). Older alerts must be imported with <em>Paste ABA Alert</em>.
+                <strong>Sync Group Now</strong> pulls only new alerts and reconciles pending payments. <strong>Rescan Unconfirmed</strong> re-fetches alerts Telegram still retains (about 24h). <strong>Sync All History</strong> forces a full history sweep via rescan and reconciliation. Older alerts must be imported with <em>Paste ABA Alert</em>.
               </span>
             </p>
           </div>
@@ -2010,6 +2012,17 @@ function AdminAbaTransactionsView({ onVerified }: { onVerified?: () => void }) {
             >
               <ShieldCheck className={cn("h-3.5 w-3.5 mr-1.5 text-sky-600", verifying && "animate-spin")} />
               {verifying ? "Auditing..." : "Verify & Check All"}
+            </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => syncGroup("syncAllHistory")}
+              disabled={syncing || verifying || clearing}
+              className="border-violet-300 bg-white text-violet-800 hover:bg-violet-100/70 text-xs font-semibold cursor-pointer shadow-xs"
+              title="Force sync and reconcile all available ABA history from Telegram"
+            >
+              <RefreshCw className={cn("h-3.5 w-3.5 mr-1.5 text-violet-600", syncing && "animate-spin")} />
+              Sync All History
             </Button>
             <Button
               size="sm"

@@ -1,0 +1,11 @@
+spring:
+  datasource:
+    url: jdbc:postgresql://localhost:5432/khlandb
+    username: khlan
+    password: khlan_secret_2026
+  cloud:
+    nacos:
+      config:
+        enabled: false
+      discovery:
+        enabled: false

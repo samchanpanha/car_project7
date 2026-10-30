@@ -5,7 +5,7 @@ import { useT } from "@/hooks/use-t";
 import { useFetch, apiSend } from "@/lib/client-hooks";
 import { useRealtimeEvent } from "@/hooks/use-realtime";
 import { formatUsd } from "@/lib/format";
-import type { PlanDTO, TenantDashboardDTO, SubscriptionDTO } from "@/lib/dashboard-types";
+import type { PlanDTO, TenantDashboardDTO, SubscriptionDTO, SellerSubscriptionDTO } from "@/lib/dashboard-types";
 import { RequestSubscriptionDialog, PendingPaymentBanner } from "./payment-flow";
 import { EmptyState, FetchErrorState } from "./bits";
 import { Button } from "@/components/ui/button";
@@ -24,7 +24,8 @@ import { cn } from "@/lib/utils";
 export function SubscriptionHub({ isDealer = true }: { isDealer?: boolean }) {
   const t = useT();
   const me = useAppStore((s) => s.me);
-  const { data, loading, error, refetch } = useFetch<TenantDashboardDTO>("/api/tenant/dashboard");
+  const apiUrl = isDealer ? "/api/tenant/dashboard" : "/api/seller/subscription";
+  const { data, loading, error, refetch } = useFetch(apiUrl);
 
   const [cycle, setCycle] = useState<"MONTHLY" | "YEARLY">("MONTHLY");
   const [requestPlan, setRequestPlan] = useState<PlanDTO | null>(null);
@@ -49,22 +50,33 @@ export function SubscriptionHub({ isDealer = true }: { isDealer?: boolean }) {
 
   if (error && !data) return <FetchErrorState message={error} onRetry={refetch} />;
 
-  const sub = data?.subscription ?? null;
+  // Handle both tenant dashboard data and seller subscription data
+  let sub: SubscriptionDTO | SellerSubscriptionDTO | null = null;
+  if (isDealer && data) {
+    // Tenant (dealer) case
+    sub = (data as TenantDashboardDTO).subscription ?? null;
+  } else if (!isDealer && data) {
+    // Individual seller/dealer case
+    sub = data as SellerSubscriptionDTO;
+  }
+  
   const planTier = (sub?.plan || "FREE").toUpperCase();
-  const isPaid = planTier !== "FREE";
+  const isPaid = planTier !== "FREE" && planTier !== "FREE_TRIAL";
   const isExpired = sub?.status === "EXPIRED" || sub?.status === "PAST_DUE";
 
-  // Calculate live quotas
-  const publishedListings = data?.stats?.published ?? 0;
-  const listingsLimit = sub?.listingsLimit ?? (planTier === "ENTERPRISE" ? 1000 : planTier === "PRO" ? 50 : 15);
-  const listingsPct = Math.min(100, Math.round((publishedListings / Math.max(1, listingsLimit)) * 100));
+  // Calculate live quotas (only applicable for tenant/dealer accounts)
+  const isTenantSubscription = sub && "listingsLimit" in sub;
+  const tenantData = isDealer ? (data as TenantDashboardDTO) : null;
+  const publishedListings = (isDealer && tenantData?.stats?.published) ?? 0;
+  const listingsLimit = isTenantSubscription && sub ? (sub as SubscriptionDTO).listingsLimit : (planTier === "ENTERPRISE" ? 1000 : planTier === "PRO" ? 50 : 15);
+  const listingsPct = Math.min(100, Math.round(((publishedListings as number) / Math.max(1, listingsLimit as number)) * 100));
 
-  const activeSeats = data?.members?.filter((m) => m.status === "ACTIVE").length ?? 1;
-  const seatsLimit = sub?.seats ?? (planTier === "ENTERPRISE" ? 20 : planTier === "PRO" ? 5 : 1);
-  const seatsPct = Math.min(100, Math.round((activeSeats / Math.max(1, seatsLimit)) * 100));
+  const activeSeats = (isDealer && tenantData?.members?.filter((m) => m.status === "ACTIVE").length) ?? 1;
+  const seatsLimit = isTenantSubscription && sub ? (sub as SubscriptionDTO).seats : (planTier === "ENTERPRISE" ? 20 : planTier === "PRO" ? 5 : 1);
+  const seatsPct = Math.min(100, Math.round(((activeSeats as number) / Math.max(1, seatsLimit as number)) * 100));
 
   const branchLimit = planTier === "ENTERPRISE" ? 10 : planTier === "PRO" ? 3 : 1;
-  const featuredLimit = sub?.featuredLimit ?? (planTier === "ENTERPRISE" ? 50 : planTier === "PRO" ? 10 : 2);
+  const featuredLimit = isTenantSubscription && sub ? (sub as SubscriptionDTO).featuredLimit : (planTier === "ENTERPRISE" ? 50 : planTier === "PRO" ? 10 : 2);
 
   // Parse remaining days
   let daysRemaining: number | null = null;
@@ -107,7 +119,7 @@ export function SubscriptionHub({ isDealer = true }: { isDealer?: boolean }) {
     },
   ];
 
-  const plans: PlanDTO[] = (data?.plans as unknown as PlanDTO[]) ?? fallbackPlans;
+  const plans: PlanDTO[] = isDealer && tenantData?.plans ? tenantData.plans : fallbackPlans;
 
   return (
     <div className="space-y-6">
@@ -202,7 +214,7 @@ export function SubscriptionHub({ isDealer = true }: { isDealer?: boolean }) {
               <p className="text-xs text-slate-500">
                 {daysRemaining !== null ? (
                   <span>
-                    Renews in <b>{daysRemaining} days</b> ({sub?.billingCycle === "YEARLY" ? "Yearly billing" : "Monthly billing"})
+                    Renews in <b>{daysRemaining} days</b> ({'billingCycle' in (sub || {}) && (sub as SubscriptionDTO)?.billingCycle === "YEARLY" ? "Yearly billing" : "Monthly billing"})
                   </span>
                 ) : (
                   "Standard Starter Plan with basic listing capacity"
@@ -253,7 +265,7 @@ export function SubscriptionHub({ isDealer = true }: { isDealer?: boolean }) {
             </div>
             <Progress value={listingsPct} className="h-2" />
             <p className="text-[10px] text-slate-500">
-              {listingsLimit - publishedListings} listings remaining
+               {(listingsLimit as number) - (publishedListings as number)} listings remaining
             </p>
           </div>
 
@@ -287,7 +299,7 @@ export function SubscriptionHub({ isDealer = true }: { isDealer?: boolean }) {
             </div>
             <Progress value={seatsPct} className="h-2" />
             <p className="text-[10px] text-slate-500">
-              {seatsLimit - activeSeats} seats available to invite
+               {(seatsLimit as number) - (activeSeats as number)} seats available to invite
             </p>
           </div>
 

@@ -16,10 +16,6 @@ import org.springframework.web.multipart.MultipartFile;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.io.ByteArrayOutputStream;
-import java.net.URI;
-import java.net.http.HttpClient;
-import java.net.http.HttpRequest;
-import java.net.http.HttpResponse;
 import java.security.MessageDigest;
 import java.time.Duration;
 import java.time.LocalDate;
@@ -961,7 +957,63 @@ public class PaymentService {
             return syncAndReconcile(adminUserId, true);
         }
 
+        if ("syncall".equalsIgnoreCase(action)
+                || "sync_all".equalsIgnoreCase(action)
+                || "syncallhistory".equalsIgnoreCase(action)
+                || "sync_all_history".equalsIgnoreCase(action)
+                || "sync_all_history_transactions".equalsIgnoreCase(action)
+                || "syncall-hist".equalsIgnoreCase(action)
+                || "syncAllHistory".equals(action)
+                || "history".equalsIgnoreCase(action)
+                || "sync_history".equalsIgnoreCase(action)
+                || "fullsync".equalsIgnoreCase(action)
+                || "full_sync".equalsIgnoreCase(action)
+                || "sync-history".equalsIgnoreCase(action)
+                || "sync_history_all".equalsIgnoreCase(action)) {
+            return syncAllHistory(adminUserId);
+        }
+
         return syncAndReconcile(adminUserId, false);
+    }
+
+    @SuppressWarnings("unchecked")
+    private Map<String, Object> syncAllHistory(String adminUserId) {
+        log.info("[ABA] syncAllHistory requested by {}", adminUserId);
+        TelegramService telegramService = telegramServiceProvider.getIfAvailable();
+        Map<String, Object> result = telegramService != null
+                ? telegramService.rescanUnconfirmedUpdates(adminUserId)
+                : syncTelegramUpdates(adminUserId);
+
+        int reconciled = 0;
+        try {
+            CronSchedulerService cron = cronSchedulerProvider.getIfAvailable();
+            if (cron != null) {
+                reconciled = cron.reconcileAbaTransactions();
+            }
+        } catch (Exception e) {
+            log.warn("ABA reconciliation after full history sync failed: {}", e.getMessage());
+        }
+
+        try {
+            CronSchedulerService cron = cronSchedulerProvider.getIfAvailable();
+            if (cron != null) {
+                int extra = cron.reconcileAbaTransactions();
+                if (extra > reconciled) {
+                    reconciled = extra;
+                }
+            }
+        } catch (Exception ignored) {
+        }
+
+        Map<String, Object> merged = new LinkedHashMap<>(result);
+        merged.put("reconciledPayments", reconciled);
+        merged.put("mode", "syncAllHistory");
+        if (result.get("outcome") instanceof Map<?, ?> outcome) {
+            Map<String, Object> outcomeCopy = new LinkedHashMap<>((Map<String, Object>) outcome);
+            outcomeCopy.put("reconciledPayments", reconciled);
+            merged.put("outcome", outcomeCopy);
+        }
+        return merged;
     }
 
     /**
@@ -1260,14 +1312,6 @@ public class PaymentService {
         return telegramService.syncUpdates(adminUserId != null ? adminUserId : "usr_admin_root", true);
     }
 
-    private boolean isAbaPayWayText(String text) {
-        if (text == null) return false;
-        String l = text.toLowerCase();
-        return l.contains("payway") || l.contains("aba khqr") || (l.contains("trx") && l.contains("paid by"))
-                || (l.contains("trx") && l.contains("apv"))
-                || (l.contains("trx id") && (l.contains("$") || l.contains("៛") || l.contains("usd") || l.contains("khr")));
-    }
-
     private boolean matchesPayment(AbaTransactionEntity tx, SubscriptionPaymentEntity p) {
         if ("UNDERPAID".equalsIgnoreCase(tx.getStatus())) {
             return false;
@@ -1291,42 +1335,6 @@ public class PaymentService {
         double txUsd = tx.getAmountUsd() != null ? tx.getAmountUsd() : 0.0;
         double pUsd = p.getAmountUsd() != null ? p.getAmountUsd() : 0.0;
         return Math.abs(txUsd - pUsd) < 1.0;
-    }
-
-    private void answerTelegramCallback(String botToken, String callbackQueryId, String text) {
-        if (botToken == null || callbackQueryId == null) return;
-        try {
-            HttpClient client = HttpClient.newBuilder()
-                    .connectTimeout(Duration.ofSeconds(4))
-                    .build();
-            Map<String, Object> body = Map.of("callback_query_id", callbackQueryId, "text", text);
-            HttpRequest req = HttpRequest.newBuilder()
-                    .uri(URI.create("https://api.telegram.org/bot" + botToken + "/answerCallbackQuery"))
-                    .timeout(Duration.ofSeconds(6))
-                    .header("Content-Type", "application/json")
-                    .POST(HttpRequest.BodyPublishers.ofString(objectMapper.writeValueAsString(body)))
-                    .build();
-            client.send(req, HttpResponse.BodyHandlers.discarding());
-        } catch (Exception ignored) {}
-    }
-
-    private long getTelegramUpdateOffset() {
-        try {
-            return platformSettingRepository.findById("telegram.updateOffset")
-                    .map(s -> Long.parseLong(s.getValueJson().trim().replace("\"", "")))
-                    .orElse(0L);
-        } catch (Exception e) {
-            return 0L;
-        }
-    }
-
-    private void saveTelegramUpdateOffset(long offset) {
-        try {
-            platformSettingRepository.save(PlatformSettingEntity.builder()
-                    .key("telegram.updateOffset")
-                    .valueJson(String.valueOf(offset))
-                    .build());
-        } catch (Exception ignored) {}
     }
 
     private PaymentDTO.AbaTransactionDTO toAbaTransactionDTO(AbaTransactionEntity t) {

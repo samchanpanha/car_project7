@@ -42,6 +42,11 @@ public class TenantController {
         return ResponseEntity.ok(tenantService.getDashboard(requireUserId(user)));
     }
 
+    @GetMapping("/api/tenant/dashboard")
+    public ResponseEntity<TenantDTO.TenantDashboardDTO> getDashboardAlt(@AuthenticationPrincipal UserEntity user) {
+        return ResponseEntity.ok(tenantService.getDashboard(requireUserId(user)));
+    }
+
     @PatchMapping("/api/tenant/profile")
     public ResponseEntity<Map<String, Object>> patchProfile(
             @AuthenticationPrincipal UserEntity user,

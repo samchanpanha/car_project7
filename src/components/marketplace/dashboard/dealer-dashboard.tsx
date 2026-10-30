@@ -71,7 +71,8 @@ export function DealerDashboard({ me }: { me: SessionDTO }) {
     { id: "appointments", label: t("tabAppointments"), icon: CalendarDays },
     { id: "telegram", label: t("tabTelegram"), icon: Send },
     ...(isManagerOrOwner ? [{ id: "staff", label: t("tabStaff"), icon: Users }] : []),
-    ...(isManagerOrOwner ? [{ id: "subscription", label: t("tabSubscription"), icon: CreditCard }] : []),
+    // All dealer users can see subscription tab - only managers/owners can modify it
+    { id: "subscription", label: t("tabSubscription"), icon: CreditCard },
     { id: "settings", label: t("tabSettings"), icon: Settings },
   ];
 
@@ -90,32 +91,31 @@ export function DealerDashboard({ me }: { me: SessionDTO }) {
       active={active}
       onTab={setTab}
     >
-      {(!me.subscription || me.subscription.status !== "ACTIVE") && (
-        isManagerOrOwner ? (
-          <SubscriptionPaywallCard
-            role="DEALER"
-            onActivated={() => {
-              window.location.reload();
-            }}
-          />
-        ) : (
-          <div className="rounded-2xl border border-amber-300 bg-gradient-to-r from-amber-50 to-orange-50 p-5 shadow-sm">
-            <div className="flex items-start gap-3">
-              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-amber-500 text-white shadow-sm">
-                <TriangleAlert className="h-5 w-5" />
-              </div>
-              <div className="flex-1">
-                <h3 className="text-base font-bold text-amber-950">
-                  {t("parentSubExpiredStaffNotice")}
-                </h3>
-                <p className="mt-1 text-xs text-amber-800">
-                  {me.tenant?.name ? `${me.tenant.name} · ` : ""}
-                  Your account is registered as a team member. Only the Dealership Owner or Manager can renew the subscription plan.
-                </p>
-              </div>
+      {(!me.subscription || me.subscription.status !== "ACTIVE") && isManagerOrOwner && (
+        <SubscriptionPaywallCard
+          role="DEALER"
+          onActivated={() => {
+            window.location.reload();
+          }}
+        />
+      )}
+      {(!me.subscription || me.subscription.status !== "ACTIVE") && !isManagerOrOwner && (
+        <div className="rounded-2xl border border-amber-300 bg-gradient-to-r from-amber-50 to-orange-50 p-5 shadow-sm">
+          <div className="flex items-start gap-3">
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-amber-500 text-white shadow-sm">
+              <TriangleAlert className="h-5 w-5" />
+            </div>
+            <div className="flex-1">
+              <h3 className="text-base font-bold text-amber-950">
+                {t("parentSubExpiredStaffNotice")}
+              </h3>
+              <p className="mt-1 text-xs text-amber-800">
+                {me.tenant?.name ? `${me.tenant.name} · ` : ""}
+                Your account is registered as a team member. Only the Dealership Owner or Manager can renew the subscription plan.
+              </p>
             </div>
           </div>
-        )
+        </div>
       )}
       {active === "overview" && <DealerOverview />}
       {active === "inventory" && (
@@ -142,7 +142,7 @@ export function DealerDashboard({ me }: { me: SessionDTO }) {
       {active === "appointments" && <DealerAppointments />}
       {active === "telegram" && <TelegramHub isDealer={true} />}
       {active === "staff" && isManagerOrOwner && <DealerStaff isManagerOrOwner={isManagerOrOwner} />}
-      {active === "subscription" && isManagerOrOwner && <SubscriptionHub isDealer={true} />}
+      {active === "subscription" && <SubscriptionHub isDealer={true} />}
       {active === "settings" && <DealerSettings />}
     </DashboardShell>
   );
