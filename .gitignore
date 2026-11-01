@@ -13,6 +13,8 @@ node_modules
 # testing
 /coverage
 /prisma/db/test.db
+/test-results/
+/playwright-report/
 
 # next.js
 /.next/
