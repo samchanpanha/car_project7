@@ -146,8 +146,11 @@ public class VehicleController {
             @PathVariable String id,
             @AuthenticationPrincipal UserEntity user
     ) {
-        String requestedBy = user != null ? user.getId() : "usr_demo_buyer";
-        ReportDTO report = vehicleReportService.generateReport(id, requestedBy);
+        if (user == null || user.getId() == null) {
+            throw new org.springframework.web.server.ResponseStatusException(
+                    HttpStatus.UNAUTHORIZED, "Login required to generate vehicle reports");
+        }
+        ReportDTO report = vehicleReportService.generateReport(id, user.getId());
         return ResponseEntity.ok(Map.of("report", report));
     }
 }

@@ -72,8 +72,16 @@ public class PaymentService {
 
     @Transactional(readOnly = true)
     public PaymentDTO.SubscriptionPaymentDTO getPaymentById(String id) {
+        return getPaymentById(id, null);
+    }
+
+    @Transactional(readOnly = true)
+    public PaymentDTO.SubscriptionPaymentDTO getPaymentById(String id, String tenantId) {
         SubscriptionPaymentEntity p = subscriptionPaymentRepository.findById(id)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Payment not found"));
+        if (tenantId != null && !tenantId.equals(p.getTenantId())) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Access denied to this payment");
+        }
         TenantEntity tenant = tenantRepository.findById(p.getTenantId()).orElse(null);
         return toDTO(p, tenant != null ? tenant.getName() : null, true);
     }
@@ -486,8 +494,16 @@ public class PaymentService {
 
     @Transactional
     public PaymentDTO.SubscriptionPaymentDTO uploadReceipt(String paymentId, MultipartFile file) {
+        return uploadReceipt(paymentId, file, null);
+    }
+
+    @Transactional
+    public PaymentDTO.SubscriptionPaymentDTO uploadReceipt(String paymentId, MultipartFile file, String tenantId) {
         SubscriptionPaymentEntity payment = subscriptionPaymentRepository.findById(paymentId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Payment not found"));
+        if (tenantId != null && !tenantId.equals(payment.getTenantId())) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Not authorized to upload receipt for this payment");
+        }
 
         try {
             byte[] bytes = file.getBytes();
@@ -1431,8 +1447,16 @@ public class PaymentService {
 
     @Transactional(readOnly = true)
     public String renderPrintableReceiptHtml(String paymentId) {
+        return renderPrintableReceiptHtml(paymentId, null);
+    }
+
+    @Transactional(readOnly = true)
+    public String renderPrintableReceiptHtml(String paymentId, String tenantId) {
         SubscriptionPaymentEntity p = subscriptionPaymentRepository.findById(paymentId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Payment receipt not found"));
+        if (tenantId != null && !tenantId.equals(p.getTenantId())) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Not authorized to view this payment receipt");
+        }
 
         TenantEntity tenant = tenantRepository.findById(p.getTenantId()).orElse(null);
         String tenantName = tenant != null ? tenant.getName() : "Dealership";

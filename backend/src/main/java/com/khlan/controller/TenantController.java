@@ -180,7 +180,7 @@ public class TenantController {
 
     @GetMapping("/api/seller/subscription")
     public ResponseEntity<Map<String, Object>> getSellerSubscription(@AuthenticationPrincipal UserEntity user) {
-        String userId = user != null ? user.getId() : "usr_demo_buyer";
+        String userId = requireUserId(user);
 
         // If the user owns an active paid tenant subscription, prefer it over the
         // (possibly expired) account-level free trial so paid customers never

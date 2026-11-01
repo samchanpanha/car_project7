@@ -7,7 +7,6 @@ import jakarta.servlet.ServletException;
 import jakarta.servlet.http.Cookie;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
-import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
@@ -17,15 +16,27 @@ import org.springframework.web.filter.OncePerRequestFilter;
 
 import java.io.IOException;
 import java.util.List;
+import org.springframework.core.env.Environment;
 import java.util.Set;
 
 @Slf4j
 @Component
-@RequiredArgsConstructor
 public class DualAuthFilter extends OncePerRequestFilter {
 
     private final SessionTokenService sessionTokenService;
     private final UserRepository userRepository;
+    private final Environment environment;
+
+    public DualAuthFilter(SessionTokenService sessionTokenService, UserRepository userRepository,
+            Environment environment) {
+        this.sessionTokenService = sessionTokenService;
+        this.userRepository = userRepository;
+        this.environment = environment;
+    }
+
+    public DualAuthFilter(SessionTokenService sessionTokenService, UserRepository userRepository) {
+        this(sessionTokenService, userRepository, null);
+    }
 
     public static final String AUTH_COOKIE = "khlan_auth";
     public static final String PERSONA_COOKIE = "khlan_persona";
@@ -41,9 +52,7 @@ public class DualAuthFilter extends OncePerRequestFilter {
             "usr_staff_sophea",
             "usr_dealer_ppauto",
             "usr_priv_vireak",
-            "usr_priv_sopheak",
-            "usr_admin"
-    );
+            "usr_priv_sopheak");
 
     @Override
     protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain filterChain)
@@ -57,8 +66,7 @@ public class DualAuthFilter extends OncePerRequestFilter {
                 UsernamePasswordAuthenticationToken auth = new UsernamePasswordAuthenticationToken(
                         user,
                         null,
-                        List.of(new SimpleGrantedAuthority(role))
-                );
+                        List.of(new SimpleGrantedAuthority(role)));
                 SecurityContextHolder.getContext().setAuthentication(auth);
             });
         }
@@ -73,7 +81,8 @@ public class DualAuthFilter extends OncePerRequestFilter {
             for (Cookie c : cookies) {
                 if (AUTH_COOKIE.equals(c.getName())) {
                     String uid = sessionTokenService.verifySessionToken(c.getValue());
-                    if (uid != null) return uid;
+                    if (uid != null)
+                        return uid;
                 }
             }
         }
@@ -82,7 +91,8 @@ public class DualAuthFilter extends OncePerRequestFilter {
         String sessionHeader = request.getHeader(SESSION_HEADER);
         if (sessionHeader != null && !sessionHeader.isBlank()) {
             String uid = sessionTokenService.verifySessionToken(sessionHeader);
-            if (uid != null) return uid;
+            if (uid != null)
+                return uid;
         }
 
         // 3. Try Authorization: Bearer <token>
@@ -91,36 +101,59 @@ public class DualAuthFilter extends OncePerRequestFilter {
             String token = authHeader.substring(7).trim();
             // Try as JWT
             String uid = sessionTokenService.verifyJwt(token);
-            if (uid != null) return uid;
+            if (uid != null)
+                return uid;
             // Try as HMAC session token
             uid = sessionTokenService.verifySessionToken(token);
-            if (uid != null) return uid;
+            if (uid != null)
+                return uid;
         }
 
-        // 4. Try persona cookie (khlan_persona)
-        if (cookies != null) {
-            for (Cookie c : cookies) {
-                if (isDemoModeEnabled() && PERSONA_COOKIE.equals(c.getName()) && ALLOWED_PERSONA_IDS.contains(c.getValue())) {
-                    return c.getValue();
+        // 4 & 5. Persona fallback (ONLY if demo mode is enabled)
+        if (isDemoModeEnabled()) {
+            if (cookies != null) {
+                for (Cookie c : cookies) {
+                    if (PERSONA_COOKIE.equals(c.getName()) && ALLOWED_PERSONA_IDS.contains(c.getValue())) {
+                        return c.getValue();
+                    }
                 }
             }
-        }
 
-        // 5. Try x-khlan-persona header
-        String personaHeader = request.getHeader(PERSONA_HEADER);
-        if (isDemoModeEnabled() && personaHeader != null && ALLOWED_PERSONA_IDS.contains(personaHeader.trim())) {
-            return personaHeader.trim();
+            String personaHeader = request.getHeader(PERSONA_HEADER);
+            if (personaHeader != null && ALLOWED_PERSONA_IDS.contains(personaHeader.trim())) {
+                return personaHeader.trim();
+            }
         }
 
         return null;
     }
 
-    private boolean isDemoModeEnabled() {
-        String value = System.getenv("APP_DEMO_MODE");
-        if (value == null) value = System.getProperty("app.demo.mode");
-        if (value == null || value.isBlank()) {
-            return true; // Keep local/demo behavior unless explicitly disabled
+    public boolean isDemoModeEnabled() {
+        if (environment != null) {
+            String[] activeProfiles = environment.getActiveProfiles();
+            for (String profile : activeProfiles) {
+                if ("production".equalsIgnoreCase(profile) || "prod".equalsIgnoreCase(profile)) {
+                    return false;
+                }
+            }
+            String val = environment.getProperty("APP_DEMO_MODE");
+            if (val == null || val.isBlank()) {
+                val = environment.getProperty("app.demo.mode");
+            }
+            if (val != null && !val.isBlank()) {
+                return "true".equalsIgnoreCase(val.trim());
+            }
         }
-        return Boolean.parseBoolean(value.trim());
+        String value = System.getenv("APP_DEMO_MODE");
+        if (value == null || value.isBlank()) {
+            value = System.getProperty("APP_DEMO_MODE");
+        }
+        if (value == null || value.isBlank()) {
+            value = System.getProperty("app.demo.mode");
+        }
+        if (value == null || value.isBlank()) {
+            return false;
+        }
+        return "true".equalsIgnoreCase(value.trim());
     }
 }

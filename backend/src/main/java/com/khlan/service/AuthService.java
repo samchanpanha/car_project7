@@ -58,11 +58,11 @@ public class AuthService {
         AdminDTO.PlatformSettingsDTO settings = adminService.getPlatformSettings();
         boolean demoMode = settings.isDemoModeEnabled();
 
-        if (req.getCaptchaToken() != null && !req.getCaptchaToken().isBlank() && !"bypass".equalsIgnoreCase(req.getCaptchaToken())) {
+        if (req.getCaptchaToken() != null && !req.getCaptchaToken().isBlank()) {
             if (!captchaService.consumeToken(req.getCaptchaToken())) {
                 throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Captcha verification failed or expired — please complete the security verification again");
             }
-        } else if (!demoMode && !"bypass".equalsIgnoreCase(req.getCaptchaToken())) {
+        } else if (!demoMode) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Captcha verification required");
         }
 
@@ -105,11 +105,11 @@ public class AuthService {
         AdminDTO.PlatformSettingsDTO settings = adminService.getPlatformSettings();
         boolean demoMode = settings.isDemoModeEnabled();
 
-        if (req.getCaptchaToken() != null && !req.getCaptchaToken().isBlank() && !"bypass".equalsIgnoreCase(req.getCaptchaToken())) {
+        if (req.getCaptchaToken() != null && !req.getCaptchaToken().isBlank()) {
             if (!captchaService.consumeToken(req.getCaptchaToken())) {
                 throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Captcha verification failed or expired — please complete the security verification again");
             }
-        } else if (!demoMode && !"bypass".equalsIgnoreCase(req.getCaptchaToken())) {
+        } else if (!demoMode) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Captcha verification required");
         }
 

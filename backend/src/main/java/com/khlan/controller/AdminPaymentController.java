@@ -12,9 +12,11 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.server.ResponseStatusException;
 
 import java.util.List;
 import java.util.Map;
@@ -29,6 +31,13 @@ public class AdminPaymentController {
     private final PaymentService paymentService;
     private final PlanAdminService planAdminService;
     private final TelegramService telegramService;
+
+    private String requireAdminUserId(UserEntity admin) {
+        if (admin == null || admin.getId() == null) {
+            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Unauthenticated");
+        }
+        return admin.getId();
+    }
 
     // ---------- Payment Approvals ----------
 
@@ -57,7 +66,7 @@ public class AdminPaymentController {
             @RequestBody PaymentDTO.PaymentActionRequest request,
             @AuthenticationPrincipal UserEntity admin) {
 
-        String adminUserId = admin != null ? admin.getId() : "usr_admin_root";
+        String adminUserId = requireAdminUserId(admin);
         return ResponseEntity.ok(paymentService.handlePaymentAction(id, request.getAction(), request.getReason(), adminUserId));
     }
 
@@ -88,7 +97,7 @@ public class AdminPaymentController {
             @RequestBody(required = false) Map<String, Object> body,
             @AuthenticationPrincipal UserEntity admin) {
 
-        String adminUserId = admin != null ? admin.getId() : "usr_admin_root";
+        String adminUserId = requireAdminUserId(admin);
         return ResponseEntity.ok(paymentService.handleAbaTransactionAction(body, adminUserId));
     }
 
@@ -98,7 +107,7 @@ public class AdminPaymentController {
             @RequestBody Map<String, Object> body,
             @AuthenticationPrincipal UserEntity admin) {
 
-        String adminUserId = admin != null ? admin.getId() : "usr_admin_root";
+        String adminUserId = requireAdminUserId(admin);
         String transactionId = body != null ? (String) body.get("transactionId") : null;
         String subscriptionPaymentId = body != null ? (String) body.get("subscriptionPaymentId") : null;
         return ResponseEntity.ok(paymentService.manualMatchAbaTransaction(transactionId, subscriptionPaymentId, adminUserId));
@@ -118,7 +127,7 @@ public class AdminPaymentController {
             @RequestBody Map<String, Object> config,
             @AuthenticationPrincipal UserEntity admin) {
 
-        String adminUserId = admin != null ? admin.getId() : "usr_admin_root";
+        String adminUserId = requireAdminUserId(admin);
         return ResponseEntity.ok(paymentService.saveAdminPaymentConfig(config, adminUserId));
     }
 
@@ -151,7 +160,7 @@ public class AdminPaymentController {
             @RequestBody Map<String, PlanDTO.PlanDefinitionDTO> plans,
             @AuthenticationPrincipal UserEntity admin) {
 
-        String adminUserId = admin != null ? admin.getId() : "usr_admin_root";
+        String adminUserId = requireAdminUserId(admin);
         planAdminService.savePlanPricing(plans, adminUserId);
         return ResponseEntity.ok(Map.of("ok", true));
     }
@@ -162,7 +171,7 @@ public class AdminPaymentController {
             @RequestBody PlanDTO.ExtendSubscriptionRequest request,
             @AuthenticationPrincipal UserEntity admin) {
 
-        String adminUserId = admin != null ? admin.getId() : "usr_admin_root";
+        String adminUserId = requireAdminUserId(admin);
         planAdminService.extendSubscription(request, adminUserId);
         return ResponseEntity.ok(Map.of("ok", true));
     }

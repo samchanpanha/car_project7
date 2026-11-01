@@ -13,6 +13,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.server.ResponseStatusException;
 
 import java.security.MessageDigest;
 import java.nio.charset.StandardCharsets;
@@ -35,8 +36,10 @@ public class TelegramController {
     @Operation(summary = "Get seller's Telegram integration status, channels, and invite metrics")
     public ResponseEntity<TelegramDTO.SellerTelegramDTO> getSellerTelegram(
             @AuthenticationPrincipal UserEntity authUser) {
-        String userId = authUser != null ? authUser.getId() : "usr_dealer_sokha";
-        return ResponseEntity.ok(telegramService.getSellerTelegram(userId));
+        if (authUser == null || authUser.getId() == null) {
+            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Unauthenticated");
+        }
+        return ResponseEntity.ok(telegramService.getSellerTelegram(authUser.getId()));
     }
 
     @PutMapping("/api/seller/telegram")
@@ -44,8 +47,10 @@ public class TelegramController {
     public ResponseEntity<TelegramDTO.SellerTelegramDTO> updateSellerTelegram(
             @RequestBody TelegramDTO.UpdateSellerTelegramRequest request,
             @AuthenticationPrincipal UserEntity authUser) {
-        String userId = authUser != null ? authUser.getId() : "usr_dealer_sokha";
-        return ResponseEntity.ok(telegramService.updateSellerTelegram(userId, request));
+        if (authUser == null || authUser.getId() == null) {
+            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Unauthenticated");
+        }
+        return ResponseEntity.ok(telegramService.updateSellerTelegram(authUser.getId(), request));
     }
 
     @PostMapping("/api/seller/telegram/test")
@@ -53,9 +58,11 @@ public class TelegramController {
     public ResponseEntity<Map<String, Object>> testSellerTelegram(
             @RequestBody(required = false) Map<String, String> body,
             @AuthenticationPrincipal UserEntity authUser) {
-        String userId = authUser != null ? authUser.getId() : "usr_dealer_sokha";
+        if (authUser == null || authUser.getId() == null) {
+            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Unauthenticated");
+        }
         String explicitChatId = body != null ? body.get("chatId") : null;
-        return ResponseEntity.ok(telegramService.sendSellerTestNotification(userId, explicitChatId));
+        return ResponseEntity.ok(telegramService.sendSellerTestNotification(authUser.getId(), explicitChatId));
     }
 
     @GetMapping("/api/tg/{code}")
@@ -91,7 +98,15 @@ public class TelegramController {
 
     @PostMapping("/api/telegram/setup")
     @Operation(summary = "Setup and verify Telegram bot webhook connectivity")
-    public ResponseEntity<Map<String, Object>> setupWebhook(@RequestParam(required = false) String url) {
+    public ResponseEntity<Map<String, Object>> setupWebhook(
+            @RequestParam(required = false) String url,
+            @AuthenticationPrincipal UserEntity authUser) {
+        if (authUser == null || authUser.getId() == null) {
+            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Unauthenticated");
+        }
+        if (!"ADMIN".equalsIgnoreCase(authUser.getRole()) && !"SUPER_ADMIN".equalsIgnoreCase(authUser.getRole())) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Admin access required");
+        }
         return ResponseEntity.ok(telegramService.setupWebhook(url));
     }
 

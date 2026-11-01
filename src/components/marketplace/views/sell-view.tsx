@@ -24,6 +24,13 @@ import { useState } from "react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { formatUsd } from "@/lib/format";
+import {
+  getCompatibleVehicleModels,
+  getPartManufacturers,
+  getPartModels,
+  getVehicleMakes,
+  getVehicleModels,
+} from "@/lib/vehicle-catalog";
 
 import {
   bodyTypeLabels,
@@ -481,14 +488,22 @@ export function SellView() {
                       value={form.make}
                       onChange={(e) => set({ make: e.target.value })}
                       placeholder="e.g. Michelin, Brembo, Toyota, Bosch, Honda"
+                      list="kl-sell-part-makes"
                     />
+                    <datalist id="kl-sell-part-makes">
+                      {getPartManufacturers(meta?.makes).map((make) => <option key={make} value={make} />)}
+                    </datalist>
                   </Field>
                   <Field label={locale === "km" ? "ឈ្មោះគ្រឿងបន្លាស់ (Part Name)" : "Part Name / Model"}>
                     <Input
                       value={form.model}
                       onChange={(e) => set({ model: e.target.value })}
                       placeholder="e.g. Ceramic Front Brake Pads"
+                      list="kl-sell-part-models"
                     />
+                    <datalist id="kl-sell-part-models">
+                      {getPartModels().map((model) => <option key={model} value={model} />)}
+                    </datalist>
                   </Field>
                 </div>
 
@@ -498,7 +513,13 @@ export function SellView() {
                       value={form.compatibleModels}
                       onChange={(e) => set({ compatibleModels: e.target.value })}
                       placeholder={t("compatibleModelsPlaceholder")}
+                      list="kl-sell-compatible-models"
                     />
+                    <datalist id="kl-sell-compatible-models">
+                      {getCompatibleVehicleModels(form.partTarget).map((model) => (
+                        <option key={model} value={model} />
+                      ))}
+                    </datalist>
                   </Field>
                   <Field label={t("partNumberLabel")} hint={locale === "km" ? "លេខកូដដើមពីក្រុមហ៊ុន" : "Original part or SKU code"}>
                     <Input
@@ -520,11 +541,11 @@ export function SellView() {
                       value={form.make}
                       onChange={(e) => set({ make: e.target.value })}
                       placeholder="Honda, Yamaha, Suzuki..."
-                      list="kl-motor-makes"
+                      list="kl-sell-motor-makes"
                     />
-                    <datalist id="kl-motor-makes">
-                      {["Honda", "Yamaha", "Suzuki", "Kawasaki", "Vespa", "GPX", "BMW", "Ducati", "KTM", "Royal Enfield"].map((m) => (
-                        <option key={m} value={m} />
+                    <datalist id="kl-sell-motor-makes">
+                      {getVehicleMakes("MOTOR", meta?.makes).map((make) => (
+                        <option key={make} value={make} />
                       ))}
                     </datalist>
                   </Field>
@@ -533,7 +554,11 @@ export function SellView() {
                       value={form.model}
                       onChange={(e) => set({ model: e.target.value })}
                       placeholder="e.g. Dream 125, Scoopy, PCX 160"
+                      list="kl-sell-motor-models"
                     />
+                    <datalist id="kl-sell-motor-models">
+                      {getVehicleModels("MOTOR", form.make).map((model) => <option key={model} value={model} />)}
+                    </datalist>
                   </Field>
                   <Field label={t("formYear")}>
                     <Input
@@ -617,15 +642,18 @@ export function SellView() {
               <div className="space-y-4">
                 <div className="grid grid-cols-2 gap-3">
                   <Field label={t("formMake")}>
-                    <Input value={form.make} onChange={(e) => set({ make: e.target.value })} placeholder="Toyota" list="kl-makes" />
-                    <datalist id="kl-makes">
-                      {(meta?.makes ?? []).map((m) => (
-                        <option key={m} value={m} />
+                    <Input value={form.make} onChange={(e) => set({ make: e.target.value })} placeholder="Toyota" list="kl-sell-car-makes" />
+                    <datalist id="kl-sell-car-makes">
+                      {getVehicleMakes("CAR", meta?.makes).map((make) => (
+                        <option key={make} value={make} />
                       ))}
                     </datalist>
                   </Field>
                   <Field label={t("formModel")}>
-                    <Input value={form.model} onChange={(e) => set({ model: e.target.value })} placeholder="Land Cruiser Prado" />
+                    <Input value={form.model} onChange={(e) => set({ model: e.target.value })} placeholder="Land Cruiser Prado" list="kl-sell-car-models" />
+                    <datalist id="kl-sell-car-models">
+                      {getVehicleModels("CAR", form.make).map((model) => <option key={model} value={model} />)}
+                    </datalist>
                   </Field>
                   <Field label={t("formVariant")}>
                     <Input value={form.variant} onChange={(e) => set({ variant: e.target.value })} placeholder="TX-L" />

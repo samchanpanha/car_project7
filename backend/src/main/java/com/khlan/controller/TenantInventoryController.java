@@ -74,12 +74,10 @@ public class TenantInventoryController {
     }
 
     private TenantMemberEntity resolveTenantMember(UserEntity authUser) {
-        String userId = authUser != null ? authUser.getId() : "usr_dealer_sokha";
-        return tenantMemberRepository.findByUserId(userId)
-                .orElseGet(() -> {
-                    // Fallback to primary dealer tenant
-                    return tenantMemberRepository.findAll().stream().findFirst()
-                            .orElseThrow(() -> new ResponseStatusException(HttpStatus.FORBIDDEN, "Not a tenant member"));
-                });
+        if (authUser == null || authUser.getId() == null) {
+            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Unauthenticated");
+        }
+        return tenantMemberRepository.findFirstByUserIdAndStatus(authUser.getId(), "ACTIVE")
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.FORBIDDEN, "Not an active tenant member"));
     }
 }

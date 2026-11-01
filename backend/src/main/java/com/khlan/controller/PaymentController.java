@@ -108,8 +108,10 @@ public class PaymentController {
     @GetMapping("/{id}")
     @Operation(summary = "Get details of a specific payment submission")
     public ResponseEntity<PaymentDTO.SubscriptionPaymentDTO> getPaymentById(
-            @PathVariable String id) {
-        return ResponseEntity.ok(paymentService.getPaymentById(id));
+            @PathVariable String id,
+            @AuthenticationPrincipal UserEntity authUser) {
+        String tenantId = resolveTenantId(authUser);
+        return ResponseEntity.ok(paymentService.getPaymentById(id, tenantId));
     }
 
     @DeleteMapping("/{id}")
@@ -126,24 +128,27 @@ public class PaymentController {
     @Operation(summary = "Upload proof of payment receipt image")
     public ResponseEntity<PaymentDTO.SubscriptionPaymentDTO> uploadReceipt(
             @PathVariable String id,
-            @RequestParam("file") MultipartFile file) {
-        return ResponseEntity.ok(paymentService.uploadReceipt(id, file));
+            @RequestParam("file") MultipartFile file,
+            @AuthenticationPrincipal UserEntity authUser) {
+        String tenantId = resolveTenantId(authUser);
+        return ResponseEntity.ok(paymentService.uploadReceipt(id, file, tenantId));
     }
 
     @GetMapping(value = "/{id}/receipt", produces = MediaType.TEXT_HTML_VALUE)
     @Operation(summary = "Get official printable receipt HTML document")
-    public ResponseEntity<String> getPrintableReceipt(@PathVariable String id) {
-        return ResponseEntity.ok(paymentService.renderPrintableReceiptHtml(id));
+    public ResponseEntity<String> getPrintableReceipt(
+            @PathVariable String id,
+            @AuthenticationPrincipal UserEntity authUser) {
+        String tenantId = resolveTenantId(authUser);
+        return ResponseEntity.ok(paymentService.renderPrintableReceiptHtml(id, tenantId));
     }
 
     private String resolveTenantId(UserEntity authUser) {
-        String userId = authUser != null ? authUser.getId() : "usr_dealer_sokha";
-        return tenantMemberRepository.findByUserId(userId)
+        if (authUser == null || authUser.getId() == null) {
+            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Unauthenticated");
+        }
+        return tenantMemberRepository.findFirstByUserIdAndStatus(authUser.getId(), "ACTIVE")
                 .map(TenantMemberEntity::getTenantId)
-                .orElseGet(() -> {
-                    return tenantMemberRepository.findAll().stream().findFirst()
-                            .map(TenantMemberEntity::getTenantId)
-                            .orElseThrow(() -> new ResponseStatusException(HttpStatus.FORBIDDEN, "Tenant not found"));
-                });
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.FORBIDDEN, "Not an active member of a tenant"));
     }
 }

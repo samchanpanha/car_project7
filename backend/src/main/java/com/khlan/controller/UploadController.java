@@ -1,6 +1,7 @@
 package com.khlan.controller;
 
 import com.khlan.dto.UploadDTO;
+import com.khlan.entity.UserEntity;
 import com.khlan.service.MinioStorageService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -8,6 +9,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 import org.springframework.web.server.ResponseStatusException;
@@ -142,7 +144,12 @@ public class UploadController {
 
     @Operation(summary = "Upload private payment receipt or document")
     @PostMapping(value = "/private", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
-    public ResponseEntity<Map<String, String>> uploadPrivateDoc(@RequestParam("file") MultipartFile file) {
+    public ResponseEntity<Map<String, String>> uploadPrivateDoc(
+            @RequestParam("file") MultipartFile file,
+            @AuthenticationPrincipal UserEntity authUser) {
+        if (authUser == null || authUser.getId() == null) {
+            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Authentication required");
+        }
         try {
             String mimeType = file.getContentType() != null ? file.getContentType() : "application/pdf";
             String objectKey = minioStorageService.uploadPrivateDoc(file.getBytes(), mimeType);
@@ -154,7 +161,12 @@ public class UploadController {
 
     @Operation(summary = "Get temporary presigned URL for private document")
     @GetMapping("/presigned")
-    public ResponseEntity<Map<String, String>> getPresignedUrl(@RequestParam("key") String key) {
+    public ResponseEntity<Map<String, String>> getPresignedUrl(
+            @RequestParam("key") String key,
+            @AuthenticationPrincipal UserEntity authUser) {
+        if (authUser == null || authUser.getId() == null) {
+            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Authentication required");
+        }
         try {
             String presignedUrl = minioStorageService.getPrivatePresignedUrl(key);
             return ResponseEntity.ok(Map.of("url", presignedUrl));

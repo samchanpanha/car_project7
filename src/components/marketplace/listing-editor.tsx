@@ -36,6 +36,13 @@ import {
 } from "@/lib/i18n";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
+import {
+  getCompatibleVehicleModels,
+  getPartManufacturers,
+  getPartModels,
+  getVehicleMakes,
+  getVehicleModels,
+} from "@/lib/vehicle-catalog";
 
 const BODY_TYPES = ["SUV", "SEDAN", "PICKUP", "VAN", "HATCHBACK", "COUPE"];
 const MOTOR_BODY_TYPES = ["SCOOTER", "CUB", "SPORT", "CRUISER", "DIRT", "ELECTRIC", "OTHER"];
@@ -1032,16 +1039,27 @@ export function ListingEditorDialog({
 
                 <div className="grid grid-cols-2 gap-3">
                   <EditField label="Brand / Manufacturer">
-                    <Input value={form.make} onChange={(e) => set({ make: e.target.value })} placeholder="Toyota, Michelin..." />
+                    <Input value={form.make} onChange={(e) => set({ make: e.target.value })} placeholder="Toyota, Michelin..." list="kl-edit-part-makes" />
+                    <datalist id="kl-edit-part-makes">
+                      {getPartManufacturers(meta?.makes).map((make) => <option key={make} value={make} />)}
+                    </datalist>
                   </EditField>
                   <EditField label="Part Name / Model">
-                    <Input value={form.model} onChange={(e) => set({ model: e.target.value })} placeholder="Brake Pads, Battery..." />
+                    <Input value={form.model} onChange={(e) => set({ model: e.target.value })} placeholder="Brake Pads, Battery..." list="kl-edit-part-models" />
+                    <datalist id="kl-edit-part-models">
+                      {getPartModels().map((model) => <option key={model} value={model} />)}
+                    </datalist>
                   </EditField>
                 </div>
 
                 <div className="grid grid-cols-2 gap-3">
                   <EditField label={t("compatibleModelsLabel")} hint="Vehicles this part fits">
-                    <Input value={form.compatibleModels} onChange={(e) => set({ compatibleModels: e.target.value })} placeholder="e.g. Prius 2004-2009" />
+                    <Input value={form.compatibleModels} onChange={(e) => set({ compatibleModels: e.target.value })} placeholder="e.g. Prius 2004-2009" list="kl-edit-compatible-models" />
+                    <datalist id="kl-edit-compatible-models">
+                      {getCompatibleVehicleModels(form.partTarget).map((model) => (
+                        <option key={model} value={model} />
+                      ))}
+                    </datalist>
                   </EditField>
                   <EditField label={t("partNumberLabel")} hint="OEM SKU number">
                     <Input value={form.partNumber} onChange={(e) => set({ partNumber: e.target.value })} placeholder="e.g. 04465-47060" />
@@ -1056,10 +1074,16 @@ export function ListingEditorDialog({
                 <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">{t("categoryMotors")}</p>
                 <div className="grid grid-cols-2 gap-3">
                   <EditField label="Motorcycle Make">
-                    <Input value={form.make} onChange={(e) => set({ make: e.target.value })} placeholder="Honda, Yamaha..." />
+                    <Input value={form.make} onChange={(e) => set({ make: e.target.value })} placeholder="Honda, Yamaha..." list="kl-edit-motor-makes" />
+                    <datalist id="kl-edit-motor-makes">
+                      {getVehicleMakes("MOTOR", meta?.makes).map((make) => <option key={make} value={make} />)}
+                    </datalist>
                   </EditField>
                   <EditField label="Motorcycle Model">
-                    <Input value={form.model} onChange={(e) => set({ model: e.target.value })} placeholder="Dream 125, Scoopy..." />
+                    <Input value={form.model} onChange={(e) => set({ model: e.target.value })} placeholder="Dream 125, Scoopy..." list="kl-edit-motor-models" />
+                    <datalist id="kl-edit-motor-models">
+                      {getVehicleModels("MOTOR", form.make).map((model) => <option key={model} value={model} />)}
+                    </datalist>
                   </EditField>
                   <EditField label={t("formYear")}>
                     <Input type="number" min={1980} max={2026} value={form.year} onChange={(e) => set({ year: e.target.value })} />
@@ -1110,13 +1134,16 @@ export function ListingEditorDialog({
                 <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-400">{t("sectionCarDetails")}</p>
                 <div className="grid grid-cols-2 gap-3">
                   <EditField label={t("formMake")}>
-                    <Input value={form.make} onChange={(e) => set({ make: e.target.value })} list="kl-ed-makes" />
-                    <datalist id="kl-ed-makes">
-                      {(meta?.makes ?? []).map((m) => <option key={m} value={m} />)}
+                    <Input value={form.make} onChange={(e) => set({ make: e.target.value })} list="kl-edit-car-makes" />
+                    <datalist id="kl-edit-car-makes">
+                      {getVehicleMakes("CAR", meta?.makes).map((make) => <option key={make} value={make} />)}
                     </datalist>
                   </EditField>
                   <EditField label={t("formModel")}>
-                    <Input value={form.model} onChange={(e) => set({ model: e.target.value })} />
+                    <Input value={form.model} onChange={(e) => set({ model: e.target.value })} list="kl-edit-car-models" />
+                    <datalist id="kl-edit-car-models">
+                      {getVehicleModels("CAR", form.make).map((model) => <option key={model} value={model} />)}
+                    </datalist>
                   </EditField>
                   <EditField label={t("formVariant")}>
                     <Input value={form.variant} onChange={(e) => set({ variant: e.target.value })} />

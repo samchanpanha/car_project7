@@ -28,7 +28,7 @@ public class ChatController {
 
     @GetMapping
     public ResponseEntity<Map<String, Object>> listConversations(@AuthenticationPrincipal UserEntity user) {
-        String userId = user != null ? user.getId() : null;
+        String userId = requireUserId(user);
         return ResponseEntity.ok(chatService.listConversations(userId));
     }
 

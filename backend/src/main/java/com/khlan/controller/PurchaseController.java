@@ -37,7 +37,7 @@ public class PurchaseController {
 
     @GetMapping("/api/account/purchases")
     public ResponseEntity<List<PurchaseDTO.PurchaseRequestDTO>> getBuyerPurchases(@AuthenticationPrincipal UserEntity user) {
-        String userId = user != null ? user.getId() : "usr_demo_buyer";
+        String userId = requireUserId(user);
         return ResponseEntity.ok(purchaseService.getBuyerPurchases(userId));
     }
 

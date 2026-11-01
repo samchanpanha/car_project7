@@ -22,6 +22,8 @@ import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
 import java.time.OffsetDateTime;
 import java.time.format.DateTimeParseException;
 import java.util.*;
@@ -313,12 +315,31 @@ public class CronSchedulerService {
                 .build());
     }
 
-    private void validateCronAuth(String authHeader) {
+    public String getCronSecret() {
         if (cronSecret != null && !cronSecret.isBlank()) {
-            if (authHeader == null || !authHeader.equals("Bearer " + cronSecret)) {
-                throw new org.springframework.web.server.ResponseStatusException(
-                        org.springframework.http.HttpStatus.UNAUTHORIZED, "Unauthorized cron trigger");
-            }
+            return cronSecret;
         }
+        String env = System.getenv("CRON_SECRET");
+        if (env != null && !env.isBlank()) return env;
+        return System.getProperty("cron.secret");
+    }
+
+    public void validateCronAuth(String authHeader) {
+        String secret = getCronSecret();
+        if (secret == null || secret.isBlank()) {
+            throw new org.springframework.web.server.ResponseStatusException(
+                    org.springframework.http.HttpStatus.UNAUTHORIZED, "Cron secret not configured");
+        }
+        String expected = "Bearer " + secret;
+        if (authHeader == null || !MessageDigest.isEqual(
+                expected.getBytes(StandardCharsets.UTF_8),
+                authHeader.getBytes(StandardCharsets.UTF_8))) {
+            throw new org.springframework.web.server.ResponseStatusException(
+                    org.springframework.http.HttpStatus.UNAUTHORIZED, "Unauthorized cron trigger");
+        }
+    }
+
+    void setCronSecret(String cronSecret) {
+        this.cronSecret = cronSecret;
     }
 }

@@ -17,9 +17,17 @@ public class FavoriteController {
 
     private final FavoriteService favoriteService;
 
+    private String requireUserId(UserEntity user) {
+        if (user == null || user.getId() == null) {
+            throw new org.springframework.web.server.ResponseStatusException(
+                    org.springframework.http.HttpStatus.UNAUTHORIZED, "Login required");
+        }
+        return user.getId();
+    }
+
     @GetMapping
     public ResponseEntity<FavoriteDTO.FavoritesResponse> getFavorites(@AuthenticationPrincipal UserEntity user) {
-        String userId = user != null ? user.getId() : "usr_demo_buyer";
+        String userId = requireUserId(user);
         return ResponseEntity.ok(favoriteService.getFavorites(userId));
     }
 
@@ -28,7 +36,7 @@ public class FavoriteController {
             @AuthenticationPrincipal UserEntity user,
             @RequestBody FavoriteDTO.AddFavoriteRequest req
     ) {
-        String userId = user != null ? user.getId() : null;
+        String userId = requireUserId(user);
         boolean added = favoriteService.addFavorite(userId, req != null ? req.getVehicleId() : null);
         return ResponseEntity.ok(Map.of("ok", true, "favorited", added));
     }
@@ -43,7 +51,7 @@ public class FavoriteController {
                 ? paramVehicleId
                 : (bodyReq != null ? bodyReq.getVehicleId() : null);
 
-        String userId = user != null ? user.getId() : null;
+        String userId = requireUserId(user);
         favoriteService.removeFavorite(userId, vehicleId);
         return ResponseEntity.ok(Map.of("ok", true, "favorited", false));
     }

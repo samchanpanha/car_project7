@@ -116,14 +116,14 @@ public class SessionService {
         }
         boolean demoPersona = !isAuthed && personaActive;
 
-        // Fallback to demo buyer if none resolved
-        if (activeUserId == null) {
+        // Fallback to demo buyer if none resolved ONLY if demo mode is enabled
+        if (activeUserId == null && demoModeEnabled) {
             activeUserId = DEMO_BUYER_ID;
         }
 
-        UserEntity user = userRepository.findById(activeUserId)
-                .or(() -> userRepository.findById(DEMO_BUYER_ID))
-                .orElse(null);
+        UserEntity user = activeUserId != null
+                ? userRepository.findById(activeUserId).orElse(null)
+                : null;
 
         // Build Personas list
         List<SessionDTO.PersonaDTO> personas = new ArrayList<>();
@@ -227,6 +227,10 @@ public class SessionService {
     }
 
     public void switchPersona(String userId, HttpServletResponse response) {
+        if (!dualAuthFilter.isDemoModeEnabled()) {
+            throw new org.springframework.web.server.ResponseStatusException(
+                    org.springframework.http.HttpStatus.FORBIDDEN, "Persona switching is only allowed in demo mode");
+        }
         if (!DualAuthFilter.ALLOWED_PERSONA_IDS.contains(userId)) {
             throw new IllegalArgumentException("Unknown persona: " + userId);
         }

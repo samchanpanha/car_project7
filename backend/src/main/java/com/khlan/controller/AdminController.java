@@ -193,7 +193,7 @@ public class AdminController {
             @RequestBody TelegramDTO.AdminTelegramConfigDTO req,
             @AuthenticationPrincipal UserEntity user) {
         adminService.requireAdmin(user);
-        String adminUserId = user != null ? user.getId() : "usr_admin_root";
+        String adminUserId = user.getId();
         return ResponseEntity.ok(telegramService.updatePlatformConfig(req, adminUserId));
     }
 

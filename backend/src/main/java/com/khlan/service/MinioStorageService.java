@@ -90,7 +90,8 @@ public class MinioStorageService {
      */
     public String uploadPublicMedia(byte[] bytes, String mimeType) throws Exception {
         validateMagicBytes(bytes, mimeType);
-        String ext = EXT_BY_MIME.getOrDefault(mimeType.toLowerCase(), "bin");
+        String safeMime = (mimeType != null) ? mimeType.trim().toLowerCase() : "";
+        String ext = EXT_BY_MIME.getOrDefault(safeMime, "bin");
         String objectName = "vehicles/" + UUID.randomUUID() + "." + ext;
 
         try (InputStream stream = new ByteArrayInputStream(bytes)) {
@@ -99,7 +100,7 @@ public class MinioStorageService {
                             .bucket(publicBucket)
                             .object(objectName)
                             .stream(stream, bytes.length, -1)
-                            .contentType(mimeType)
+                            .contentType(mimeType != null && !mimeType.isBlank() ? mimeType : "application/octet-stream")
                             .build()
             );
         }
@@ -121,7 +122,8 @@ public class MinioStorageService {
         if (mimeType != null && (mimeType.equalsIgnoreCase("image/jpeg") || mimeType.equalsIgnoreCase("image/png") || mimeType.equalsIgnoreCase("image/webp"))) {
             validateMagicBytes(bytes, mimeType);
         }
-        String ext = EXT_BY_MIME.getOrDefault(mimeType.toLowerCase(), "bin");
+        String safeMime = (mimeType != null) ? mimeType.trim().toLowerCase() : "";
+        String ext = EXT_BY_MIME.getOrDefault(safeMime, "bin");
         String objectName = "receipts/" + UUID.randomUUID() + "." + ext;
 
         try (InputStream stream = new ByteArrayInputStream(bytes)) {
@@ -130,7 +132,7 @@ public class MinioStorageService {
                             .bucket(privateBucket)
                             .object(objectName)
                             .stream(stream, bytes.length, -1)
-                            .contentType(mimeType)
+                            .contentType(mimeType != null && !mimeType.isBlank() ? mimeType : "application/octet-stream")
                             .build()
             );
         }
