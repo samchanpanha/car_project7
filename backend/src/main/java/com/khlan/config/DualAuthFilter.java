@@ -27,6 +27,7 @@ public class DualAuthFilter extends OncePerRequestFilter {
     private final UserRepository userRepository;
     private final Environment environment;
 
+    @org.springframework.beans.factory.annotation.Autowired
     public DualAuthFilter(SessionTokenService sessionTokenService, UserRepository userRepository,
             Environment environment) {
         this.sessionTokenService = sessionTokenService;
