@@ -175,11 +175,4 @@
     radial-gradient(ellipse 60% 50% at 90% 100%, oklch(0.3 0.04 260 / 0.5), transparent 55%);
 }
 
-/* Security Verification captcha: wrong-order shake */
-@keyframes khlan-shake {
-  0%, 100% { transform: translateX(0); }
-  20% { transform: translateX(-6px); }
-  40% { transform: translateX(6px); }
-  60% { transform: translateX(-4px); }
-  80% { transform: translateX(4px); }
-}
+

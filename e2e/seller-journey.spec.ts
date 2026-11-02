@@ -43,26 +43,8 @@ test.describe("KhLan Marketplace — New Member Registration & Seller Journey", 
     await page.keyboard.press("Escape");
   });
 
-  test("2. Registration Flow: Register new member with Cambodian phone number and captcha", async ({ request }) => {
-    // 1. Fetch live captcha challenge from backend
-    const captchaRes = await request.get("/api/auth/captcha");
-    expect(captchaRes.ok()).toBeTruthy();
-    const challenge = await captchaRes.json();
-    expect(challenge.id).toBeDefined();
-    expect(challenge.word).toBeDefined();
-
-    // 2. Solve captcha sequence to mint single-use captchaToken
-    const verifyRes = await request.post("/api/auth/captcha/verify", {
-      data: {
-        id: challenge.id,
-        sequence: challenge.word,
-      },
-    });
-    expect(verifyRes.ok()).toBeTruthy();
-    const { captchaToken } = await verifyRes.json();
-    expect(captchaToken).toBeDefined();
-
-    // 3. Submit registration for a new private seller
+  test("2. Registration Flow: Register new member with Cambodian phone number and Cloudflare Turnstile", async ({ request }) => {
+    // 1. Submit registration for a new private seller with Cloudflare Turnstile token
     const registerRes = await request.post("/api/auth/register", {
       data: {
         name: testName,
@@ -70,7 +52,7 @@ test.describe("KhLan Marketplace — New Member Registration & Seller Journey", 
         password: testPassword,
         role: "SELLER",
         locale: "en",
-        captchaToken,
+        captchaToken: "1x00000000000000000000AA",
       },
     });
 

@@ -734,7 +734,7 @@ export const zh: Record<keyof typeof en, string> = {
   captchaClickInOrder: "请按顺序点击：",
   captchaRefresh: "刷新",
   captchaVerifying: "验证中…",
-  captchaFailed: "顺序错误——已加载新的验证",
+  captchaFailed: "安全验证失败——请重试",
   captchaSuccessToast: "安全验证通过",
   authRequiredToast: "请注册或登录以继续",
   guestPanelTitle: "创建免费账号以继续",

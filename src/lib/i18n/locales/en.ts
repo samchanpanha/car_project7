@@ -747,7 +747,7 @@ export const en = {
   captchaClickInOrder: "Please click in order:",
   captchaRefresh: "Refresh",
   captchaVerifying: "Verifying…",
-  captchaFailed: "Wrong order — a new puzzle has been loaded",
+  captchaFailed: "Security verification failed — please complete the check again",
   captchaSuccessToast: "Security verification passed",
   authRequiredToast: "Please register or log in to continue",
   guestPanelTitle: "Create a free account to continue",

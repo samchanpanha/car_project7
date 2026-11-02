@@ -16,7 +16,7 @@ import { fileToDataUrl } from "@/lib/image-client";
 import { formatUsd } from "@/lib/format";
 import type { SessionDTO } from "@/lib/dashboard-types";
 import type { PaymentConfigDTO, SubscriptionPaymentDTO } from "@/lib/commerce-types";
-import { SecurityCaptcha } from "@/components/marketplace/security-captcha";
+import { Turnstile, type TurnstileRef } from "@/components/marketplace/turnstile";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -218,27 +218,27 @@ function LoginForm() {
   const [phone, setPhone] = useState("");
   const [password, setPassword] = useState("");
   const [busy, setBusy] = useState(false);
-  const [captchaOpen, setCaptchaOpen] = useState(false);
+  const [captchaToken, setCaptchaToken] = useState<string | null>(null);
   const [error, setError] = useState<string | undefined>();
+  const turnstileRef = useRef<TurnstileRef>(null);
 
   const submit = (e: React.FormEvent) => {
     e.preventDefault();
     setError(undefined);
     if (!PHONE_RE.test(normalizePhone(phone))) return setError(t("authErrPhone"));
     if (!password) return setError(t("authErrPassword"));
-    // Valid credentials open the Security Verification dialog; the actual
-    // login request fires only after the captcha is solved.
-    setCaptchaOpen(true);
+    if (!captchaToken) return setError(t("captchaSubtitle"));
+    void doLogin(captchaToken);
   };
 
-  const doLogin = async (captchaToken: string) => {
+  const doLogin = async (token: string) => {
     setError(undefined);
     setBusy(true);
     try {
       const res = await apiSend<{ ok: boolean; user: { id: string; name: string; role: string }; sessionToken?: string }>(
         "/api/auth/login",
         "POST",
-        { phone: normalizePhone(phone), password, captchaToken },
+        { phone: normalizePhone(phone), password, captchaToken: token },
       );
       // The session must actually persist — cookies are refused in embedded
       // previews, so fall back to the signed token via a request header.
@@ -251,7 +251,8 @@ function LoginForm() {
         if (!session) {
           clearAuthFallback();
           setBusy(false);
-          setCaptchaOpen(false);
+          turnstileRef.current?.reset();
+          setCaptchaToken(null);
           setError(t("authErrCookieBlocked"));
           return;
         }
@@ -265,50 +266,65 @@ function LoginForm() {
       toast.success(t("authWelcomeBack", { name: res.user.name }));
       useAppStore.getState().navigate({ name: "dashboard" });
       setBusy(false);
-      setCaptchaOpen(false);
     } catch (err) {
       const msg = err instanceof Error ? err.message : t("errorGeneric");
       setError(localAuthError(t, msg));
       setBusy(false);
-      // Expired/used captcha token → ask for a fresh verification.
-      if (/captcha/i.test(msg)) setCaptchaOpen(true);
+      // Reset Turnstile on any failed auth attempt so user can re-verify
+      turnstileRef.current?.reset();
+      setCaptchaToken(null);
     }
   };
 
   return (
-    <>
-      <form onSubmit={submit} className="flex flex-col gap-3" noValidate>
-        <div className="flex flex-col gap-1.5">
-          <Label htmlFor="login-phone">{t("authPhoneLabel")}</Label>
-          <Input
-            id="login-phone"
-            type="tel"
-            inputMode="tel"
-            dir="ltr"
-            value={phone}
-            onChange={(e) => setPhone(e.target.value)}
-            placeholder={t("authPhonePlaceholder")}
-            autoComplete="tel"
-            className="h-11 font-mono"
-          />
-        </div>
-        <div className="flex flex-col gap-1.5">
-          <Label htmlFor="login-password">{t("authPasswordLabel")}</Label>
-          <PasswordInput
-            value={password}
-            onChange={setPassword}
-            ariaLabel={t("authPasswordLabel")}
-            autoComplete="current-password"
-          />
-        </div>
-        <FieldError msg={error} />
-        <Button type="submit" disabled={busy} className="h-11 w-full bg-slate-900 text-white hover:bg-slate-800 font-semibold">
-          {busy && <Loader2 className="h-4 w-4 animate-spin" aria-hidden />}
-          {t("authLoginBtn")}
-        </Button>
-      </form>
-      <SecurityCaptcha open={captchaOpen} onOpenChange={setCaptchaOpen} onVerified={doLogin} />
-    </>
+    <form onSubmit={submit} className="flex flex-col gap-3" noValidate>
+      <div className="flex flex-col gap-1.5">
+        <Label htmlFor="login-phone">{t("authPhoneLabel")}</Label>
+        <Input
+          id="login-phone"
+          type="tel"
+          inputMode="tel"
+          dir="ltr"
+          value={phone}
+          onChange={(e) => setPhone(e.target.value)}
+          placeholder={t("authPhonePlaceholder")}
+          autoComplete="tel"
+          className="h-11 font-mono"
+        />
+      </div>
+      <div className="flex flex-col gap-1.5">
+        <Label htmlFor="login-password">{t("authPasswordLabel")}</Label>
+        <PasswordInput
+          value={password}
+          onChange={setPassword}
+          ariaLabel={t("authPasswordLabel")}
+          autoComplete="current-password"
+        />
+      </div>
+      <div className="pt-1 flex flex-col items-center justify-center">
+        <Turnstile
+          ref={turnstileRef}
+          onVerify={(tok) => {
+            setCaptchaToken(tok);
+            setError(undefined);
+          }}
+          onExpire={() => setCaptchaToken(null)}
+          onError={() => {
+            setCaptchaToken(null);
+            setError(t("captchaFailed"));
+          }}
+        />
+      </div>
+      <FieldError msg={error} />
+      <Button
+        type="submit"
+        disabled={busy || !captchaToken}
+        className="h-11 w-full bg-slate-900 text-white hover:bg-slate-800 font-semibold disabled:opacity-50"
+      >
+        {busy && <Loader2 className="h-4 w-4 animate-spin" aria-hidden />}
+        {t("authLoginBtn")}
+      </Button>
+    </form>
   );
 }
 
@@ -1030,8 +1046,9 @@ function SignupForm({ onStepChange }: { onStepChange?: (isPaymentStep: boolean) 
   const [confirm, setConfirm] = useState("");
   const [locale, setLocaleSel] = useState<Locale>("km");
   const [busy, setBusy] = useState(false);
-  const [captchaOpen, setCaptchaOpen] = useState(false);
+  const [captchaToken, setCaptchaToken] = useState<string | null>(null);
   const [error, setError] = useState<string | undefined>();
+  const turnstileRef = useRef<TurnstileRef>(null);
 
   // Free trial & registration subscription state
   const [step, setStep] = useState<"FORM" | "PAYMENT">("FORM");
@@ -1054,11 +1071,11 @@ function SignupForm({ onStepChange }: { onStepChange?: (isPaymentStep: boolean) 
     if (!PHONE_RE.test(normalizePhone(phone))) return setError(t("authErrPhone"));
     if (password.length < 8) return setError(t("authErrPassword"));
     if (password !== confirm) return setError(t("authErrConfirm"));
-    // Registration continues after the Security Verification captcha.
-    setCaptchaOpen(true);
+    if (!captchaToken) return setError(t("captchaSubtitle"));
+    void doSignup(captchaToken);
   };
 
-  const doSignup = async (captchaToken: string) => {
+  const doSignup = async (token: string) => {
     setError(undefined);
     setBusy(true);
     try {
@@ -1071,7 +1088,7 @@ function SignupForm({ onStepChange }: { onStepChange?: (isPaymentStep: boolean) 
       }>(
         "/api/auth/register",
         "POST",
-        { name: name.trim(), phone: normalizePhone(phone), password, role, locale, captchaToken },
+        { name: name.trim(), phone: normalizePhone(phone), password, role, locale, captchaToken: token },
       );
       // Same session-persistence guard as login (cookie → header fallback).
       let session = await fetchVerifiedSession(res.user.id);
@@ -1083,7 +1100,8 @@ function SignupForm({ onStepChange }: { onStepChange?: (isPaymentStep: boolean) 
         if (!session) {
           clearAuthFallback();
           setBusy(false);
-          setCaptchaOpen(false);
+          turnstileRef.current?.reset();
+          setCaptchaToken(null);
           setError(t("authErrCookieBlocked"));
           return;
         }
@@ -1104,7 +1122,6 @@ function SignupForm({ onStepChange }: { onStepChange?: (isPaymentStep: boolean) 
         setStep("PAYMENT");
         onStepChange?.(true);
         setBusy(false);
-        setCaptchaOpen(false);
         toast.info("Account created! Please select your subscription plan to activate dashboard access.");
         return;
       }
@@ -1113,12 +1130,12 @@ function SignupForm({ onStepChange }: { onStepChange?: (isPaymentStep: boolean) 
       toast.success(t("authWelcomeNew"));
       useAppStore.getState().navigate({ name: "dashboard" });
       setBusy(false);
-      setCaptchaOpen(false);
     } catch (err) {
       const msg = err instanceof Error ? err.message : t("errorGeneric");
       setError(localAuthError(t, msg));
       setBusy(false);
-      if (/captcha/i.test(msg)) setCaptchaOpen(true);
+      turnstileRef.current?.reset();
+      setCaptchaToken(null);
     }
   };
 
@@ -1261,17 +1278,30 @@ function SignupForm({ onStepChange }: { onStepChange?: (isPaymentStep: boolean) 
             </SelectContent>
           </Select>
         </div>
+        <div className="pt-1 flex flex-col items-center justify-center">
+          <Turnstile
+            ref={turnstileRef}
+            onVerify={(tok) => {
+              setCaptchaToken(tok);
+              setError(undefined);
+            }}
+            onExpire={() => setCaptchaToken(null)}
+            onError={() => {
+              setCaptchaToken(null);
+              setError(t("captchaFailed"));
+            }}
+          />
+        </div>
         <FieldError msg={error} />
         <Button
           type="submit"
-          disabled={busy}
-          className="h-11 w-full bg-amber-500 text-slate-950 hover:bg-amber-400 font-semibold"
+          disabled={busy || !captchaToken}
+          className="h-11 w-full bg-amber-500 text-slate-950 hover:bg-amber-400 font-semibold disabled:opacity-50"
         >
           {busy && <Loader2 className="h-4 w-4 animate-spin" aria-hidden />}
           {t("authSignupBtn")}
         </Button>
       </form>
-      <SecurityCaptcha open={captchaOpen} onOpenChange={setCaptchaOpen} onVerified={doSignup} />
     </>
   );
 }

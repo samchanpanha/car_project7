@@ -734,7 +734,7 @@ export const vi: Record<keyof typeof en, string> = {
   captchaClickInOrder: "Vui lòng nhấp theo thứ tự:",
   captchaRefresh: "Làm mới",
   captchaVerifying: "Đang xác minh…",
-  captchaFailed: "Sai thứ tự — đã tải câu đố mới",
+  captchaFailed: "Xác minh bảo mật không thành công — vui lòng thử lại",
   captchaSuccessToast: "Xác minh bảo mật thành công",
   authRequiredToast: "Vui lòng đăng ký hoặc đăng nhập để tiếp tục",
   guestPanelTitle: "Tạo tài khoản miễn phí để tiếp tục",

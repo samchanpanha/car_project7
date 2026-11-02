@@ -734,7 +734,7 @@ export const km: Record<keyof typeof en, string> = {
   captchaClickInOrder: "សូមចុចតាមលំដាប់៖",
   captchaRefresh: "ផ្លាស់ប្ដូរ",
   captchaVerifying: "កំពុងផ្ទៀងផ្ទាត់…",
-  captchaFailed: "លំដាប់មិនត្រឹមត្រូវ — ប្រអប់ថ្មីត្រូវបានផ្ទុកឡើងវិញ",
+  captchaFailed: "ការផ្ទៀងផ្ទាត់សុវត្ថិភាពមិនបានសម្រេច — សូមព្យាយាមម្តងទៀត",
   captchaSuccessToast: "ការផ្ទៀងផ្ទាត់សុវត្ថិភាពជោគជ័យ",
   authRequiredToast: "សូមចុះឈ្មោះ ឬចូលប្រើដើម្បីបន្ត",
   guestPanelTitle: "បង្កើតគណនីឥតគិតថ្លៃដើម្បីបន្ត",

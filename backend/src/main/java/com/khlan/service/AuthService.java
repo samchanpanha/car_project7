@@ -41,7 +41,7 @@ public class AuthService {
     private final TenantMemberRepository tenantMemberRepository;
     private final PasswordService passwordService;
     private final SessionTokenService sessionTokenService;
-    private final CaptchaService captchaService;
+    private final TurnstileService turnstileService;
     private final AdminService adminService;
     private final ObjectMapper objectMapper;
 
@@ -50,6 +50,11 @@ public class AuthService {
 
     @Transactional
     public AuthDTO.AuthResponse login(AuthDTO.LoginRequest req, HttpServletResponse response) {
+        return login(req, response, null);
+    }
+
+    @Transactional
+    public AuthDTO.AuthResponse login(AuthDTO.LoginRequest req, HttpServletResponse response, String remoteIp) {
         String phone = normalizeKhmerPhone(req.getPhone());
         if (phone == null) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "phone: must be a Cambodian number like +85512345678");
@@ -59,7 +64,7 @@ public class AuthService {
         boolean demoMode = settings.isDemoModeEnabled();
 
         if (req.getCaptchaToken() != null && !req.getCaptchaToken().isBlank()) {
-            if (!captchaService.consumeToken(req.getCaptchaToken())) {
+            if (!turnstileService.verify(req.getCaptchaToken(), remoteIp)) {
                 throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Captcha verification failed or expired — please complete the security verification again");
             }
         } else if (!demoMode) {
@@ -97,6 +102,11 @@ public class AuthService {
 
     @Transactional
     public AuthDTO.AuthResponse register(AuthDTO.RegisterRequest req, HttpServletResponse response) {
+        return register(req, response, null);
+    }
+
+    @Transactional
+    public AuthDTO.AuthResponse register(AuthDTO.RegisterRequest req, HttpServletResponse response, String remoteIp) {
         String phone = normalizeKhmerPhone(req.getPhone());
         if (phone == null) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "phone: must be a Cambodian number like +85512345678");
@@ -106,7 +116,7 @@ public class AuthService {
         boolean demoMode = settings.isDemoModeEnabled();
 
         if (req.getCaptchaToken() != null && !req.getCaptchaToken().isBlank()) {
-            if (!captchaService.consumeToken(req.getCaptchaToken())) {
+            if (!turnstileService.verify(req.getCaptchaToken(), remoteIp)) {
                 throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Captcha verification failed or expired — please complete the security verification again");
             }
         } else if (!demoMode) {

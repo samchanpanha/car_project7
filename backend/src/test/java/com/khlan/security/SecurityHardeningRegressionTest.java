@@ -623,7 +623,7 @@ class SecurityHardeningRegressionTest {
                 @Mock
                 private SessionTokenService sessionTokenService;
                 @Mock
-                private CaptchaService captchaService;
+                private TurnstileService turnstileService;
                 @Mock
                 private AdminService adminService;
                 @Mock
@@ -641,7 +641,7 @@ class SecurityHardeningRegressionTest {
                                         .demoModeEnabled(false)
                                         .build();
                         when(adminService.getPlatformSettings()).thenReturn(settings);
-                        when(captchaService.consumeToken("bypass")).thenReturn(false);
+                        when(turnstileService.verify(eq("bypass"), any())).thenReturn(false);
 
                         AuthDTO.LoginRequest req = AuthDTO.LoginRequest.builder()
                                         .phone("012345678")
@@ -656,7 +656,7 @@ class SecurityHardeningRegressionTest {
 
                         assertEquals(HttpStatus.BAD_REQUEST, ex.getStatusCode());
                         assertTrue(ex.getReason().contains("Captcha verification failed or expired"));
-                        verify(captchaService).consumeToken("bypass");
+                        verify(turnstileService).verify(eq("bypass"), any());
                 }
 
                 @Test
@@ -666,7 +666,7 @@ class SecurityHardeningRegressionTest {
                                         .demoModeEnabled(true)
                                         .build();
                         when(adminService.getPlatformSettings()).thenReturn(settings);
-                        when(captchaService.consumeToken("bypass")).thenReturn(false);
+                        when(turnstileService.verify(eq("bypass"), any())).thenReturn(false);
 
                         AuthDTO.LoginRequest req = AuthDTO.LoginRequest.builder()
                                         .phone("012345678")
@@ -681,7 +681,7 @@ class SecurityHardeningRegressionTest {
 
                         assertEquals(HttpStatus.BAD_REQUEST, ex.getStatusCode());
                         assertTrue(ex.getReason().contains("Captcha verification failed or expired"));
-                        verify(captchaService).consumeToken("bypass");
+                        verify(turnstileService).verify(eq("bypass"), any());
                 }
 
                 @Test
@@ -714,7 +714,7 @@ class SecurityHardeningRegressionTest {
                                         .demoModeEnabled(false)
                                         .build();
                         when(adminService.getPlatformSettings()).thenReturn(settings);
-                        when(captchaService.consumeToken("bypass")).thenReturn(false);
+                        when(turnstileService.verify(eq("bypass"), any())).thenReturn(false);
 
                         AuthDTO.RegisterRequest req = AuthDTO.RegisterRequest.builder()
                                         .name("Hacker")
@@ -731,7 +731,7 @@ class SecurityHardeningRegressionTest {
 
                         assertEquals(HttpStatus.BAD_REQUEST, ex.getStatusCode());
                         assertTrue(ex.getReason().contains("Captcha verification failed or expired"));
-                        verify(captchaService).consumeToken("bypass");
+                        verify(turnstileService).verify(eq("bypass"), any());
                 }
 
                 @Test
@@ -741,7 +741,7 @@ class SecurityHardeningRegressionTest {
                                         .demoModeEnabled(true)
                                         .build();
                         when(adminService.getPlatformSettings()).thenReturn(settings);
-                        when(captchaService.consumeToken("bypass")).thenReturn(false);
+                        when(turnstileService.verify(eq("bypass"), any())).thenReturn(false);
 
                         AuthDTO.RegisterRequest req = AuthDTO.RegisterRequest.builder()
                                         .name("Hacker")
@@ -758,7 +758,7 @@ class SecurityHardeningRegressionTest {
 
                         assertEquals(HttpStatus.BAD_REQUEST, ex.getStatusCode());
                         assertTrue(ex.getReason().contains("Captcha verification failed or expired"));
-                        verify(captchaService).consumeToken("bypass");
+                        verify(turnstileService).verify(eq("bypass"), any());
                 }
 
                 @Test

@@ -60,28 +60,5 @@ public class AuthDTO {
         private UserSummaryDTO user;
         private String sessionToken;
     }
-
-    @Data
-    @NoArgsConstructor
-    @AllArgsConstructor
-    public static class CaptchaVerifyRequest {
-        @NotBlank(message = "id is required")
-        private String id;
-        private String order;
-        private String sequence;
-
-        public String getEffectiveOrder() {
-            if (sequence != null && !sequence.isBlank()) return sequence;
-            return order;
-        }
-    }
-
-    @Data
-    @NoArgsConstructor
-    @AllArgsConstructor
-    @Builder
-    public static class CaptchaVerifyResponse {
-        private boolean ok;
-        private String captchaToken;
-    }
 }
+
