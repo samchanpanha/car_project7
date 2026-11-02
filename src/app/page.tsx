@@ -27,6 +27,7 @@ import { SellerView } from "@/components/marketplace/views/seller-view";
 import { CompareView } from "@/components/marketplace/views/compare-view";
 import { AuthView } from "@/components/marketplace/views/auth-view";
 import { DashboardView } from "@/components/marketplace/dashboard/dashboard-view";
+import { GuideView } from "@/components/marketplace/views/guide-view";
 import { cn } from "@/lib/utils";
 import { useEffect, useRef } from "react";
 import { toast } from "sonner";
@@ -204,6 +205,8 @@ function CurrentView() {
       return <AuthView key={view.tab ?? "login"} initialTab={view.tab} />;
     case "dashboard":
       return <DashboardView />;
+    case "guide":
+      return <GuideView key={view.tab ?? "default"} initialTab={view.tab} />;
     default:
       return <HomeView />;
   }

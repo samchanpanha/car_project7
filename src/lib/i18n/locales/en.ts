@@ -8,6 +8,7 @@ export const en = {
   navFavorites: "Favorites",
   navMessages: "Messages",
   navCompare: "Compare",
+  navGuide: "User Guide",
   // hero
   heroTitle: "Find your next car with confidence",
   heroSubtitle:

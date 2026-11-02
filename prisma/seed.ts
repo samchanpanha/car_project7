@@ -1,4 +1,5 @@
 // KhLan — demo seed script (Cambodia AI car marketplace)
+import "dotenv/config";
 import crypto from "node:crypto";
 import { fileURLToPath } from "node:url";
 // Deterministic ids so API routes / frontend can reference them (see worklog Task 2-b).

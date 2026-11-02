@@ -40,16 +40,16 @@ import {
   partTargetLabels,
 } from "@/lib/i18n";
 
-// Sample photo pool for the demo (mirrors seeded inventory photos)
+// Sample photo pool for the demo (hosted on Cloudflare R2)
 const SAMPLE_PHOTOS = [
-  "https://z-cdn.chatglm.cn/image-search-mcp/images-ppt/e3386ea3c903.jpg",
-  "https://z-cdn.chatglm.cn/image-search-mcp/images-ppt/f4d2ad2b2b7b.jpg",
-  "https://z-cdn.chatglm.cn/image-search-mcp/images-ppt/d47fff7e1477.jpg",
-  "https://z-cdn.chatglm.cn/image-search-mcp/images-ppt/ed5a6ef7abc7.jpg",
-  "https://z-cdn.chatglm.cn/image-search-mcp/images-ppt/24869280e773.jpg",
-  "https://z-cdn.chatglm.cn/image-search-mcp/images-ppt/fe40884e3d34.jpg",
-  "https://z-cdn.chatglm.cn/image-search-mcp/images-ppt/7b6f42c2ef87.jpg",
-  "https://z-cdn.chatglm.cn/image-search-mcp/images-ppt/466c2bc1a0ee.jpg",
+  "https://pub-d32806cd92a44955a3772e3e6c2369a5.r2.dev/seed/vehicles/prado/prado_1.jpg",
+  "https://pub-d32806cd92a44955a3772e3e6c2369a5.r2.dev/seed/vehicles/lexus/lexus_1.jpg",
+  "https://pub-d32806cd92a44955a3772e3e6c2369a5.r2.dev/seed/vehicles/revo/revo_1.jpg",
+  "https://pub-d32806cd92a44955a3772e3e6c2369a5.r2.dev/seed/vehicles/crv/crv_1.jpg",
+  "https://pub-d32806cd92a44955a3772e3e6c2369a5.r2.dev/seed/vehicles/camry/camry_1.jpg",
+  "https://pub-d32806cd92a44955a3772e3e6c2369a5.r2.dev/seed/vehicles/ranger/ranger_1.jpg",
+  "https://pub-d32806cd92a44955a3772e3e6c2369a5.r2.dev/seed/vehicles/cclass/cclass_1.jpg",
+  "https://pub-d32806cd92a44955a3772e3e6c2369a5.r2.dev/seed/vehicles/cx5/cx5_1.jpg",
 ];
 
 const BODY_TYPES = ["SUV", "SEDAN", "PICKUP", "VAN", "HATCHBACK", "COUPE"];

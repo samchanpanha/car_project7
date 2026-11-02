@@ -9,6 +9,7 @@ export const zh: Record<keyof typeof en, string> = {
   navFavorites: "收藏",
   navMessages: "消息",
   navCompare: "对比",
+  navGuide: "使用指南",
   heroTitle: "安心找到您的下一辆车",
   heroSubtitle:
     "搜索经核实的车源，获取基于证据的 AI 车辆报告。我们展示哪些信息已核实、哪些可疑、哪些尚不明确——绝无虚假评分。",

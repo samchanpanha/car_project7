@@ -26,10 +26,10 @@ const NEW_CARS = [
     sellerId: "usr_dealer_sokha",
     tenantId: "tenant_sokha",
     images: [
-      "https://z-cdn.chatglm.cn/image-search-mcp/images-ppt/ed5a6ef7abc7.jpg",
-      "https://z-cdn.chatglm.cn/image-search-mcp/images-ppt/24869280e773.jpg",
-      "https://z-cdn.chatglm.cn/image-search-mcp/images-ppt/7b6f42c2ef87.jpg",
-      "https://z-cdn.chatglm.cn/image-search-mcp/images-ppt/fe40884e3d34.jpg",
+      "https://pub-d32806cd92a44955a3772e3e6c2369a5.r2.dev/seed/vehicles/lexus/lexus_1.jpg",
+      "https://pub-d32806cd92a44955a3772e3e6c2369a5.r2.dev/seed/vehicles/lexus/lexus_2.jpg",
+      "https://pub-d32806cd92a44955a3772e3e6c2369a5.r2.dev/seed/vehicles/lexus/lexus_3.jpg",
+      "https://pub-d32806cd92a44955a3772e3e6c2369a5.r2.dev/seed/vehicles/lexus/lexus_4.jpg",
     ],
   },
   {
@@ -57,8 +57,8 @@ const NEW_CARS = [
     sellerId: "usr_priv_vireak",
     tenantId: null,
     images: [
-      "https://z-cdn.chatglm.cn/image-search-mcp/images-ppt/aad98b3ee7ea.webp",
-      "https://z-cdn.chatglm.cn/image-search-mcp/images-ppt/f6269239ce78.jpg",
+      "https://pub-d32806cd92a44955a3772e3e6c2369a5.r2.dev/seed/vehicles/camry/camry_1.jpg",
+      "https://pub-d32806cd92a44955a3772e3e6c2369a5.r2.dev/seed/vehicles/camry/camry_2.jpg",
     ],
   },
   {
@@ -86,9 +86,9 @@ const NEW_CARS = [
     sellerId: "usr_dealer_ppauto",
     tenantId: "tenant_ppauto",
     images: [
-      "https://z-cdn.chatglm.cn/image-search-mcp/images-ppt/e3386ea3c903.jpg",
-      "https://z-cdn.chatglm.cn/image-search-mcp/images-ppt/f4d2ad2b2b7b.jpg",
-      "https://z-cdn.chatglm.cn/image-search-mcp/images-ppt/d47fff7e1477.jpg",
+      "https://pub-d32806cd92a44955a3772e3e6c2369a5.r2.dev/seed/vehicles/prado/prado_1.jpg",
+      "https://pub-d32806cd92a44955a3772e3e6c2369a5.r2.dev/seed/vehicles/prado/prado_2.jpg",
+      "https://pub-d32806cd92a44955a3772e3e6c2369a5.r2.dev/seed/vehicles/prado/prado_3.jpg",
     ],
   },
   {
@@ -116,9 +116,9 @@ const NEW_CARS = [
     sellerId: "usr_dealer_sokha",
     tenantId: "tenant_sokha",
     images: [
-      "https://z-cdn.chatglm.cn/image-search-mcp/images-ppt/5338b1f9d30c.jpg",
-      "https://z-cdn.chatglm.cn/image-search-mcp/images-ppt/303d06e8dc76.jpg",
-      "https://z-cdn.chatglm.cn/image-search-mcp/images-ppt/a20e2a73826f.jpg",
+      "https://pub-d32806cd92a44955a3772e3e6c2369a5.r2.dev/seed/vehicles/ranger/ranger_1.jpg",
+      "https://pub-d32806cd92a44955a3772e3e6c2369a5.r2.dev/seed/vehicles/ranger/ranger_2.jpg",
+      "https://pub-d32806cd92a44955a3772e3e6c2369a5.r2.dev/seed/vehicles/ranger/ranger_3.jpg",
     ],
   },
   {
@@ -146,8 +146,8 @@ const NEW_CARS = [
     sellerId: "usr_dealer_sokha",
     tenantId: "tenant_sokha",
     images: [
-      "https://z-cdn.chatglm.cn/image-search-mcp/images-ppt/f8cb4886a2fe.jpg",
-      "https://z-cdn.chatglm.cn/image-search-mcp/images-ppt/c623f101194d.jpg",
+      "https://pub-d32806cd92a44955a3772e3e6c2369a5.r2.dev/seed/vehicles/cclass/cclass_1.jpg",
+      "https://pub-d32806cd92a44955a3772e3e6c2369a5.r2.dev/seed/vehicles/cclass/cclass_2.jpg",
     ],
   },
   {
@@ -175,8 +175,8 @@ const NEW_CARS = [
     sellerId: "usr_dealer_ppauto",
     tenantId: "tenant_ppauto",
     images: [
-      "https://z-cdn.chatglm.cn/image-search-mcp/images-ppt/a66caa24a0c1.jpg",
-      "https://z-cdn.chatglm.cn/image-search-mcp/images-ppt/5fdf344752f0.jpg",
+      "https://pub-d32806cd92a44955a3772e3e6c2369a5.r2.dev/seed/vehicles/carnival/carnival_1.jpg",
+      "https://pub-d32806cd92a44955a3772e3e6c2369a5.r2.dev/seed/vehicles/carnival/carnival_2.jpg",
     ],
   },
   {
@@ -204,8 +204,8 @@ const NEW_CARS = [
     sellerId: "usr_priv_sopheak",
     tenantId: null,
     images: [
-      "https://z-cdn.chatglm.cn/image-search-mcp/images-ppt/aad98b3ee7ea.webp",
-      "https://z-cdn.chatglm.cn/image-search-mcp/images-ppt/f6269239ce78.jpg",
+      "https://pub-d32806cd92a44955a3772e3e6c2369a5.r2.dev/seed/vehicles/camry/camry_1.jpg",
+      "https://pub-d32806cd92a44955a3772e3e6c2369a5.r2.dev/seed/vehicles/camry/camry_2.jpg",
     ],
   },
   {
@@ -233,8 +233,8 @@ const NEW_CARS = [
     sellerId: "usr_priv_vireak",
     tenantId: null,
     images: [
-      "https://z-cdn.chatglm.cn/image-search-mcp/images-ppt/833017736d87.jpg",
-      "https://z-cdn.chatglm.cn/image-search-mcp/images-ppt/edef90f3142f.jpg",
+      "https://pub-d32806cd92a44955a3772e3e6c2369a5.r2.dev/seed/vehicles/cx5/cx5_1.jpg",
+      "https://pub-d32806cd92a44955a3772e3e6c2369a5.r2.dev/seed/vehicles/cx5/cx5_2.jpg",
     ],
   },
   {
@@ -262,8 +262,8 @@ const NEW_CARS = [
     sellerId: "usr_dealer_ppauto",
     tenantId: "tenant_ppauto",
     images: [
-      "https://z-cdn.chatglm.cn/image-search-mcp/images-ppt/e3386ea3c903.jpg",
-      "https://z-cdn.chatglm.cn/image-search-mcp/images-ppt/24869280e773.jpg",
+      "https://pub-d32806cd92a44955a3772e3e6c2369a5.r2.dev/seed/vehicles/prado/prado_1.jpg",
+      "https://pub-d32806cd92a44955a3772e3e6c2369a5.r2.dev/seed/vehicles/lexus/lexus_2.jpg",
     ],
   },
   {
@@ -291,8 +291,8 @@ const NEW_CARS = [
     sellerId: "usr_dealer_ppauto",
     tenantId: "tenant_ppauto",
     images: [
-      "https://z-cdn.chatglm.cn/image-search-mcp/images-ppt/a66caa24a0c1.jpg",
-      "https://z-cdn.chatglm.cn/image-search-mcp/images-ppt/0eb33d352eba.jpg",
+      "https://pub-d32806cd92a44955a3772e3e6c2369a5.r2.dev/seed/vehicles/carnival/carnival_1.jpg",
+      "https://pub-d32806cd92a44955a3772e3e6c2369a5.r2.dev/seed/vehicles/carnival/carnival_4.jpg",
     ],
   },
   {
@@ -320,8 +320,8 @@ const NEW_CARS = [
     sellerId: "usr_priv_sopheak",
     tenantId: null,
     images: [
-      "https://z-cdn.chatglm.cn/image-search-mcp/images-ppt/61b75549675d.jpg",
-      "https://z-cdn.chatglm.cn/image-search-mcp/images-ppt/bd285cc4d007.jpg",
+      "https://pub-d32806cd92a44955a3772e3e6c2369a5.r2.dev/seed/vehicles/tucson/tucson_1.jpg",
+      "https://pub-d32806cd92a44955a3772e3e6c2369a5.r2.dev/seed/vehicles/tucson/tucson_2.jpg",
     ],
   },
   {
@@ -349,8 +349,8 @@ const NEW_CARS = [
     sellerId: "usr_dealer_sokha",
     tenantId: "tenant_sokha",
     images: [
-      "https://z-cdn.chatglm.cn/image-search-mcp/images-ppt/45f7a83eed88.jpg",
-      "https://z-cdn.chatglm.cn/image-search-mcp/images-ppt/42c71217300e.jpg",
+      "https://pub-d32806cd92a44955a3772e3e6c2369a5.r2.dev/seed/vehicles/vellfire/vellfire_1.jpg",
+      "https://pub-d32806cd92a44955a3772e3e6c2369a5.r2.dev/seed/vehicles/vellfire/vellfire_2.jpg",
     ],
   },
   {
@@ -378,8 +378,8 @@ const NEW_CARS = [
     sellerId: "usr_priv_vireak",
     tenantId: null,
     images: [
-      "https://z-cdn.chatglm.cn/image-search-mcp/images-ppt/1a687db4edc9.jpg",
-      "https://z-cdn.chatglm.cn/image-search-mcp/images-ppt/8485dbabc697.jpg",
+      "https://pub-d32806cd92a44955a3772e3e6c2369a5.r2.dev/seed/vehicles/civic/civic_1.jpg",
+      "https://pub-d32806cd92a44955a3772e3e6c2369a5.r2.dev/seed/vehicles/civic/civic_2.jpg",
     ],
   },
   {
@@ -407,8 +407,8 @@ const NEW_CARS = [
     sellerId: "usr_dealer_ppauto",
     tenantId: "tenant_ppauto",
     images: [
-      "https://z-cdn.chatglm.cn/image-search-mcp/images-ppt/5338b1f9d30c.jpg",
-      "https://z-cdn.chatglm.cn/image-search-mcp/images-ppt/944e41c9a59e.png",
+      "https://pub-d32806cd92a44955a3772e3e6c2369a5.r2.dev/seed/vehicles/ranger/ranger_1.jpg",
+      "https://pub-d32806cd92a44955a3772e3e6c2369a5.r2.dev/seed/vehicles/ranger/ranger_4.jpg",
     ],
   },
   {
@@ -436,8 +436,8 @@ const NEW_CARS = [
     sellerId: "usr_dealer_sokha",
     tenantId: "tenant_sokha",
     images: [
-      "https://z-cdn.chatglm.cn/image-search-mcp/images-ppt/ed5a6ef7abc7.jpg",
-      "https://z-cdn.chatglm.cn/image-search-mcp/images-ppt/fe40884e3d34.jpg",
+      "https://pub-d32806cd92a44955a3772e3e6c2369a5.r2.dev/seed/vehicles/lexus/lexus_1.jpg",
+      "https://pub-d32806cd92a44955a3772e3e6c2369a5.r2.dev/seed/vehicles/lexus/lexus_4.jpg",
     ],
   },
   {
@@ -465,8 +465,8 @@ const NEW_CARS = [
     sellerId: "usr_priv_sopheak",
     tenantId: null,
     images: [
-      "https://z-cdn.chatglm.cn/image-search-mcp/images-ppt/1a687db4edc9.jpg",
-      "https://z-cdn.chatglm.cn/image-search-mcp/images-ppt/d3d0c48ae9f9.jpg",
+      "https://pub-d32806cd92a44955a3772e3e6c2369a5.r2.dev/seed/vehicles/civic/civic_1.jpg",
+      "https://pub-d32806cd92a44955a3772e3e6c2369a5.r2.dev/seed/vehicles/civic/civic_3.jpg",
     ],
   },
   {
@@ -494,8 +494,8 @@ const NEW_CARS = [
     sellerId: "usr_dealer_ppauto",
     tenantId: "tenant_ppauto",
     images: [
-      "https://z-cdn.chatglm.cn/image-search-mcp/images-ppt/f8cb4886a2fe.jpg",
-      "https://z-cdn.chatglm.cn/image-search-mcp/images-ppt/1e0f6a4dd57b.jpg",
+      "https://pub-d32806cd92a44955a3772e3e6c2369a5.r2.dev/seed/vehicles/cclass/cclass_1.jpg",
+      "https://pub-d32806cd92a44955a3772e3e6c2369a5.r2.dev/seed/vehicles/cclass/cclass_3.jpg",
     ],
   },
   {
@@ -523,8 +523,8 @@ const NEW_CARS = [
     sellerId: "usr_dealer_ppauto",
     tenantId: "tenant_ppauto",
     images: [
-      "https://z-cdn.chatglm.cn/image-search-mcp/images-ppt/61b75549675d.jpg",
-      "https://z-cdn.chatglm.cn/image-search-mcp/images-ppt/f0d9dc8e1223.jpg",
+      "https://pub-d32806cd92a44955a3772e3e6c2369a5.r2.dev/seed/vehicles/tucson/tucson_1.jpg",
+      "https://pub-d32806cd92a44955a3772e3e6c2369a5.r2.dev/seed/vehicles/tucson/tucson_4.jpg",
     ],
   },
 ];

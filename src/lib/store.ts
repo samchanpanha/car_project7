@@ -25,7 +25,8 @@ export type View =
   | { name: "seller"; userId: string }
   | { name: "compare" }
   | { name: "auth"; tab?: "login" | "signup" }
-  | { name: "dashboard"; tab?: string };
+  | { name: "dashboard"; tab?: string }
+  | { name: "guide"; tab?: "buyer" | "seller" | "dealer" | "payments" | "faq" };
 
 /** A genuine visitor: no real login and no demo persona — browsing is public,
  *  but contacting dealers / favorites / selling require registration. */

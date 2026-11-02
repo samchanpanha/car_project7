@@ -50,6 +50,9 @@ export function Footer() {
               <button className="text-left hover:text-white cursor-pointer" onClick={() => navigate({ name: "messages" })}>
                 {t("navMessages")}
               </button>
+              <button className="text-left hover:text-white cursor-pointer text-amber-400 hover:text-amber-300 font-medium" onClick={() => navigate({ name: "guide" })}>
+                {t("navGuide")}
+              </button>
             </nav>
           </div>
         </div>

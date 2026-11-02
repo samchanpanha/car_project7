@@ -6,6 +6,7 @@ import { useFetch } from "@/lib/client-hooks";
 import type { VehicleDetailDTO } from "@/lib/types";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
+import { SafeImage } from "@/components/marketplace/safe-image";
 import { Scale, X } from "lucide-react";
 import { formatKhr, formatMileage, formatUsd } from "@/lib/format";
 import { bodyTypeLabels, drivetrainLabels, fuelLabels, transmissionLabels } from "@/lib/i18n";
@@ -27,10 +28,13 @@ function CompareColumn({ vehicleId }: { vehicleId: string }) {
   return (
     <div className="p-3">
       <div className="relative aspect-[4/3] overflow-hidden rounded-lg bg-slate-100">
-        {v.images[0] && (
-           
-          <img src={v.images[0]} alt={`${v.make} ${v.model}`} className="h-full w-full object-cover" loading="lazy" />
-        )}
+        <SafeImage
+          src={v.images[0]}
+          alt={`${v.make} ${v.model}`}
+          category={v.listingCategory}
+          className="h-full w-full object-cover"
+          loading="lazy"
+        />
       </div>
       <p className="mt-2.5 text-sm font-semibold text-slate-900 leading-snug">
         {v.make} {v.model} {v.variant ?? ""}

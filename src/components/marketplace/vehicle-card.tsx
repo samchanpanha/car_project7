@@ -14,6 +14,7 @@ import {
 import type { VehicleCardDTO } from "@/lib/types";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
+import { SafeImage } from "@/components/marketplace/safe-image";
 import { BadgeCheck, CarFront, Eye, FileCheck2, Heart, Scale, MapPin, Sparkles, PhoneCall } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
@@ -90,22 +91,14 @@ export function VehicleCard({ vehicle, showCompare = true }: { vehicle: VehicleC
         }
       }}
     >
-      <div className="relative aspect-[4/3] bg-slate-100 overflow-hidden">
-        {vehicle.images[0] ? (
-          <img
-            src={vehicle.images[0]}
-            alt={`${vehicle.make} ${vehicle.model} ${vehicle.year} for sale in ${vehicle.city}`}
-            loading="lazy"
-            className="h-full w-full object-cover group-hover:scale-[1.03] transition-transform duration-300"
-            onError={(e) => {
-              (e.target as HTMLImageElement).style.display = "none";
-            }}
-          />
-        ) : (
-          <div className="flex h-full items-center justify-center text-slate-300">
-            <CarFront className="h-10 w-10" aria-hidden />
-          </div>
-        )}
+      <div className="relative aspect-[4/3] bg-slate-100 dark:bg-slate-800 overflow-hidden">
+        <SafeImage
+          src={vehicle.images[0]}
+          alt={`${vehicle.make} ${vehicle.model} ${vehicle.year} for sale in ${vehicle.city}`}
+          category={vehicle.listingCategory}
+          loading="lazy"
+          className="h-full w-full object-cover group-hover:scale-[1.03] transition-transform duration-300"
+        />
         <div className="absolute top-2 left-2 flex flex-wrap gap-1.5">
           {vehicle.listingCategory === "MOTOR" && (
             <Badge className="bg-sky-600 text-white hover:bg-sky-600 gap-1 text-[10px] shadow-xs">

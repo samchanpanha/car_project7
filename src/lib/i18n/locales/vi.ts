@@ -9,6 +9,7 @@ export const vi: Record<keyof typeof en, string> = {
   navFavorites: "Yêu thích",
   navMessages: "Tin nhắn",
   navCompare: "So sánh",
+  navGuide: "Hướng dẫn",
   heroTitle: "Tìm chiếc xe tiếp theo một cách tự tin",
   heroSubtitle:
     "Tìm kiếm tin đăng đã xác minh và nhận báo cáo AI dựa trên bằng chứng. Chúng tôi cho bạn biết thông tin nào đã xác minh, thông tin nào đáng ngờ và thông tin nào chưa rõ — không bao giờ có điểm số giả.",

@@ -6,6 +6,7 @@ import { useFetch, apiSend } from "@/lib/client-hooks";
 import type { VehicleCardDTO, VehicleDetailDTO } from "@/lib/types";
 import type { VehicleDetailWithFilesDTO } from "@/lib/listing-types";
 import { VehicleCard, VehicleCardSkeleton } from "@/components/marketplace/vehicle-card";
+import { SafeImage } from "@/components/marketplace/safe-image";
 import { ContactDialog } from "@/components/marketplace/contact-dialog";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -318,24 +319,12 @@ export function DetailView({ vehicleId }: { vehicleId: string }) {
         <div>
           {/* Gallery */}
           <div className="relative rounded-xl overflow-hidden border border-slate-200 bg-slate-100 aspect-[4/3]">
-            {v.images[imgIndex] ? (
-               
-              <img
-                src={v.images[imgIndex]}
-                alt={`${title} — photo ${imgIndex + 1} of ${v.images.length}`}
-                className="h-full w-full object-cover"
-              />
-            ) : (
-              <div className="flex h-full items-center justify-center text-slate-300">
-                {v.listingCategory === "MOTOR" ? (
-                  <Bike className="h-16 w-16" aria-hidden />
-                ) : v.listingCategory === "SPARE_PART" ? (
-                  <Wrench className="h-16 w-16" aria-hidden />
-                ) : (
-                  <CarFront className="h-16 w-16" aria-hidden />
-                )}
-              </div>
-            )}
+            <SafeImage
+              src={v.images[imgIndex]}
+              alt={`${title} — photo ${imgIndex + 1} of ${v.images.length}`}
+              category={v.listingCategory}
+              className="h-full w-full object-cover"
+            />
             {v.images.length > 1 && (
               <>
                 <button
@@ -371,13 +360,12 @@ export function DetailView({ vehicleId }: { vehicleId: string }) {
                   key={url + i}
                   onClick={() => setImgIndex(i)}
                   className={cn(
-                    "relative aspect-[4/3] overflow-hidden rounded-lg border-2 cursor-pointer",
+                    "relative aspect-[4/3] overflow-hidden rounded-lg border-2 cursor-pointer bg-slate-100",
                     i === imgIndex ? "border-amber-500" : "border-transparent opacity-75 hover:opacity-100"
                   )}
                   aria-label={`Photo ${i + 1}`}
                 >
-                  { }
-                  <img src={url} alt="" className="h-full w-full object-cover" />
+                  <SafeImage src={url} alt="" category={v.listingCategory} className="h-full w-full object-cover" />
                 </button>
               ))}
             </div>

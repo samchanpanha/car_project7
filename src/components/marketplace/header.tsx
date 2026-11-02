@@ -12,7 +12,7 @@ import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel,
   DropdownMenuSeparator, DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { Search, Heart, MessageSquare, Scale, Plus, Languages, CarFront, LayoutDashboard, ChevronDown, UserRound, Settings2, LogOut, LogIn, Check } from "lucide-react";
+import { Search, Heart, MessageSquare, Scale, Plus, Languages, CarFront, LayoutDashboard, ChevronDown, UserRound, Settings2, LogOut, LogIn, Check, BookOpen } from "lucide-react";
 import { useState } from "react";
 import { cn } from "@/lib/utils";
 import { initials } from "@/components/marketplace/dashboard/bits";
@@ -383,6 +383,17 @@ export function Header() {
           >
             <MessageSquare className="h-4 w-4 mr-1.5" aria-hidden />
             {t("navMessages")}
+          </Button>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => navigate({ name: "guide" })}
+            className="inline-flex text-white/80 hover:text-white hover:bg-slate-800 px-2 sm:px-3"
+            aria-label={t("navGuide")}
+            title={t("navGuide")}
+          >
+            <BookOpen className="h-4 w-4 text-amber-400 sm:mr-1.5" aria-hidden />
+            <span className="hidden sm:inline">{t("navGuide")}</span>
           </Button>
           {/* Dashboard is an account surface — hide it from guests entirely
               (they get Log in / Sign up instead). Signed-in users always have
