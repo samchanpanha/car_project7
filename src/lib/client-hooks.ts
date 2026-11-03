@@ -43,10 +43,15 @@ interface FetchState<T> {
   error: string | null;
 }
 
-export function useFetch<T>(url: string | null) {
+/**
+ * `initialData` seeds the first render with server-fetched payload (SSR'd
+ * listing pages). The effect still revalidates in the background, so the view
+ * never shows a skeleton when initial data is present.
+ */
+export function useFetch<T>(url: string | null, initialData?: T | null) {
   const [state, setState] = useState<FetchState<T>>(() => ({
-    status: url ? "loading" : "idle",
-    data: null,
+    status: url ? (initialData != null ? "done" : "loading") : "idle",
+    data: (initialData as T | null) ?? null,
     error: null,
   }));
   const [tick, setTick] = useState(0);

@@ -1,36 +1,29 @@
-"use client";
+import type { Metadata } from "next";
+import { AppChrome } from "@/components/marketplace/app-chrome";
+import { pathToView, toQueryString } from "@/lib/routes";
+import { absoluteUrl } from "@/lib/seo";
 
-import { useAppStore } from "@/lib/store";
-import { Header } from "@/components/marketplace/header";
-import { Footer } from "@/components/marketplace/footer";
-import { MobileNav } from "@/components/marketplace/mobile-nav";
-import { GuideView } from "@/components/marketplace/views/guide-view";
-import { cn } from "@/lib/utils";
-import type { Locale } from "@/lib/i18n";
+type SearchParams = Promise<Record<string, string | string[] | undefined>>;
 
-function fontClassFor(locale: Locale): string {
-  if (locale === "km") return "font-khmer";
-  if (locale === "zh") return "font-cjk";
-  return "";
-}
+/** Rendered per request so the canonical URL always reflects the runtime
+ *  `SITE_URL` (a prerendered page would freeze the build-time domain). */
+export const dynamic = "force-dynamic";
 
-export default function GuidePage() {
-  const locale = useAppStore((s) => s.locale);
+export const metadata: Metadata = {
+  title: "Buying & Selling Guide",
+  description:
+    "Step-by-step guides for buying and selling cars and motorbikes in Cambodia: how to inspect a listing, verify documents, negotiate safely, and pay with ABA or KhQR.",
+  alternates: { canonical: absoluteUrl("/guide") },
+  openGraph: {
+    type: "article",
+    title: "Buying & Selling Guide — KhLan",
+    description:
+      "How to buy and sell cars, motorbikes and spare parts safely in Cambodia — inspections, documents, payments and delivery.",
+    url: absoluteUrl("/guide"),
+  },
+};
 
-  return (
-    <div className="flex min-h-screen flex-col bg-slate-50">
-      <div className={cn(fontClassFor(locale))}>
-        <Header />
-      </div>
-      <main className="flex-1 flex flex-col" id="main">
-        <div className={cn("flex-1", fontClassFor(locale))}>
-          <GuideView />
-        </div>
-      </main>
-      <div className={cn(fontClassFor(locale))}>
-        <Footer />
-      </div>
-      <MobileNav />
-    </div>
-  );
+export default async function GuidePage({ searchParams }: { searchParams: SearchParams }) {
+  const query = toQueryString(await searchParams);
+  return <AppChrome initialView={pathToView("/guide", query)} />;
 }

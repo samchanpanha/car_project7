@@ -46,7 +46,14 @@ function localInputValue(d: Date): string {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
-export function DetailView({ vehicleId }: { vehicleId: string }) {
+export function DetailView({
+  vehicleId,
+  initial,
+}: {
+  vehicleId: string;
+  /** Server-fetched payload (SSR'd `/vehicles/[id]`). */
+  initial?: { vehicle: VehicleDetailWithFilesDTO; similar: VehicleCardDTO[] } | null;
+}) {
   const t = useT();
   const locale = useAppStore((s) => s.locale);
   const navigate = useAppStore((s) => s.navigate);
@@ -56,7 +63,8 @@ export function DetailView({ vehicleId }: { vehicleId: string }) {
   const setFavorites = useAppStore((s) => s.setFavorites);
 
   const { data, loading, error, refetch } = useFetch<{ vehicle: VehicleDetailWithFilesDTO; similar: VehicleCardDTO[] }>(
-    `/api/vehicles/${vehicleId}`
+    `/api/vehicles/${vehicleId}`,
+    initial
   );
   const [imgIndex, setImgIndex] = useState(0);
   const [contactOpen, setContactOpen] = useState(false);
@@ -69,6 +77,12 @@ export function DetailView({ vehicleId }: { vehicleId: string }) {
   const [tdWhen, setTdWhen] = useState("");
   const [tdNotes, setTdNotes] = useState("");
   const [tdSubmitting, setTdSubmitting] = useState(false);
+  // Earliest selectable test-drive slot (one hour from now). Computed once in
+  // a state initialiser so the server-rendered and hydrated markup agree —
+  // evaluating Date.now() during render would differ between the two.
+  const [earliestTestDrive] = useState(() =>
+    localInputValue(new Date(Date.now() + 60 * 60 * 1000))
+  );
   // purchase request
   const [buyOpen, setBuyOpen] = useState(false);
   const [buyMessage, setBuyMessage] = useState("");
@@ -520,7 +534,12 @@ export function DetailView({ vehicleId }: { vehicleId: string }) {
               </span>
               <span className="flex items-center gap-1">
                 <Timer className="h-3.5 w-3.5" aria-hidden />
-                {t("listedAgo", { t: timeAgo(v.createdAt, locale) })}
+                {/* Relative age is computed from Date.now(): the SSR string and
+                    the hydrate string can straddle a unit boundary, so the
+                    text is marked suppressHydrationWarning. */}
+                <time dateTime={v.createdAt} suppressHydrationWarning>
+                  {t("listedAgo", { t: timeAgo(v.createdAt, locale) })}
+                </time>
               </span>
             </div>
             <div className="mt-4 flex flex-wrap gap-2">
@@ -649,18 +668,24 @@ export function DetailView({ vehicleId }: { vehicleId: string }) {
               </Button>
             </div>
             <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-xs text-slate-500">
-              <span className="flex items-center gap-1">
-                <Star className="h-3.5 w-3.5 fill-amber-400 text-amber-400" aria-hidden />
-                {t("ratingOf", { score: v.sellerFull.ratingAvg.toFixed(1), n: v.sellerFull.ratingCount })}
-              </span>
-              <span className="flex items-center gap-1">
-                <Gauge className="h-3.5 w-3.5" aria-hidden />
-                {t("responseRate", { n: v.sellerFull.responseRate })}
-              </span>
-              <span className="flex items-center gap-1">
-                <Users className="h-3.5 w-3.5" aria-hidden />
-                {t("sellerSince", { y: new Date(v.sellerFull.memberSince).getFullYear() })}
-              </span>
+              {v.sellerFull.ratingAvg != null && (
+                <span className="flex items-center gap-1">
+                  <Star className="h-3.5 w-3.5 fill-amber-400 text-amber-400" aria-hidden />
+                  {t("ratingOf", { score: v.sellerFull.ratingAvg.toFixed(1), n: v.sellerFull.ratingCount ?? 0 })}
+                </span>
+              )}
+              {v.sellerFull.responseRate != null && (
+                <span className="flex items-center gap-1">
+                  <Gauge className="h-3.5 w-3.5" aria-hidden />
+                  {t("responseRate", { n: v.sellerFull.responseRate })}
+                </span>
+              )}
+              {v.sellerFull.memberSince && (
+                <span className="flex items-center gap-1">
+                  <Users className="h-3.5 w-3.5" aria-hidden />
+                  {t("sellerSince", { y: new Date(v.sellerFull.memberSince).getFullYear() })}
+                </span>
+              )}
             </div>
             {v.sellerFull.telegram && (
               <a
@@ -832,7 +857,7 @@ export function DetailView({ vehicleId }: { vehicleId: string }) {
                 id="td-when"
                 type="datetime-local"
                 value={tdWhen}
-                min={localInputValue(new Date(Date.now() + 60 * 60 * 1000))}
+                min={earliestTestDrive}
                 onChange={(e) => setTdWhen(e.target.value)}
                 className="mt-1.5 h-9 w-full rounded-md border border-slate-200 bg-white px-3 text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-amber-500"
               />

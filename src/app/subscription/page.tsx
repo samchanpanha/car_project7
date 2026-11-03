@@ -1,14 +1,10 @@
-"use client";
+import { redirect } from "next/navigation";
 
-import { useEffect } from "react";
-import { useAppStore } from "@/lib/store";
+export const metadata = { robots: { index: false, follow: false } };
 
-export default function SubscriptionPage() {
-  const navigate = useAppStore((s) => s.navigate);
-  
-  useEffect(() => {
-    navigate({ name: "dashboard", tab: "subscription" });
-  }, [navigate]);
-  
-  return null;
+/** Legacy URL kept alive for old links — the subscription hub now lives in the
+ *  dashboard. A server redirect beats the previous client-side navigate stub
+ *  (crawlable, no JS required, no empty page in the index). */
+export default function SubscriptionPage(): never {
+  redirect("/dashboard?tab=subscription");
 }

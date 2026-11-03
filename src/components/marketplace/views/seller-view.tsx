@@ -68,24 +68,31 @@ export function SellerView({ userId }: { userId: string }) {
               ) : null}
             </div>
             <p className="mt-0.5 text-sm text-slate-500">
-              {s.city} · {t("sellerSince", { y: new Date(s.memberSince).getFullYear() })}
+              {s.city}
+              {s.memberSince && ` · ${t("sellerSince", { y: new Date(s.memberSince).getFullYear() })}`}
             </p>
             {bio && <p className="mt-2 max-w-2xl text-sm leading-relaxed text-slate-600">{bio}</p>}
           </div>
           <div className="flex flex-row sm:flex-col gap-4 sm:gap-2 sm:text-right">
-            <span className="flex items-center gap-1.5 text-sm text-slate-600">
-              <Star className="h-4 w-4 fill-amber-400 text-amber-400" aria-hidden />
-              <strong>{s.ratingAvg.toFixed(1)}</strong>
-              <span className="text-slate-400">({s.ratingCount})</span>
-            </span>
-            <span className="flex items-center gap-1.5 text-sm text-slate-600">
-              <Gauge className="h-4 w-4 text-teal-600" aria-hidden />
-              {t("responseRate", { n: s.responseRate })}
-            </span>
-            <span className="flex items-center gap-1.5 text-sm text-slate-600">
-              <Users className="h-4 w-4 text-slate-400" aria-hidden />
-              {t("sellerSince", { y: new Date(s.memberSince).getFullYear() })}
-            </span>
+            {s.ratingAvg != null && (
+              <span className="flex items-center gap-1.5 text-sm text-slate-600">
+                <Star className="h-4 w-4 fill-amber-400 text-amber-400" aria-hidden />
+                <strong>{s.ratingAvg.toFixed(1)}</strong>
+                <span className="text-slate-400">({s.ratingCount ?? 0})</span>
+              </span>
+            )}
+            {s.responseRate != null && (
+              <span className="flex items-center gap-1.5 text-sm text-slate-600">
+                <Gauge className="h-4 w-4 text-teal-600" aria-hidden />
+                {t("responseRate", { n: s.responseRate })}
+              </span>
+            )}
+            {s.memberSince && (
+              <span className="flex items-center gap-1.5 text-sm text-slate-600">
+                <Users className="h-4 w-4 text-slate-400" aria-hidden />
+                {t("sellerSince", { y: new Date(s.memberSince).getFullYear() })}
+              </span>
+            )}
           </div>
         </div>
         {(s.phone || s.telegram) && (

@@ -20,6 +20,10 @@ services:
         generateValue: true
       - key: NEXTAUTH_URL
         value: https://khlan-marketplace.onrender.com
+      # Canonical site origin for metadataBase, sitemap.xml and OG URLs.
+      # Read at request time — change it here when the domain changes.
+      - key: SITE_URL
+        value: https://khlan-marketplace.onrender.com
 
       # Cloudflare R2 Persistent Storage (Free tier, zero egress cost)
       - key: CLOUDFLARE_R2_ENDPOINT

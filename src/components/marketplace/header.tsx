@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useAppStore, isGuest } from "@/lib/store";
 import { useT } from "@/hooks/use-t";
 import { apiSend, authFallbackHeaders, clearAuthFallback } from "@/lib/client-hooks";
@@ -316,9 +317,9 @@ export function Header() {
     <header className="sticky top-0 z-40 w-full bg-slate-950 text-white shadow-sm" role="banner">
       <div className="mx-auto max-w-7xl px-4 h-14 flex items-center gap-3">
         {/* Logo */}
-        <button
-          onClick={() => navigate({ name: "home" })}
-          className="flex items-center gap-2 shrink-0 cursor-pointer"
+        <Link
+          href="/"
+          className="flex items-center gap-2 shrink-0"
           aria-label={t("navHome")}
         >
           <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-amber-500 text-slate-950">
@@ -327,7 +328,7 @@ export function Header() {
           <span className="text-lg font-bold tracking-tight">
             ឡាន <span className="hidden sm:inline text-amber-400">KhLan</span>
           </span>
-        </button>
+        </Link>
 
         {/* Search (desktop) */}
         <form onSubmit={submitSearch} className="hidden md:flex flex-1 max-w-md ml-4" role="search">
@@ -385,15 +386,15 @@ export function Header() {
             {t("navMessages")}
           </Button>
           <Button
+            asChild
             variant="ghost"
             size="sm"
-            onClick={() => navigate({ name: "guide" })}
             className="inline-flex text-white/80 hover:text-white hover:bg-slate-800 px-2 sm:px-3"
-            aria-label={t("navGuide")}
-            title={t("navGuide")}
           >
-            <BookOpen className="h-4 w-4 text-amber-400 sm:mr-1.5" aria-hidden />
-            <span className="hidden sm:inline">{t("navGuide")}</span>
+            <Link href="/guide" aria-label={t("navGuide")} title={t("navGuide")}>
+              <BookOpen className="h-4 w-4 text-amber-400 sm:mr-1.5" aria-hidden />
+              <span className="hidden sm:inline">{t("navGuide")}</span>
+            </Link>
           </Button>
           {/* Dashboard is an account surface — hide it from guests entirely
               (they get Log in / Sign up instead). Signed-in users always have
@@ -412,13 +413,14 @@ export function Header() {
           )}
           <LangToggle dark />
           <Button
+            asChild
             size="sm"
-            onClick={() => navigate({ name: "sell" })}
             className="bg-amber-500 hover:bg-amber-400 text-slate-950 font-semibold rounded-full px-2.5 sm:px-4"
-            aria-label={t("navSell")}
           >
-            <Plus className="h-4 w-4" aria-hidden />
-            <span className="hidden sm:inline">{t("navSell")}</span>
+            <Link href="/sell" aria-label={t("navSell")}>
+              <Plus className="h-4 w-4" aria-hidden />
+              <span className="hidden sm:inline">{t("navSell")}</span>
+            </Link>
           </Button>
           <AccountMenu />
         </nav>

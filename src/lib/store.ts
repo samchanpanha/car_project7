@@ -4,6 +4,8 @@ import { create } from "zustand";
 import type { SortOption } from "./types";
 import type { SessionDTO } from "./dashboard-types";
 import type { Locale } from "./i18n";
+import { viewToPath } from "./routes";
+import { routeTo } from "./router-bridge";
 
 export type View =
   | { name: "home" }
@@ -68,6 +70,13 @@ export const useAppStore = create<AppState>((set, get) => ({
   navigate: (view) => {
     set({ view });
     if (typeof window !== "undefined") {
+      // Mirror the view into the URL so every screen is shareable, crawlable
+      // and survives a refresh. `<AppChrome>` re-derives the view from the
+      // pathname on mount, so the URL stays the single source of truth.
+      const href = viewToPath(view);
+      if (href !== `${window.location.pathname}${window.location.search}`) {
+        routeTo(href);
+      }
       window.scrollTo({ top: 0, behavior: "instant" as ScrollBehavior });
     }
   },

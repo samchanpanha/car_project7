@@ -42,6 +42,11 @@ COPY . .
 
 ARG BACKEND_URL=http://backend:8080
 ENV BACKEND_URL=${BACKEND_URL}
+# Canonical site origin. Read at request time (not NEXT_PUBLIC_*), so the
+# domain can change without rebuilding the image. Baked into static pages at
+# build time, so keep it in sync with the runtime value below.
+ARG SITE_URL=https://khlan-marketplace.onrender.com
+ENV SITE_URL=${SITE_URL}
 ENV NEXT_TELEMETRY_DISABLED=1
 ENV NODE_ENV=production
 
@@ -85,6 +90,12 @@ ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1
 ENV PORT=3000
 ENV HOSTNAME="0.0.0.0"
+# Runtime canonical origin — override per deployment (docker-compose, Render).
+ENV SITE_URL="https://khlan-marketplace.onrender.com"
+# Backend origin used by server components (sitemap, listing pages). Must match
+# the build-time value below, because the client-side /api/* rewrite is baked
+# into the build output.
+ENV BACKEND_URL="http://backend:8080"
 
 # Copy dependencies, scripts, and source code
 COPY --from=deps /app/node_modules ./node_modules

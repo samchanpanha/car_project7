@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useAppStore } from "@/lib/store";
 import { useT } from "@/hooks/use-t";
 import { Separator } from "@/components/ui/separator";
@@ -38,21 +39,21 @@ export function Footer() {
           </div>
           <div className="flex sm:justify-end">
             <nav className="flex flex-col gap-1.5 text-sm" aria-label="Footer">
-              <button className="text-left hover:text-white cursor-pointer" onClick={() => navigate({ name: "browse" })}>
+              <Link className="text-left hover:text-white" href="/browse">
                 {t("navBrowse")}
-              </button>
-              <button className="text-left hover:text-white cursor-pointer" onClick={() => navigate({ name: "sell" })}>
+              </Link>
+              <Link className="text-left hover:text-white" href="/sell">
                 {t("navSell")}
-              </button>
+              </Link>
               <button className="text-left hover:text-white cursor-pointer" onClick={() => navigate({ name: "favorites" })}>
                 {t("navFavorites")}
               </button>
               <button className="text-left hover:text-white cursor-pointer" onClick={() => navigate({ name: "messages" })}>
                 {t("navMessages")}
               </button>
-              <button className="text-left hover:text-white cursor-pointer text-amber-400 hover:text-amber-300 font-medium" onClick={() => navigate({ name: "guide" })}>
+              <Link className="text-left hover:text-amber-300 text-amber-400 font-medium" href="/guide">
                 {t("navGuide")}
-              </button>
+              </Link>
             </nav>
           </div>
         </div>

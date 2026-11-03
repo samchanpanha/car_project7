@@ -154,6 +154,9 @@ services:
     build:
       context: .
       target: web
+      args:
+        # Canonical site origin baked into statically prerendered pages.
+        SITE_URL: ${SITE_URL:-https://khlan-marketplace.onrender.com}
     container_name: khlan-frontend
     restart: unless-stopped
     ports:
@@ -166,6 +169,8 @@ services:
       HOSTNAME: 0.0.0.0
       DATABASE_URL: ${DATABASE_URL:-postgresql://khlan:khlan_secret_2026@postgres:5432/khlandb}
       BACKEND_URL: http://backend:8080
+      # Canonical site origin (read at request time by dynamic routes).
+      SITE_URL: ${SITE_URL:-https://khlan-marketplace.onrender.com}
       NACOS_SERVER_ADDR: nacos:8848
       CLOUDFLARE_R2_ENDPOINT: ${CLOUDFLARE_R2_ENDPOINT:-}
       CLOUDFLARE_R2_ACCESS_KEY_ID: ${CLOUDFLARE_R2_ACCESS_KEY_ID:-}

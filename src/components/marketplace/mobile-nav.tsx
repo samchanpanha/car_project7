@@ -1,9 +1,22 @@
 "use client";
 
+import Link from "next/link";
 import { useAppStore, isGuest } from "@/lib/store";
 import { useT } from "@/hooks/use-t";
-import { Home, Search, PlusCircle, Heart, MessageSquare, Scale, LayoutDashboard } from "lucide-react";
+import {
+  Home, Search, PlusCircle, Heart, MessageSquare, Scale, LayoutDashboard,
+  type LucideIcon,
+} from "lucide-react";
 import { cn } from "@/lib/utils";
+
+interface MobileNavItem {
+  key: string;
+  icon: LucideIcon;
+  label: string;
+  active: boolean;
+  href: string;
+  primary?: boolean;
+}
 
 /** Mobile-first bottom navigation (fixed). Header carries desktop actions.
  *  5th slot is contextual: Dashboard for a real session (login or demo
@@ -17,14 +30,14 @@ export function MobileNav() {
   const me = useAppStore((s) => s.me);
   const hasSession = Boolean(me && !isGuest(me));
 
-  const items = [
-    { key: "home", icon: Home, label: t("navHome"), active: view.name === "home", onClick: () => navigate({ name: "home" }) },
-    { key: "browse", icon: Search, label: t("navBrowse"), active: view.name === "browse", onClick: () => navigate({ name: "browse" }) },
-    { key: "sell", icon: PlusCircle, label: t("navSell"), active: view.name === "sell", onClick: () => navigate({ name: "sell" }), primary: true },
+  const items: MobileNavItem[] = [
+    { key: "home", icon: Home, label: t("navHome"), active: view.name === "home", href: "/" },
+    { key: "browse", icon: Search, label: t("navBrowse"), active: view.name === "browse", href: "/browse" },
+    { key: "sell", icon: PlusCircle, label: t("navSell"), active: view.name === "sell", href: "/sell", primary: true },
     hasSession
-      ? { key: "dashboard", icon: LayoutDashboard, label: t("navDashboard"), active: view.name === "dashboard", onClick: () => navigate({ name: "dashboard" }) }
-      : { key: "favorites", icon: Heart, label: t("navFavorites"), active: view.name === "favorites", onClick: () => navigate({ name: "favorites" }) },
-    { key: "messages", icon: MessageSquare, label: t("navMessages"), active: view.name === "messages", onClick: () => navigate({ name: "messages" }) },
+      ? { key: "dashboard", icon: LayoutDashboard, label: t("navDashboard"), active: view.name === "dashboard", href: "/dashboard" }
+      : { key: "favorites", icon: Heart, label: t("navFavorites"), active: view.name === "favorites", href: "/favorites" },
+    { key: "messages", icon: MessageSquare, label: t("navMessages"), active: view.name === "messages", href: "/messages" },
   ];
 
   return (
@@ -48,18 +61,18 @@ export function MobileNav() {
       >
         <div className="grid grid-cols-5">
           {items.map((it) => (
-            <button
+            <Link
               key={it.key}
-              onClick={it.onClick}
+              href={it.href}
               className={cn(
-                "flex flex-col items-center justify-center gap-0.5 py-2 text-[11px] font-medium min-h-[52px] cursor-pointer",
+                "flex flex-col items-center justify-center gap-0.5 py-2 text-[11px] font-medium min-h-[52px]",
                 it.active ? "text-amber-600" : "text-slate-500"
               )}
               aria-current={it.active ? "page" : undefined}
             >
               <it.icon className={cn("h-5 w-5", it.primary && "text-amber-500")} aria-hidden />
               <span className="truncate max-w-[64px]">{it.label}</span>
-            </button>
+            </Link>
           ))}
         </div>
       </nav>

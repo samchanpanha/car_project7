@@ -3,6 +3,8 @@
 import { useAppStore, isGuest } from "@/lib/store";
 import { useT } from "@/hooks/use-t";
 import { formatKhr, formatMileage, formatUsd, timeAgo } from "@/lib/format";
+import { vehiclePath } from "@/lib/routes";
+import Link from "next/link";
 import {
   bodyTypeLabels,
   fuelLabels,
@@ -79,18 +81,18 @@ export function VehicleCard({ vehicle, showCompare = true }: { vehicle: VehicleC
 
   return (
     <article
-      onClick={() => navigate({ name: "detail", vehicleId: vehicle.id })}
-      className="group rounded-xl border border-slate-200 bg-white overflow-hidden hover:shadow-lg hover:border-slate-300 transition-all cursor-pointer focus-within:ring-2 focus-within:ring-amber-500"
-      tabIndex={0}
-      role="button"
-      aria-label={`${vehicle.make} ${vehicle.model} ${vehicle.year}`}
-      onKeyDown={(e) => {
-        if (e.key === "Enter" || e.key === " ") {
-          e.preventDefault();
-          navigate({ name: "detail", vehicleId: vehicle.id });
-        }
-      }}
+      className="group relative rounded-xl border border-slate-200 bg-white overflow-hidden hover:shadow-lg hover:border-slate-300 transition-all cursor-pointer focus-within:ring-2 focus-within:ring-amber-500"
     >
+      {/* Stretched link: makes the whole card a real, crawlable anchor while
+          the favourite/compare buttons sit above it. */}
+      <Link
+        href={vehiclePath(vehicle.id)}
+        className="absolute inset-0 z-10 rounded-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-500"
+      >
+        <span className="sr-only">
+          {`${vehicle.make} ${vehicle.model} ${vehicle.year} for sale in ${vehicle.city}`}
+        </span>
+      </Link>
       <div className="relative aspect-[4/3] bg-slate-100 dark:bg-slate-800 overflow-hidden">
         <SafeImage
           src={vehicle.images[0]}
@@ -120,7 +122,7 @@ export function VehicleCard({ vehicle, showCompare = true }: { vehicle: VehicleC
             <Badge className="bg-slate-800 text-white hover:bg-slate-800">{t("soldBadge")}</Badge>
           )}
         </div>
-        <div className="absolute top-2 right-2 flex gap-1.5">
+        <div className="absolute top-2 right-2 z-20 flex gap-1.5">
           {showCompare && (
             <button
               onClick={(e) => {

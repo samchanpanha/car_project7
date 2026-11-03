@@ -32,8 +32,9 @@ export interface SellerSummaryDTO {
   type: SellerType;
   verified: boolean;
   verification: "UNVERIFIED" | "PENDING" | "VERIFIED" | "REJECTED";
-  ratingAvg: number;
-  ratingCount: number;
+  /** Optional — a seller with no reviews yet has no rating. */
+  ratingAvg?: number | null;
+  ratingCount?: number | null;
   city: string;
 }
 
@@ -110,10 +111,10 @@ export interface VehicleDetailDTO extends VehicleCardDTO {
   sellerFull: SellerSummaryDTO & {
     bio?: string | null;
     bioKm?: string | null;
-    memberSince: string;
+    memberSince?: string | null;
     phone?: string | null;
     telegram?: string | null;
-    responseRate: number;
+    responseRate?: number | null;
   } & SellerTelegramLinksDTO;
   report?: { id: string; createdAt: string; overallConfidence: number } | null;
 }
