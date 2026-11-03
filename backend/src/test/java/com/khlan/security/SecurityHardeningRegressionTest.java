@@ -829,6 +829,8 @@ class SecurityHardeningRegressionTest {
                 @Mock
                 private SellerProfileRepository sellerProfileRepository;
                 @Mock
+                private SubscriptionAccessService subscriptionAccessService;
+                @Mock
                 private SubscriptionRepository subscriptionRepository;
 
                 @InjectMocks
@@ -891,7 +893,7 @@ class SecurityHardeningRegressionTest {
                 @DisplayName("TenantController getSellerSubscription returns 401 Unauthorized when unauthenticated")
                 void tenantControllerGetSellerSubscriptionRejectsUnauthenticated() {
                         TenantController controller = new TenantController(tenantService, planAdminService,
-                                        adminService, userRepository);
+                                        adminService, userRepository, subscriptionAccessService);
 
                         ResponseStatusException ex = assertThrows(ResponseStatusException.class,
                                         () -> controller.getSellerSubscription(null));
@@ -1016,7 +1018,8 @@ class SecurityHardeningRegressionTest {
                         SessionService sessionService = new SessionService(
                                         userRepository, sellerProfileRepository, tenantRepository,
                                         tenantMemberRepository,
-                                        subscriptionRepository, dualAuthFilter, sessionTokenService, adminService);
+                                        subscriptionRepository, dualAuthFilter, sessionTokenService, adminService,
+                                        subscriptionAccessService);
 
                         MockHttpServletResponse response = new MockHttpServletResponse();
                         ResponseStatusException ex = assertThrows(ResponseStatusException.class,
@@ -1038,7 +1041,8 @@ class SecurityHardeningRegressionTest {
                         SessionService sessionService = new SessionService(
                                         userRepository, sellerProfileRepository, tenantRepository,
                                         tenantMemberRepository,
-                                        subscriptionRepository, dualAuthFilter, sessionTokenService, adminService);
+                                        subscriptionRepository, dualAuthFilter, sessionTokenService, adminService,
+                                        subscriptionAccessService);
 
                         MockHttpServletRequest request = new MockHttpServletRequest();
                         SessionDTO session = sessionService.getSession(request);

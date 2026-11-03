@@ -2102,29 +2102,32 @@ export function SubscriptionPaywallCard({
   } | null>(null);
   const fileInput = useRef<HTMLInputElement>(null);
 
-  // Filter only active, paid plans for subscription checkout (PRO and ENTERPRISE)
+  // Filter only active, paid plans for subscription checkout (STARTER, BASIC, PRO, ENTERPRISE)
   const activePlans = (
     platformSettings.data?.plans
       ? platformSettings.data.plans.filter((p: any) => {
           const k = (p.plan ?? p.id ?? "").toString().toUpperCase();
-          return k !== "FREE" && k !== "STARTER" && p.enabled !== false;
+          return k !== "FREE" && p.enabled !== false;
         })
       : [
-          { id: "PRO", plan: "PRO", name: "Professional Dealership", priceUsdMonthly: 49, priceUsdYearly: 490, priceKhrMonthly: 200900, priceKhrYearly: 2009000, listingsLimit: 50, featuredLimit: 5, seats: 3 },
-          { id: "ENTERPRISE", plan: "ENTERPRISE", name: "Enterprise Network", priceUsdMonthly: 149, priceUsdYearly: 1490, priceKhrMonthly: 610900, priceKhrYearly: 6109000, listingsLimit: 999, featuredLimit: 20, seats: 10 },
+          { id: "STARTER", plan: "STARTER", name: "Starter Dealer", priceUsdMonthly: 9, priceUsdYearly: 90, priceKhrMonthly: 37000, priceKhrYearly: 370000, listingsLimit: 5, featuredLimit: 1, seats: 1, branchSlots: 1, canSellSpareParts: false },
+          { id: "BASIC", plan: "BASIC", name: "Basic Dealer", priceUsdMonthly: 29, priceUsdYearly: 290, priceKhrMonthly: 119000, priceKhrYearly: 1190000, listingsLimit: 15, featuredLimit: 3, seats: 2, branchSlots: 1, canSellSpareParts: false },
+          { id: "PRO", plan: "PRO", name: "Professional Dealership", priceUsdMonthly: 59, priceUsdYearly: 590, priceKhrMonthly: 242000, priceKhrYearly: 2420000, listingsLimit: 50, featuredLimit: 10, seats: 5, branchSlots: 3, canSellSpareParts: true },
+          { id: "ENTERPRISE", plan: "ENTERPRISE", name: "Enterprise Network", priceUsdMonthly: 149, priceUsdYearly: 1490, priceKhrMonthly: 611000, priceKhrYearly: 6110000, listingsLimit: 1000, featuredLimit: 30, seats: 20, branchSlots: 10, canSellSpareParts: true },
         ]
   ).map((p: any) => {
     const rawKey = (p.plan ?? p.id ?? "PRO").toString().toUpperCase();
-    const key: "BASIC" | "PRO" | "ENTERPRISE" =
-      rawKey === "ENTERPRISE" ? "ENTERPRISE" : (rawKey === "BASIC" ? "BASIC" : "PRO");
-    const title = p.name || (key === "BASIC" ? "Basic Dealer" : (key === "PRO" ? "Professional Dealership" : "Enterprise Network"));
-    const priceMonthly = p.priceUsdMonthly ?? p.priceUsd ?? (key === "BASIC" ? 19 : (key === "PRO" ? 49 : 149));
+    const key = rawKey;
+    const title = p.name || (key === "STARTER" ? "Starter Dealer" : (key === "BASIC" ? "Basic Dealer" : (key === "PRO" ? "Professional Dealership" : "Enterprise Network")));
+    const priceMonthly = p.priceUsdMonthly ?? p.priceUsd ?? (key === "STARTER" ? 9 : (key === "BASIC" ? 29 : (key === "PRO" ? 59 : 149)));
     const priceYearly = p.priceUsdYearly ?? priceMonthly * 10;
     const priceKhrMonthly = p.priceKhrMonthly ?? Math.round((priceMonthly * 4100) / 100) * 100;
     const priceKhrYearly = p.priceKhrYearly ?? Math.round((priceYearly * 4100) / 100) * 100;
-    const listingsLimit = p.listingsLimit ?? (key === "BASIC" ? 15 : (key === "PRO" ? 50 : 999));
-    const featuredLimit = p.featuredLimit ?? p.featuredSlots ?? (key === "BASIC" ? 2 : (key === "PRO" ? 5 : 20));
-    const seats = p.seats ?? p.branchSlots ?? (key === "BASIC" ? 2 : (key === "PRO" ? 3 : 10));
+    const listingsLimit = p.listingsLimit ?? (key === "STARTER" ? 5 : (key === "BASIC" ? 15 : (key === "PRO" ? 50 : 1000)));
+    const featuredLimit = p.featuredLimit ?? p.featuredSlots ?? (key === "STARTER" ? 1 : (key === "BASIC" ? 3 : (key === "PRO" ? 10 : 30)));
+    const seats = p.seats ?? (key === "STARTER" ? 1 : (key === "BASIC" ? 2 : (key === "PRO" ? 5 : 20)));
+    const branchSlots = p.branchSlots ?? (key === "PRO" ? 3 : (key === "ENTERPRISE" ? 10 : 1));
+    const canSellSpareParts = p.canSellSpareParts ?? (key === "PRO" || key === "ENTERPRISE");
 
     return {
       key,
@@ -2136,6 +2139,8 @@ export function SubscriptionPaywallCard({
       listingsLimit,
       featuredLimit,
       seats,
+      branchSlots,
+      canSellSpareParts,
     };
   });
 

@@ -6,10 +6,12 @@ import com.khlan.dto.AdminDTO;
 import com.khlan.dto.AuthDTO;
 import com.khlan.dto.TelegramAuthDTO;
 import com.khlan.entity.SellerProfileEntity;
+import com.khlan.entity.SubscriptionEntity;
 import com.khlan.entity.TenantEntity;
 import com.khlan.entity.TenantMemberEntity;
 import com.khlan.entity.UserEntity;
 import com.khlan.repository.SellerProfileRepository;
+import com.khlan.repository.SubscriptionRepository;
 import com.khlan.repository.TenantMemberRepository;
 import com.khlan.repository.TenantRepository;
 import com.khlan.repository.UserRepository;
@@ -44,6 +46,8 @@ public class AuthService {
     private final TurnstileService turnstileService;
     private final AdminService adminService;
     private final ObjectMapper objectMapper;
+    private final SubscriptionRepository subscriptionRepository;
+    private final PlanCatalogService planCatalogService;
 
     public static final String AUTH_COOKIE = "khlan_auth";
     public static final String PERSONA_COOKIE = "khlan_persona";
@@ -93,10 +97,16 @@ public class AuthService {
         // Delete persona cookie on real login
         deleteCookie(response, PERSONA_COOKIE);
 
+        boolean isSellerOrDealer = "DEALER".equalsIgnoreCase(user.getRole()) || "SELLER".equalsIgnoreCase(user.getRole());
+        boolean freeTrialActive = isSellerOrDealer && settings.isFreeTrialEnabled();
+        boolean requiresSubscription = isSellerOrDealer && !freeTrialActive;
+
         return AuthDTO.AuthResponse.builder()
                 .ok(true)
                 .user(toUserSummary(user))
                 .sessionToken(sessionToken)
+                .requiresSubscription(requiresSubscription)
+                .freeTrialActive(freeTrialActive)
                 .build();
     }
 
@@ -151,6 +161,9 @@ public class AuthService {
 
         // Every user gets a seller profile lazily
         boolean isDealer = "DEALER".equalsIgnoreCase(role);
+        boolean isSeller = "SELLER".equalsIgnoreCase(role);
+        boolean isSellerOrDealer = isDealer || isSeller;
+
         String profileId = "sp_" + UUID.randomUUID().toString().replace("-", "").substring(0, 16);
         SellerProfileEntity profile = SellerProfileEntity.builder()
                 .id(profileId)
@@ -160,10 +173,12 @@ public class AuthService {
                 .city("Phnom Penh")
                 .memberSince(OffsetDateTime.now())
                 .build();
-        sellerProfileRepository.save(profile);
+
+        boolean freeTrialActive = false;
+        boolean requiresSubscription = false;
 
         // If dealer or seller, create tenant
-        if (isDealer || "SELLER".equalsIgnoreCase(role)) {
+        if (isSellerOrDealer) {
             String cleanSlug = req.getName().toLowerCase().replaceAll("[^a-z0-9]+", "-") + "-" + UUID.randomUUID().toString().substring(0, 5);
             String tenantId = "ten_" + UUID.randomUUID().toString().replace("-", "").substring(0, 16);
             TenantEntity tenant = TenantEntity.builder()
@@ -179,11 +194,30 @@ public class AuthService {
                     .id("tm_" + UUID.randomUUID().toString().replace("-", "").substring(0, 16))
                     .tenantId(tenantId)
                     .userId(userId)
-                    .role(isDealer ? "OWNER" : "SALES_STAFF")
+                    .role("OWNER")
                     .status("ACTIVE")
                     .build();
             tenantMemberRepository.save(member);
+
+            profile.setTenantId(tenantId);
+
+            freeTrialActive = settings.isFreeTrialEnabled();
+            int freeTrialDays = settings.getFreeTrialDays() > 0 ? settings.getFreeTrialDays() : 30;
+            requiresSubscription = !freeTrialActive;
+
+            SubscriptionEntity sub = SubscriptionEntity.builder()
+                    .id("sub_" + UUID.randomUUID().toString().replace("-", "").substring(0, 16))
+                    .tenantId(tenantId)
+                    .billingCycle("MONTHLY")
+                    .startedAt(OffsetDateTime.now())
+                    .currentPeriodEnd(OffsetDateTime.now().plusDays(freeTrialDays))
+                    .status(freeTrialActive ? "ACTIVE" : "INACTIVE")
+                    .build();
+            planCatalogService.applyLimits(sub, "FREE");
+            subscriptionRepository.save(sub);
         }
+
+        sellerProfileRepository.save(profile);
 
         String sessionToken = sessionTokenService.createSessionToken(user.getId());
         setCookie(response, AUTH_COOKIE, sessionToken, 30 * 24 * 60 * 60);
@@ -193,6 +227,8 @@ public class AuthService {
                 .ok(true)
                 .user(toUserSummary(user))
                 .sessionToken(sessionToken)
+                .requiresSubscription(requiresSubscription)
+                .freeTrialActive(freeTrialActive)
                 .build();
     }
 

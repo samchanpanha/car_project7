@@ -175,10 +175,12 @@ export async function scanReceiptInBrowser(
   // Resolve plan price expectation
   const planKey = (options?.plan || "PRO").toUpperCase();
   const isYearly = options?.cycle === "YEARLY";
-  let expectedUsd = 49;
+  let expectedUsd = 59;
   if (planKey === "ENTERPRISE") expectedUsd = isYearly ? 1490 : 149;
-  else if (planKey === "PRO") expectedUsd = isYearly ? 490 : 49;
-  else if (planKey === "BASIC") expectedUsd = isYearly ? 190 : 19;
+  else if (planKey === "PRO") expectedUsd = isYearly ? 590 : 59;
+  else if (planKey === "BASIC") expectedUsd = isYearly ? 290 : 29;
+  else if (planKey === "STARTER") expectedUsd = isYearly ? 90 : 9;
+  else if (planKey === "FEATURED" || planKey === "FEATURED_ADDON") expectedUsd = 10;
   else if (planKey === "FREE") expectedUsd = 0;
 
   const expectedKhr = usdToKhr(expectedUsd);

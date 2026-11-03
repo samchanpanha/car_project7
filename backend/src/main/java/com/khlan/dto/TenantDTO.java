@@ -79,6 +79,7 @@ public class TenantDTO {
         private Integer listingsLimit;
         private Integer featuredLimit;
         private Integer seats;
+        private Boolean canSellSpareParts;
         private Boolean enabled;
         private List<String> features;
     }

@@ -2,6 +2,7 @@ package com.khlan.service;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.khlan.dto.PaymentDTO;
+import com.khlan.dto.PlanDTO;
 import com.khlan.entity.*;
 import com.khlan.repository.*;
 import lombok.RequiredArgsConstructor;
@@ -51,6 +52,8 @@ public class PaymentService {
     private final ObjectMapper objectMapper;
     private final ReceiptSlipParser receiptSlipParser;
     private final RealtimeService realtimeService;
+    private final PlanCatalogService planCatalogService;
+    private final VehicleRepository vehicleRepository;
     private final org.springframework.beans.factory.ObjectProvider<TelegramService> telegramServiceProvider;
     private final org.springframework.beans.factory.ObjectProvider<CronSchedulerService> cronSchedulerProvider;
 
@@ -274,10 +277,26 @@ public class PaymentService {
         boolean isYearly = "YEARLY".equals(cycle);
         int months = isYearly ? 12 : 1;
 
-        double amountUsd = resolvePlanPrice(plan, isYearly);
+        boolean isFeaturedAddon = "FEATURED".equalsIgnoreCase(plan) || "FEATURED_ADDON".equalsIgnoreCase(plan);
+        double amountUsd;
+        double amountExpected;
+        double rate = PlanCatalogService.KHR_RATE;
         String currency = "KHR".equalsIgnoreCase(req.getCurrency()) ? "KHR" : "USD";
-        double rate = 4100.0;
-        double amountExpected = "KHR".equals(currency) ? amountUsd * rate : amountUsd;
+
+        if (isFeaturedAddon) {
+            plan = "FEATURED";
+            cycle = "ONE_TIME";
+            months = 1;
+            amountUsd = planCatalogService.getFeaturedAddonPriceUsd();
+            amountExpected = "KHR".equals(currency) ? Math.round(amountUsd * rate) : amountUsd;
+        } else {
+            PlanDTO.PlanDefinitionDTO planDef = planCatalogService.getPurchasablePlan(plan);
+            if (planDef == null) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "The " + plan + " plan is not available. Please choose another plan.");
+            }
+            amountUsd = planCatalogService.resolvePriceUsd(plan, isYearly);
+            amountExpected = "KHR".equals(currency) ? planCatalogService.resolvePriceKhr(plan, isYearly) : amountUsd;
+        }
 
         String manualRef = req.getManualRef() != null ? req.getManualRef().trim() : null;
         String cleanRef = (manualRef != null && !manualRef.isBlank()) ? normalizeRef(manualRef) : null;
@@ -688,25 +707,30 @@ public class PaymentService {
             int monthsToAdd = payment.getMonths() != null ? payment.getMonths() : 1;
             OffsetDateTime newPeriodEnd = base.plusMonths(monthsToAdd);
 
-            sub.setPlan(payment.getPlan());
-            sub.setStatus("ACTIVE");
-            sub.setBillingCycle(payment.getBillingCycle());
-            sub.setPriceUsd(payment.getAmountUsd());
-            sub.setCurrentPeriodEnd(newPeriodEnd);
-
-            // Tier quotas
-            if ("ENTERPRISE".equalsIgnoreCase(payment.getPlan())) {
-                sub.setListingsLimit(1000);
-                sub.setFeaturedLimit(50);
-                sub.setSeats(20);
-            } else if ("PRO".equalsIgnoreCase(payment.getPlan())) {
-                sub.setListingsLimit(50);
-                sub.setFeaturedLimit(10);
-                sub.setSeats(5);
+            if ("FEATURED".equalsIgnoreCase(payment.getPlan()) || "FEATURED_ADDON".equalsIgnoreCase(payment.getPlan())) {
+                sub.setFeaturedLimit((sub.getFeaturedLimit() != null ? sub.getFeaturedLimit() : 0) + 1);
+                if (payment.getNote() != null) {
+                    Matcher matcher = Pattern.compile("veh_[a-zA-Z0-9_]+").matcher(payment.getNote());
+                    if (matcher.find()) {
+                        String targetVehId = matcher.group();
+                        vehicleRepository.findById(targetVehId).ifPresent(v -> {
+                            if (payment.getTenantId().equals(v.getTenantId())) {
+                                v.setFeatured(true);
+                                vehicleRepository.save(v);
+                                log.info("Promoted vehicle {} to featured via payment {}", targetVehId, payment.getId());
+                            }
+                        });
+                    }
+                }
             } else {
-                sub.setListingsLimit(15);
-                sub.setFeaturedLimit(2);
-                sub.setSeats(2);
+                sub.setPlan(payment.getPlan());
+                sub.setStatus("ACTIVE");
+                sub.setBillingCycle(payment.getBillingCycle());
+                sub.setPriceUsd(payment.getAmountUsd());
+                sub.setCurrentPeriodEnd(newPeriodEnd);
+
+                // Tier quotas via unified PlanCatalogService
+                planCatalogService.applyLimits(sub, payment.getPlan());
             }
 
             subscriptionRepository.save(sub);
@@ -1701,10 +1725,7 @@ public class PaymentService {
     }
 
     private double resolvePlanPrice(String plan, boolean yearly) {
-        if ("ENTERPRISE".equalsIgnoreCase(plan)) return yearly ? 1490.0 : 149.0;
-        if ("PRO".equalsIgnoreCase(plan)) return yearly ? 490.0 : 49.0;
-        if ("BASIC".equalsIgnoreCase(plan)) return yearly ? 190.0 : 19.0;
-        return 0.0;
+        return planCatalogService.resolvePriceUsd(plan, yearly);
     }
 
     private String normalizeRef(String ref) {

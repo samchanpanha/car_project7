@@ -750,20 +750,32 @@ function AdminSettings() {
       )}
       <div className="grid gap-4 sm:grid-cols-2">
         <div>
-          <Label htmlFor="adm-comm" className="text-xs text-slate-500">{t("setCommission")}</Label>
+          <div className="flex items-center gap-2">
+            <Label htmlFor="adm-comm" className="text-xs text-slate-500">{t("setCommission")}</Label>
+            <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-semibold text-amber-800">
+              Coming soon — not collected
+            </span>
+          </div>
           <Input
             id="adm-comm" type="number" min={0} max={100} step={0.1} className="mt-1.5 h-9"
             value={form.commissionPct}
             onChange={(e) => setForm({ ...form, commissionPct: Number(e.target.value) })}
           />
+          <p className="mt-1 text-[11px] text-slate-400">Default rate for upcoming payout & escrow integration. Not deducted from current transactions.</p>
         </div>
         <div>
-          <Label htmlFor="adm-feat" className="text-xs text-slate-500">{t("setFeaturedPrice")}</Label>
+          <div className="flex items-center gap-2">
+            <Label htmlFor="adm-feat" className="text-xs text-slate-500">{t("setFeaturedPrice")}</Label>
+            <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-semibold text-emerald-800">
+              Active add-on
+            </span>
+          </div>
           <Input
             id="adm-feat" type="number" min={0} className="mt-1.5 h-9"
             value={form.featuredListingPriceUsd}
             onChange={(e) => setForm({ ...form, featuredListingPriceUsd: Number(e.target.value) })}
           />
+          <p className="mt-1 text-[11px] text-slate-400">Price for 30-day individual featured listing promotion ($10 default).</p>
         </div>
 
         {/* Free Trial Active / Inactive Status Section */}

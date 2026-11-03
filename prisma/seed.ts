@@ -42,10 +42,12 @@ const daysFromNowAt = (d: number, hour: number) => {
   return dt;
 };
 
-// Dealer seller users own tenant-scoped vehicles; private sellers stay tenantId null.
+// Unified tenant model: every seller is backed by a tenant.
 const TENANT_BY_SELLER: Record<string, string> = {
   usr_dealer_sokha: "tenant_sokha",
   usr_dealer_ppauto: "tenant_ppauto",
+  usr_priv_vireak: "tenant_vireak",
+  usr_priv_sopheak: "tenant_sopheak",
 };
 
 const IMG = seedImages as Record<string, string[]>;
@@ -168,6 +170,7 @@ async function seedSellerProfiles() {
       {
         userId: "usr_priv_vireak",
         type: "PRIVATE",
+        tenantId: "tenant_vireak",
         city: "Phnom Penh",
         verified: false,
         verification: "UNVERIFIED",
@@ -179,6 +182,7 @@ async function seedSellerProfiles() {
       {
         userId: "usr_priv_sopheak",
         type: "PRIVATE",
+        tenantId: "tenant_sopheak",
         city: "Kandal",
         verified: false,
         verification: "UNVERIFIED",
@@ -226,6 +230,20 @@ async function seedTenants() {
         bio: "Family-run dealership on Russian Blvd focusing on well-maintained family SUVs and crossovers.",
         bioKm: "ក្រុមហ៊ុនលក់ឡានគ្រួសារនៅផ្លូវរុស្ស៊ី ផ្តោតលើឡានគ្រួសារដែលថែរក្សាល្អ។",
       },
+      {
+        id: "tenant_vireak",
+        name: "Vireak Tan (Seller)",
+        slug: "vireak-tan",
+        city: "Phnom Penh",
+        status: "ACTIVE",
+      },
+      {
+        id: "tenant_sopheak",
+        name: "Sopheak Ngin (Seller)",
+        slug: "sopheak-ngin",
+        city: "Kandal",
+        status: "ACTIVE",
+      },
     ],
   });
 
@@ -239,6 +257,8 @@ async function seedTenants() {
         role: "INVENTORY_MANAGER",
       },
       { tenantId: "tenant_ppauto", userId: "usr_dealer_ppauto", role: "OWNER" },
+      { tenantId: "tenant_vireak", userId: "usr_priv_vireak", role: "OWNER" },
+      { tenantId: "tenant_sopheak", userId: "usr_priv_sopheak", role: "OWNER" },
     ],
   });
 
@@ -250,10 +270,10 @@ async function seedTenants() {
         plan: "PRO",
         status: "ACTIVE",
         billingCycle: "MONTHLY",
-        priceUsd: 149,
+        priceUsd: 59,
         listingsLimit: 50,
         featuredLimit: 10,
-        seats: 8,
+        seats: 5,
         startedAt: daysAgo(45),
         currentPeriodEnd: daysFromNow(15),
       },
@@ -262,12 +282,36 @@ async function seedTenants() {
         plan: "BASIC",
         status: "ACTIVE",
         billingCycle: "MONTHLY",
-        priceUsd: 49,
+        priceUsd: 29,
         listingsLimit: 15,
         featuredLimit: 3,
-        seats: 3,
+        seats: 2,
         startedAt: daysAgo(20),
         currentPeriodEnd: daysFromNow(10),
+      },
+      {
+        tenantId: "tenant_vireak",
+        plan: "FREE",
+        status: "ACTIVE",
+        billingCycle: "MONTHLY",
+        priceUsd: 0,
+        listingsLimit: 3,
+        featuredLimit: 0,
+        seats: 1,
+        startedAt: daysAgo(30),
+        currentPeriodEnd: daysFromNow(30),
+      },
+      {
+        tenantId: "tenant_sopheak",
+        plan: "FREE",
+        status: "ACTIVE",
+        billingCycle: "MONTHLY",
+        priceUsd: 0,
+        listingsLimit: 3,
+        featuredLimit: 0,
+        seats: 1,
+        startedAt: daysAgo(10),
+        currentPeriodEnd: daysFromNow(20),
       },
     ],
   });
@@ -369,7 +413,7 @@ async function seedDashboardData() {
       tenantId: "tenant_ppauto",
       plan: "BASIC",
       billingCycle: "MONTHLY",
-      amountUsd: 49,
+      amountUsd: 29,
       months: 1,
       method: "MANUAL",
       status: "AWAITING_VERIFICATION",
@@ -432,7 +476,7 @@ async function seedDashboardData() {
         metaJson: JSON.stringify({
           plan: "PRO",
           billingCycle: "MONTHLY",
-          priceUsd: 149,
+          priceUsd: 59,
           tenantId: "tenant_sokha",
         }),
         createdAt: daysAgo(45),

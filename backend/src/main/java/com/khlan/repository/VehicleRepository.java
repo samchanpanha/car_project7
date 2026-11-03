@@ -30,6 +30,8 @@ public interface VehicleRepository extends JpaRepository<VehicleEntity, String>,
     List<Object[]> findYearMinMax();
 
     long countByTenantIdAndStatus(String tenantId, String status);
+    long countByTenantIdAndStatusIn(String tenantId, List<String> statuses);
+    long countByTenantIdAndFeaturedTrue(String tenantId);
     long countByBranchId(String branchId);
     List<VehicleEntity> findByBranchId(String branchId);
 

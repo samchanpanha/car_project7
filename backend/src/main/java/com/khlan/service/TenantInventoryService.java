@@ -115,15 +115,32 @@ public class TenantInventoryService {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Vehicle not found in this tenant");
         }
 
-        // Featured limit check
+        // Expiry check & Featured limit check
+        SubscriptionEntity sub = subscriptionRepository.findByTenantId(tenantId).orElse(null);
+        boolean isExpired = sub != null && "EXPIRED".equalsIgnoreCase(sub.getStatus());
+
         if (Boolean.TRUE.equals(req.getFeatured()) && !Boolean.TRUE.equals(vehicle.getFeatured())) {
-            SubscriptionEntity sub = subscriptionRepository.findByTenantId(tenantId).orElse(null);
+            if (isExpired) {
+                throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Your subscription has expired. Please renew your plan to feature listings.");
+            }
             int featuredLimit = sub != null && sub.getFeaturedLimit() != null ? sub.getFeaturedLimit() : 0;
             long featuredCount = vehicleRepository.findByTenantId(tenantId).stream()
                     .filter(v -> Boolean.TRUE.equals(v.getFeatured()) && !v.getId().equals(vehicleId))
                     .count();
             if (featuredCount >= featuredLimit) {
-                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Featured limit reached for your plan");
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Featured limit reached for your plan (" + featuredCount + "/" + featuredLimit + "). Upgrade for more featured slots.");
+            }
+        }
+
+        // Publishing quota check
+        if ("PUBLISHED".equalsIgnoreCase(req.getStatus()) && !"PUBLISHED".equalsIgnoreCase(vehicle.getStatus())) {
+            if (isExpired) {
+                throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Your subscription has expired. Please renew your plan to publish listings.");
+            }
+            int listingsLimit = sub != null && sub.getListingsLimit() != null ? sub.getListingsLimit() : 3;
+            long publishedCount = vehicleRepository.countByTenantIdAndStatusIn(tenantId, List.of("PUBLISHED", "PENDING_REVIEW"));
+            if (publishedCount >= listingsLimit) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Listing limit reached for your plan (" + publishedCount + "/" + listingsLimit + "). Upgrade to publish more listings.");
             }
         }
 

@@ -331,7 +331,7 @@ function LoginForm() {
 // ---------- Registration Subscription Step (Shown when Free Trial is Inactive) ----------
 
 interface PlanOption {
-  key: "BASIC" | "PRO" | "ENTERPRISE";
+  key: string;
   title: string;
   tagline: string;
   priceMonthly: number;
@@ -345,18 +345,34 @@ interface PlanOption {
 
 const DEFAULT_PLANS: PlanOption[] = [
   {
+    key: "STARTER",
+    title: "Starter Plan",
+    tagline: "Great for individual sellers getting started",
+    priceMonthly: 9,
+    priceYearly: 90,
+    listingsLimit: 5,
+    featuredLimit: 1,
+    seats: 1,
+    features: [
+      "Up to 5 active vehicle listings",
+      "1 featured homepage spot",
+      "1 user account",
+      "Standard buyer lead handling",
+    ],
+  },
+  {
     key: "BASIC",
     title: "Basic Plan",
-    tagline: "Great for individual sellers getting started",
-    priceMonthly: 19,
-    priceYearly: 190,
+    tagline: "For small dealers and active volume sellers",
+    priceMonthly: 29,
+    priceYearly: 290,
     listingsLimit: 15,
     featuredLimit: 3,
-    seats: 1,
+    seats: 2,
     features: [
       "Up to 15 car listings",
       "3 featured homepage spots",
-      "1 seller account",
+      "2 staff accounts",
       "Standard buyer lead handling",
     ],
   },
@@ -364,8 +380,8 @@ const DEFAULT_PLANS: PlanOption[] = [
     key: "PRO",
     title: "Professional Plan",
     tagline: "Best for growing sellers & independent dealerships",
-    priceMonthly: 49,
-    priceYearly: 490,
+    priceMonthly: 59,
+    priceYearly: 590,
     popular: true,
     listingsLimit: 50,
     featuredLimit: 10,
@@ -374,6 +390,8 @@ const DEFAULT_PLANS: PlanOption[] = [
       "Up to 50 car listings",
       "10 featured homepage spots",
       "5 staff member seats",
+      "Up to 3 showroom branches",
+      "Spare parts sales enabled",
       "Instant Telegram lead alerts",
       "Priority marketplace search ranking",
     ],
@@ -384,13 +402,15 @@ const DEFAULT_PLANS: PlanOption[] = [
     tagline: "For premier car showrooms and large inventory",
     priceMonthly: 149,
     priceYearly: 1490,
-    listingsLimit: 999,
+    listingsLimit: 1000,
     featuredLimit: 30,
     seats: 20,
     features: [
-      "Unlimited car listings",
+      "Up to 1,000 vehicle listings",
       "30 featured homepage spots",
       "20 staff accounts & role permissions",
+      "Up to 10 showroom branches",
+      "Spare parts sales enabled",
       "Priority verification badge",
       "Dedicated account manager",
     ],
@@ -409,7 +429,7 @@ function RegistrationSubscriptionStep({
   const t = useT();
   const [billingCycle, setBillingCycle] = useState<"MONTHLY" | "YEARLY">("MONTHLY");
   const [currency, setCurrency] = useState<"USD" | "KHR">("USD");
-  const [selectedPlan, setSelectedPlan] = useState<"BASIC" | "PRO" | "ENTERPRISE">("PRO");
+  const [selectedPlan, setSelectedPlan] = useState<string>("PRO");
   const [manualRef, setManualRef] = useState("");
   const [evidenceImage, setEvidenceImage] = useState<string | null>(null);
   const [note, setNote] = useState("");

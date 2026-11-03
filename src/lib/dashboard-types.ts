@@ -60,7 +60,7 @@ export interface AuditEntryDTO {
 }
 
 export interface PlanDTO {
-  plan: "FREE" | "BASIC" | "PRO" | "ENTERPRISE";
+  plan: "FREE" | "STARTER" | "BASIC" | "PRO" | "ENTERPRISE" | string;
   name: string;
   priceUsdMonthly: number;
   priceUsdYearly: number;
@@ -69,7 +69,9 @@ export interface PlanDTO {
   listingsLimit: number;
   featuredLimit: number;
   seats: number;
+  branchSlots?: number;
   canSellSpareParts?: boolean;
+  enabled?: boolean;
   features: { en: string; km: string }[];
 }
 
@@ -77,12 +79,13 @@ export interface SubscriptionDTO {
   id: string;
   plan: PlanDTO["plan"];
   /** EXPIRED added by the payments milestone — set automatically when currentPeriodEnd passes */
-  status: "ACTIVE" | "CANCELLED" | "PAST_DUE" | "EXPIRED";
+  status: "ACTIVE" | "CANCELLED" | "PAST_DUE" | "EXPIRED" | "INACTIVE";
   billingCycle: "MONTHLY" | "YEARLY";
   priceUsd: number;
   listingsLimit: number;
   featuredLimit: number;
   seats: number;
+  branchSlots?: number;
   canSellSpareParts?: boolean;
   startedAt: string;
   currentPeriodEnd: string;
@@ -256,7 +259,7 @@ export interface PlatformSettingsDTO {
  *  freeTrialDays platform setting (no Subscription row is stored). */
 export interface SellerSubscriptionDTO {
   plan: string;
-  status: "ACTIVE" | "EXPIRED" | "INACTIVE";
+  status: "ACTIVE" | "EXPIRED" | "INACTIVE" | "CANCELLED";
   /** account registration date = trial start */
   startedAt: string;
   /** startedAt + freeTrialDays */
@@ -267,6 +270,17 @@ export interface SellerSubscriptionDTO {
   freeTrialDays: number;
   /** whether free trial is active or inactive */
   freeTrialEnabled: boolean;
+  listingsLimit?: number;
+  listingsUsed?: number;
+  featuredLimit?: number;
+  featuredUsed?: number;
+  seatsLimit?: number;
+  seatsUsed?: number;
+  branchSlots?: number;
+  canSellSpareParts?: boolean;
+  requiresSubscription?: boolean;
+  canPost?: boolean;
+  reason?: string;
 }
 
 /** GET/PUT /api/seller/telegram — the Telegram Hub for SELLER/DEALER

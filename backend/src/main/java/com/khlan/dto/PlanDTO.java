@@ -26,6 +26,8 @@ public class PlanDTO {
         private Integer listingsLimit;
         private Integer featuredLimit;
         private Integer seats;
+        private Integer branchSlots;
+        private Boolean canSellSpareParts;
         private Boolean enabled;
         private List<FeatureDTO> features;
     }

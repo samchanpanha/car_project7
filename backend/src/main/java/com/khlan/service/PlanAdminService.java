@@ -27,25 +27,15 @@ public class PlanAdminService {
     private final PlatformSettingRepository platformSettingRepository;
     private final AuditLogRepository auditLogRepository;
     private final ObjectMapper objectMapper;
+    private final PlanCatalogService planCatalogService;
 
     private static final String SETTING_KEY_PLANS = "plan_pricing";
 
     @Transactional(readOnly = true)
     public PlanDTO.PlanPricingResponse getPlanPricing() {
-        Map<String, PlanDTO.PlanDefinitionDTO> plans = platformSettingRepository.findById(SETTING_KEY_PLANS)
-                .map(setting -> {
-                    try {
-                        return objectMapper.readValue(setting.getValueJson(), new TypeReference<Map<String, PlanDTO.PlanDefinitionDTO>>() {});
-                    } catch (Exception e) {
-                        log.error("Failed to parse plan pricing config", e);
-                        return defaultPlans();
-                    }
-                })
-                .orElseGet(this::defaultPlans);
-
         return PlanDTO.PlanPricingResponse.builder()
-                .plans(plans)
-                .khrExchangeRate(4100.0)
+                .plans(planCatalogService.getPlans())
+                .khrExchangeRate(PlanCatalogService.KHR_RATE)
                 .build();
     }
 
@@ -95,20 +85,8 @@ public class PlanAdminService {
         sub.setStatus("ACTIVE");
         sub.setCurrentPeriodEnd(newPeriodEnd);
 
-        // Adjust limits
-        if ("ENTERPRISE".equalsIgnoreCase(targetPlan)) {
-            sub.setListingsLimit(1000);
-            sub.setFeaturedLimit(50);
-            sub.setSeats(20);
-        } else if ("PRO".equalsIgnoreCase(targetPlan)) {
-            sub.setListingsLimit(50);
-            sub.setFeaturedLimit(10);
-            sub.setSeats(5);
-        } else if ("BASIC".equalsIgnoreCase(targetPlan)) {
-            sub.setListingsLimit(15);
-            sub.setFeaturedLimit(2);
-            sub.setSeats(2);
-        }
+        // Adjust limits via unified catalog
+        planCatalogService.applyLimits(sub, targetPlan);
 
         subscriptionRepository.save(sub);
 
@@ -168,63 +146,7 @@ public class PlanAdminService {
                 .build();
     }
 
-    private Map<String, PlanDTO.PlanDefinitionDTO> defaultPlans() {
-        Map<String, PlanDTO.PlanDefinitionDTO> map = new LinkedHashMap<>();
-        map.put("BASIC", PlanDTO.PlanDefinitionDTO.builder()
-                .plan("BASIC")
-                .name("Basic Dealer")
-                .priceUsdMonthly(19.0)
-                .priceUsdYearly(190.0)
-                .priceKhrMonthly(78000.0)
-                .priceKhrYearly(780000.0)
-                .listingsLimit(15)
-                .featuredLimit(2)
-                .seats(2)
-                .enabled(true)
-                .features(List.of(
-                        new PlanDTO.FeatureDTO("Up to 15 active vehicle listings", "ការដាក់លក់រថយន្តសកម្មរហូតដល់ ១៥"),
-                        new PlanDTO.FeatureDTO("2 featured slots", "កន្លែងរថយន្តលេចធ្លោ ២")
-                ))
-                .build());
 
-        map.put("PRO", PlanDTO.PlanDefinitionDTO.builder()
-                .plan("PRO")
-                .name("Pro Dealer")
-                .priceUsdMonthly(49.0)
-                .priceUsdYearly(490.0)
-                .priceKhrMonthly(200000.0)
-                .priceKhrYearly(2000000.0)
-                .listingsLimit(50)
-                .featuredLimit(10)
-                .seats(5)
-                .enabled(true)
-                .features(List.of(
-                        new PlanDTO.FeatureDTO("Up to 50 active vehicle listings", "ការដាក់លក់រថយន្តសកម្មរហូតដល់ ៥០"),
-                        new PlanDTO.FeatureDTO("10 featured slots & CRM", "កន្លែងរថយន្តលេចធ្លោ ១០ និង CRM"),
-                        new PlanDTO.FeatureDTO("3 showroom branch locations", "សាខាបង្ហាញរថយន្តចំនួន ៣")
-                ))
-                .build());
-
-        map.put("ENTERPRISE", PlanDTO.PlanDefinitionDTO.builder()
-                .plan("ENTERPRISE")
-                .name("Enterprise Dealer")
-                .priceUsdMonthly(149.0)
-                .priceUsdYearly(1490.0)
-                .priceKhrMonthly(610900.0)
-                .priceKhrYearly(6109000.0)
-                .listingsLimit(1000)
-                .featuredLimit(50)
-                .seats(20)
-                .enabled(true)
-                .features(List.of(
-                        new PlanDTO.FeatureDTO("Unlimited inventory", "ស្តុកមិនកំណត់"),
-                        new PlanDTO.FeatureDTO("50 featured slots", "កន្លែងរថយន្តលេចធ្លោ ៥០"),
-                        new PlanDTO.FeatureDTO("Dedicated Telegram bot automation", "ស្វ័យប្រវត្តិកម្ម Telegram Bot ផ្ទាល់ខ្លួន")
-                ))
-                .build());
-
-        return map;
-    }
 
     private void recordAudit(String actorId, String action, String entity, String entityId, Map<String, Object> meta) {
         try {

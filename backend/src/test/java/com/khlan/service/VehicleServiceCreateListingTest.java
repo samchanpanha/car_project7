@@ -30,6 +30,8 @@ class VehicleServiceCreateListingTest {
     private TenantBranchRepository tenantBranchRepository;
     @Mock
     private VehicleHistoryReportRepository vehicleHistoryReportRepository;
+    @Mock
+    private SubscriptionAccessService subscriptionAccessService;
 
     @InjectMocks
     private VehicleService vehicleService;

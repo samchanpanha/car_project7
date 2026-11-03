@@ -59,6 +59,8 @@ public class AuthDTO {
         private boolean ok;
         private UserSummaryDTO user;
         private String sessionToken;
+        private Boolean requiresSubscription;
+        private Boolean freeTrialActive;
     }
 }
 

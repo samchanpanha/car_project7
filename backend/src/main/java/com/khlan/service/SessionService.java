@@ -30,6 +30,7 @@ public class SessionService {
     private final DualAuthFilter dualAuthFilter;
     private final SessionTokenService sessionTokenService;
     private final AdminService adminService;
+    private final SubscriptionAccessService subscriptionAccessService;
 
     public static final String DEMO_BUYER_ID = "usr_demo_buyer";
 
@@ -188,26 +189,16 @@ public class SessionService {
                         .logoUrl(t.getLogoUrl())
                         .myRole(tm.getRole())
                         .build();
-
-                Optional<SubscriptionEntity> subOpt = subscriptionRepository.findByTenantId(t.getId());
-                if (subOpt.isPresent()) {
-                    SubscriptionEntity s = subOpt.get();
-                    subSummary = SessionDTO.SubscriptionSummary.builder()
-                            .plan(s.getPlan())
-                            .status(s.getStatus())
-                            .isTrial(false)
-                            .currentPeriodEnd(s.getCurrentPeriodEnd() != null ? s.getCurrentPeriodEnd().toString() : OffsetDateTime.now().plusDays(30).toString())
-                            .build();
-                }
             }
         }
 
-        if (subSummary == null && ("SELLER".equals(user.getRole()) || "DEALER".equals(user.getRole()))) {
+        if (isAuthed && ("SELLER".equals(user.getRole()) || "DEALER".equals(user.getRole()) || membership.isPresent())) {
+            com.khlan.dto.SubscriptionAccessDTO access = subscriptionAccessService.resolve(user.getId());
             subSummary = SessionDTO.SubscriptionSummary.builder()
-                    .plan("FREE_TRIAL")
-                    .status("ACTIVE")
-                    .isTrial(true)
-                    .currentPeriodEnd(OffsetDateTime.now().plusDays(30).toString())
+                    .plan(access.getEffectivePlan())
+                    .status(access.getStatus())
+                    .isTrial(access.isTrial())
+                    .currentPeriodEnd(access.getCurrentPeriodEnd() != null ? access.getCurrentPeriodEnd() : OffsetDateTime.now().plusDays(30).toString())
                     .build();
         }
 

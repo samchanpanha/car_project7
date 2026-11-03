@@ -33,6 +33,7 @@ public class TenantService {
     private final AuditLogRepository auditLogRepository;
     private final VehicleService vehicleService;
     private final ObjectMapper objectMapper;
+    private final PlanCatalogService planCatalogService;
 
     public record TenantContext(UserEntity user, TenantMemberEntity member, TenantEntity tenant) {}
 
@@ -146,26 +147,7 @@ public class TenantService {
                     .build());
         }
 
-        List<TenantDTO.PlanDTO> plans = List.of(
-                TenantDTO.PlanDTO.builder()
-                        .id("FREE").plan("FREE").name("Starter").priceUsd(0.0)
-                        .priceUsdMonthly(0.0).priceUsdYearly(0.0).priceKhrMonthly(0.0).priceKhrYearly(0.0)
-                        .featuredSlots(0).branchSlots(1).listingsLimit(10).featuredLimit(0).seats(1).enabled(true)
-                        .features(List.of("10 Active Listings", "1 Branch Location", "Standard Support"))
-                        .build(),
-                TenantDTO.PlanDTO.builder()
-                        .id("PRO").plan("PRO").name("Professional Dealership").priceUsd(49.0)
-                        .priceUsdMonthly(49.0).priceUsdYearly(490.0).priceKhrMonthly(200900.0).priceKhrYearly(2009000.0)
-                        .featuredSlots(5).branchSlots(3).listingsLimit(50).featuredLimit(5).seats(3).enabled(true)
-                        .features(List.of("50 Car Listings", "5 Featured Spots", "3 Staff Seats", "AI Vehicle Reports", "Telegram CRM Bot"))
-                        .build(),
-                TenantDTO.PlanDTO.builder()
-                        .id("ENTERPRISE").plan("ENTERPRISE").name("Enterprise Network").priceUsd(149.0)
-                        .priceUsdMonthly(149.0).priceUsdYearly(1490.0).priceKhrMonthly(610900.0).priceKhrYearly(6109000.0)
-                        .featuredSlots(20).branchSlots(10).listingsLimit(999).featuredLimit(20).seats(10).enabled(true)
-                        .features(List.of("Unlimited Listings", "20 Featured Spots", "10 Staff Seats", "Priority API Access", "Dedicated Account Manager"))
-                        .build()
-        );
+        List<TenantDTO.PlanDTO> plans = planCatalogService.getTenantPlans();
 
         return TenantDTO.TenantDashboardDTO.builder()
                 .tenant(info)
@@ -294,6 +276,19 @@ public class TenantService {
         }
 
         List<TenantBranchEntity> existing = tenantBranchRepository.findByTenantId(tenantId);
+
+        Optional<SubscriptionEntity> subOpt = subscriptionRepository.findByTenantId(tenantId);
+        if (subOpt.isPresent() && "EXPIRED".equalsIgnoreCase(subOpt.get().getStatus())) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Your subscription has expired. Please renew your plan to add branches.");
+        }
+        SubscriptionEntity sub = subOpt.filter(s -> "ACTIVE".equalsIgnoreCase(s.getStatus())).orElse(null);
+        String plan = resolvePlan(sub);
+        int branchSlots = planCatalogService.resolveBranchSlots(plan);
+        if (existing.size() >= branchSlots) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "Your " + plan + " plan allows " + branchSlots + " branch" + (branchSlots > 1 ? "es" : "") + ". Upgrade to add more branches.");
+        }
+
         boolean isMain = existing.isEmpty() || Boolean.TRUE.equals(req.getIsMain());
 
         if (isMain) {
@@ -447,12 +442,7 @@ public class TenantService {
             return sub.getSeats();
         }
         if (sub != null && sub.getPlan() != null) {
-            return switch (sub.getPlan().toUpperCase()) {
-                case "ENTERPRISE" -> 20;
-                case "PRO" -> 5;
-                case "BASIC" -> 2;
-                default -> 1;
-            };
+            return planCatalogService.resolveSeatsLimit(sub.getPlan());
         }
         return 1;
     }
@@ -728,18 +718,28 @@ public class TenantService {
                         .tenantId(ctx.tenant.getId())
                         .build());
 
-        sub.setPlan("FREE");
+        planCatalogService.applyLimits(sub, "FREE");
         sub.setStatus("ACTIVE");
         sub.setBillingCycle("MONTHLY");
-        sub.setPriceUsd(0.0);
-        sub.setListingsLimit(10);
-        sub.setFeaturedLimit(0);
-        sub.setSeats(1);
         sub.setCurrentPeriodEnd(OffsetDateTime.now().plusMonths(1));
         if (sub.getStartedAt() == null) {
             sub.setStartedAt(OffsetDateTime.now());
         }
 
+        subscriptionRepository.save(sub);
+    }
+
+    @Transactional
+    public void cancelSubscription(String userId) {
+        TenantContext ctx = requireTenantMember(userId);
+        if (!"OWNER".equals(ctx.member.getRole()) && !"ADMIN".equals(ctx.member.getRole())) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Forbidden: only owners or admins can manage subscriptions");
+        }
+
+        SubscriptionEntity sub = subscriptionRepository.findByTenantId(ctx.tenant.getId())
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Subscription not found"));
+
+        sub.setStatus("CANCELLED");
         subscriptionRepository.save(sub);
     }
 }

@@ -7,6 +7,7 @@ import com.khlan.entity.UserEntity;
 import com.khlan.repository.UserRepository;
 import com.khlan.service.AdminService;
 import com.khlan.service.PlanAdminService;
+import com.khlan.service.SubscriptionAccessService;
 import com.khlan.service.TenantService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
@@ -29,6 +30,7 @@ public class TenantController {
     private final PlanAdminService planAdminService;
     private final AdminService adminService;
     private final UserRepository userRepository;
+    private final SubscriptionAccessService subscriptionAccessService;
 
     private String requireUserId(UserEntity user) {
         if (user == null || user.getId() == null) {
@@ -142,7 +144,14 @@ public class TenantController {
         TenantDTO.TenantDashboardDTO dashboard = tenantService.getDashboard(userId);
         PlanDTO.PlanPricingResponse pricing = planAdminService.getPlanPricing();
         List<Object> plansList = new ArrayList<>();
+        boolean freePlanEnabled = true;
+
         if (pricing != null && pricing.getPlans() != null) {
+            PlanDTO.PlanDefinitionDTO freeDef = pricing.getPlans().get("FREE");
+            if (freeDef != null && Boolean.FALSE.equals(freeDef.getEnabled())) {
+                freePlanEnabled = false;
+            }
+
             pricing.getPlans().forEach((planKey, planDef) -> {
                 Map<String, Object> p = new LinkedHashMap<>();
                 p.put("plan", planKey);
@@ -154,6 +163,9 @@ public class TenantController {
                 p.put("listingsLimit", planDef.getListingsLimit() != null ? planDef.getListingsLimit() : 10);
                 p.put("featuredLimit", planDef.getFeaturedLimit() != null ? planDef.getFeaturedLimit() : 0);
                 p.put("seats", planDef.getSeats() != null ? planDef.getSeats() : 1);
+                p.put("branchSlots", planDef.getBranchSlots() != null ? planDef.getBranchSlots() : 1);
+                p.put("canSellSpareParts", Boolean.TRUE.equals(planDef.getCanSellSpareParts()));
+                p.put("enabled", planDef.getEnabled() != null ? planDef.getEnabled() : true);
                 p.put("highlight", "PRO".equalsIgnoreCase(planKey));
                 p.put("features", planDef.getFeatures() != null ? planDef.getFeatures() : List.of());
                 plansList.add(p);
@@ -162,7 +174,7 @@ public class TenantController {
         Map<String, Object> resp = new LinkedHashMap<>();
         resp.put("subscription", dashboard.getSubscription());
         resp.put("plans", plansList);
-        resp.put("freePlanEnabled", true);
+        resp.put("freePlanEnabled", freePlanEnabled);
         resp.put("paymentsEnabled", true);
         return ResponseEntity.ok(resp);
     }
@@ -170,10 +182,16 @@ public class TenantController {
     @PostMapping("/api/tenant/subscription")
     public ResponseEntity<Map<String, Object>> changeSubscription(
             @AuthenticationPrincipal UserEntity user,
-            @RequestBody Map<String, Object> req
+            @RequestBody(required = false) Map<String, Object> req
     ) {
         String userId = requireUserId(user);
-        tenantService.downgradeOrSetFreeSubscription(userId);
+        String action = req != null && req.get("action") != null ? req.get("action").toString() : null;
+        String status = req != null && req.get("status") != null ? req.get("status").toString() : null;
+        if ("CANCEL".equalsIgnoreCase(action) || "CANCELLED".equalsIgnoreCase(status)) {
+            tenantService.cancelSubscription(userId);
+        } else {
+            tenantService.downgradeOrSetFreeSubscription(userId);
+        }
         TenantDTO.TenantDashboardDTO dashboard = tenantService.getDashboard(userId);
         return ResponseEntity.ok(Map.of("subscription", dashboard.getSubscription() != null ? dashboard.getSubscription() : Map.of()));
     }
@@ -181,52 +199,30 @@ public class TenantController {
     @GetMapping("/api/seller/subscription")
     public ResponseEntity<Map<String, Object>> getSellerSubscription(@AuthenticationPrincipal UserEntity user) {
         String userId = requireUserId(user);
+        com.khlan.dto.SubscriptionAccessDTO access = subscriptionAccessService.resolve(userId);
 
-        // If the user owns an active paid tenant subscription, prefer it over the
-        // (possibly expired) account-level free trial so paid customers never
-        // see a stale "expired free trial" card after renewing/upgrading.
-        try {
-            TenantDTO.TenantDashboardDTO dashboard = tenantService.getDashboard(userId);
-            TenantDTO.TenantSubscriptionDTO paidSub = dashboard != null ? dashboard.getSubscription() : null;
-            if (paidSub != null && "ACTIVE".equalsIgnoreCase(paidSub.getStatus())
-                    && paidSub.getPlan() != null && !"FREE".equalsIgnoreCase(paidSub.getPlan())) {
-                OffsetDateTime paidPeriodEnd;
-                try { paidPeriodEnd = OffsetDateTime.parse(paidSub.getCurrentPeriodEnd()); }
-                catch (Exception ignored) { paidPeriodEnd = OffsetDateTime.now().plusDays(30); }
-                long paidDaysLeft = Math.max(0, java.time.temporal.ChronoUnit.DAYS.between(OffsetDateTime.now(), paidPeriodEnd));
-                return ResponseEntity.ok(Map.of(
-                        "plan", paidSub.getPlan(),
-                        "status", "ACTIVE",
-                        "startedAt", OffsetDateTime.now().toString(),
-                        "currentPeriodEnd", paidPeriodEnd.toString(),
-                        "daysLeft", paidDaysLeft,
-                        "freeTrialDays", 0,
-                        "freeTrialEnabled", false
-                ));
-            }
-        } catch (Exception ignored) {
-            // fall back to virtual free-trial below
-        }
+        Map<String, Object> resp = new LinkedHashMap<>();
+        resp.put("plan", access.getEffectivePlan());
+        resp.put("status", access.getStatus());
+        resp.put("isTrial", access.isTrial());
+        resp.put("startedAt", access.getStartedAt() != null ? access.getStartedAt() : "");
+        resp.put("currentPeriodEnd", access.getCurrentPeriodEnd() != null ? access.getCurrentPeriodEnd() : "");
+        resp.put("daysLeft", access.getDaysLeft());
+        resp.put("freeTrialDays", access.getDaysLeft());
+        resp.put("freeTrialEnabled", access.isFreeTrialEnabled());
+        resp.put("listingsLimit", access.getListingsLimit());
+        resp.put("listingsUsed", access.getListingsUsed());
+        resp.put("featuredLimit", access.getFeaturedLimit());
+        resp.put("featuredUsed", access.getFeaturedUsed());
+        resp.put("seatsLimit", access.getSeatsLimit());
+        resp.put("seatsUsed", access.getSeatsUsed());
+        resp.put("branchSlots", access.getBranchSlots());
+        resp.put("canSellSpareParts", access.isCanSellSpareParts());
+        resp.put("requiresSubscription", access.isRequiresSubscription());
+        resp.put("canPost", access.isCanPost());
+        resp.put("reason", access.getReason());
 
-        AdminDTO.PlatformSettingsDTO settings = adminService.getPlatformSettings();
-        int freeTrialDays = settings.getFreeTrialDays() > 0 ? settings.getFreeTrialDays() : 30;
-        boolean freeTrialEnabled = settings.isFreeTrialEnabled();
-
-        UserEntity u = userRepository.findById(userId).orElse(null);
-        OffsetDateTime startedAt = u != null && u.getCreatedAt() != null ? u.getCreatedAt() : OffsetDateTime.now().minusDays(1);
-        OffsetDateTime periodEnd = startedAt.plusDays(freeTrialDays);
-        long daysLeft = Math.max(0, java.time.temporal.ChronoUnit.DAYS.between(OffsetDateTime.now(), periodEnd));
-        boolean active = freeTrialEnabled && daysLeft > 0;
-
-        return ResponseEntity.ok(Map.of(
-                "plan", "FREE_TRIAL",
-                "status", active ? "ACTIVE" : "EXPIRED",
-                "startedAt", startedAt.toString(),
-                "currentPeriodEnd", periodEnd.toString(),
-                "daysLeft", daysLeft,
-                "freeTrialDays", freeTrialDays,
-                "freeTrialEnabled", freeTrialEnabled
-        ));
+        return ResponseEntity.ok(resp);
     }
 
     @GetMapping("/api/sellers/{id}")

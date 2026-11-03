@@ -95,10 +95,12 @@ export async function POST(req: NextRequest) {
 
     // 4. Resolve plan pricing expectations
     const isYearly = cycle === "YEARLY";
-    let expectedUsd = 49;
+    let expectedUsd = 59;
     if (plan === "ENTERPRISE") expectedUsd = isYearly ? 1490 : 149;
-    else if (plan === "PRO") expectedUsd = isYearly ? 490 : 49;
-    else if (plan === "BASIC") expectedUsd = isYearly ? 190 : 19;
+    else if (plan === "PRO") expectedUsd = isYearly ? 590 : 59;
+    else if (plan === "BASIC") expectedUsd = isYearly ? 290 : 29;
+    else if (plan === "STARTER") expectedUsd = isYearly ? 90 : 9;
+    else if (plan === "FEATURED" || plan === "FEATURED_ADDON") expectedUsd = 10;
     else if (plan === "FREE") expectedUsd = 0;
 
     const expectedKhr = usdToKhr(expectedUsd);

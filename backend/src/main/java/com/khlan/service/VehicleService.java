@@ -30,6 +30,7 @@ public class VehicleService {
     private final SellerProfileRepository sellerProfileRepository;
     private final TenantBranchRepository tenantBranchRepository;
     private final VehicleHistoryReportRepository vehicleHistoryReportRepository;
+    private final SubscriptionAccessService subscriptionAccessService;
 
     private String normalizeListingCategory(String listingCategory) {
         String normalized = listingCategory == null || listingCategory.isBlank()
@@ -240,12 +241,16 @@ public class VehicleService {
         double priceUsd = req.getPriceUsd() != null ? req.getPriceUsd() : 0.0;
         validateListingPrice(priceUsd, priceMasked);
 
+        subscriptionAccessService.assertCanCreateListing(seller, listingCategory);
+        String tenantId = subscriptionAccessService.ensureTenantId(seller);
+
         String vehicleId = "veh_" + UUID.randomUUID().toString().replace("-", "").substring(0, 16);
 
         VehicleEntity vehicle = VehicleEntity.builder()
                 .id(vehicleId)
                 .sellerId(seller.getId())
                 .createdById(seller.getId())
+                .tenantId(tenantId)
                 .make(req.getMake())
                 .model(req.getModel())
                 .variant(req.getVariant())
