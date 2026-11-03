@@ -172,7 +172,7 @@ function TelegramBoot() {
   return null;
 }
 
-/** Per-locale typography: Khmer gets the Kantumruy Pro stack, Chinese gets a
+/** Per-locale typography: Khmer gets Battambang, Chinese gets a
  *  CJK system stack; Vietnamese/Latin render fine with the default (Inter). */
 function fontClassFor(locale: Locale): string {
   if (locale === "km") return "font-khmer";

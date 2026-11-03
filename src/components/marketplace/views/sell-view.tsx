@@ -38,6 +38,9 @@ import {
   partCategoryLabels,
   partConditionLabels,
   partTargetLabels,
+  fuelLabels,
+  transmissionLabels,
+  drivetrainLabels,
 } from "@/lib/i18n";
 
 // Sample photo pool for the demo (hosted on Cloudflare R2)
@@ -160,35 +163,35 @@ export function SellView() {
         if (!canSellParts) {
           return t("sparePartsProRequired");
         }
-        if (!form.make.trim()) return locale === "km" ? "សូមបញ្ចូលម៉ាក / ផលិតករ" : "Please enter the brand/manufacturer";
-        if (!form.model.trim()) return locale === "km" ? "សូមបញ្ចូលឈ្មោះគ្រឿងបន្លាស់" : "Please enter the part name";
-        if (!form.partCategory) return locale === "km" ? "សូមជ្រើសប្រភេទគ្រឿងបន្លាស់" : "Please select a part category";
+        if (!form.make.trim()) return t("flowBrandRequired");
+        if (!form.model.trim()) return t("flowPartNameRequired");
+        if (!form.partCategory) return t("flowPartCategoryRequired");
       } else if (form.listingCategory === "MOTOR") {
-        if (!form.make.trim()) return locale === "km" ? "សូមបញ្ចូលម៉ាកម៉ូតូ" : "Please enter the motorcycle make";
-        if (!form.model.trim()) return locale === "km" ? "សូមបញ្ចូលម៉ូដែលម៉ូតូ" : "Please enter the motorcycle model";
+        if (!form.make.trim()) return t("flowMakeRequired");
+        if (!form.model.trim()) return t("flowModelRequired");
         const y = Number(form.year);
-        if (!y || y < 1980 || y > 2026) return locale === "km" ? "ឆ្នាំមិនត្រឹមត្រូវ" : "Enter a valid year";
-        if (!form.bodyType) return locale === "km" ? "សូមជ្រើសប្រភេទម៉ូតូ" : "Select motorcycle type";
+        if (!y || y < 1980 || y > 2026) return t("flowYearInvalid");
+        if (!form.bodyType) return t("flowMotorTypeRequired");
       } else {
         // CAR
-        if (!form.make.trim()) return locale === "km" ? "សូមបញ្ចូលម៉ាកឡាន" : "Please enter the make";
-        if (!form.model.trim()) return locale === "km" ? "សូមបញ្ចូលម៉ូដែល" : "Please enter the model";
+        if (!form.make.trim()) return t("flowMakeRequired");
+        if (!form.model.trim()) return t("flowModelRequired");
         const y = Number(form.year);
-        if (!y || y < 1990 || y > 2026) return locale === "km" ? "ឆ្នាំមិនត្រឹមត្រូវ" : "Enter a valid year (1990–2026)";
+        if (!y || y < 1990 || y > 2026) return t("flowYearInvalid");
         if (!form.bodyType || !form.fuel || !form.transmission)
-          return locale === "km" ? "សូមជ្រើសប្រភេទឡាន ឥន្ធនៈ ប៉ុស្តិ៍" : "Select body type, fuel and transmission";
+          return t("flowCarDetailsRequired");
         const m = Number(form.mileageKm);
-        if (Number.isNaN(m) || m < 0) return locale === "km" ? "ចម្ងាយដំណើរមិនត្រឹមត្រូវ" : "Enter a valid mileage";
+        if (Number.isNaN(m) || m < 0) return t("flowMileageInvalid");
       }
     }
     if (step === 2) {
       if (form.images.length === 0)
-        return locale === "km" ? "សូមជ្រើសរូបភាពយ៉ាងតិច ១" : "Select at least one photo";
+        return t("flowPhotoRequired");
     }
     if (step === 3) {
       if (!form.priceMasked) {
         const p = Number(form.priceUsd);
-        if (!p || p <= 0) return locale === "km" ? "សូមបញ្ចូលតម្លៃ" : "Please enter a valid price";
+        if (!p || p <= 0) return t("flowPriceRequired");
       }
     }
     return null;
@@ -291,10 +294,10 @@ export function SellView() {
             </div>
             <div>
               <h2 className="text-base font-bold text-slate-950">
-                Active Subscription or Free Trial Required to Sell Cars
+                {t("flowSubscriptionRequired")}
               </h2>
               <p className="mt-1 text-xs text-amber-900 leading-relaxed">
-                Free trial is currently inactive or your subscription has expired. In order to list and sell your vehicle on the KhLan marketplace, please choose a subscription plan below and complete payment via ABA KHQR.
+                {t("flowSubscriptionRequiredDesc")}
               </p>
             </div>
           </div>
@@ -346,7 +349,7 @@ export function SellView() {
           <div className="space-y-4">
             {/* Category Selector Tabs */}
             <div>
-              <Label className="text-xs font-bold text-slate-700 mb-1.5 block">Category</Label>
+              <Label className="text-xs font-bold text-slate-700 mb-1.5 block">{t("flowFormCategory")}</Label>
               <div className="grid grid-cols-3 gap-2 p-1 bg-slate-100 rounded-xl border border-slate-200">
                 <button
                   type="button"
@@ -426,7 +429,7 @@ export function SellView() {
                         onClick={() => set({ listingCategory: "CAR" })}
                         className="text-xs h-8 border-amber-300 hover:bg-amber-100 text-slate-800"
                       >
-                        Sell Car Instead
+                        {t("flowSellCarInstead")}
                       </Button>
                     </div>
                   </div>
@@ -483,22 +486,22 @@ export function SellView() {
                 </div>
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <Field label={locale === "km" ? "ម៉ាក / ផលិតករ (Brand)" : "Brand / Manufacturer"}>
+                  <Field label={t("flowPartBrand")}>
                     <Input
                       value={form.make}
                       onChange={(e) => set({ make: e.target.value })}
-                      placeholder="e.g. Michelin, Brembo, Toyota, Bosch, Honda"
+                      placeholder={t("flowBrandPlaceholder")}
                       list="kl-sell-part-makes"
                     />
                     <datalist id="kl-sell-part-makes">
                       {getPartManufacturers(meta?.makes).map((make) => <option key={make} value={make} />)}
                     </datalist>
                   </Field>
-                  <Field label={locale === "km" ? "ឈ្មោះគ្រឿងបន្លាស់ (Part Name)" : "Part Name / Model"}>
+                  <Field label={t("flowPartName")}>
                     <Input
                       value={form.model}
                       onChange={(e) => set({ model: e.target.value })}
-                      placeholder="e.g. Ceramic Front Brake Pads"
+                      placeholder={t("flowPartName")}
                       list="kl-sell-part-models"
                     />
                     <datalist id="kl-sell-part-models">
@@ -508,7 +511,7 @@ export function SellView() {
                 </div>
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <Field label={t("compatibleModelsLabel")} hint={locale === "km" ? "ឡាន ឬម៉ូតូដែលអាចប្រើជាមួយ" : "Vehicles this part fits"}>
+                  <Field label={t("compatibleModelsLabel")} hint={t("flowCompatibleModelsHint")}>
                     <Input
                       value={form.compatibleModels}
                       onChange={(e) => set({ compatibleModels: e.target.value })}
@@ -521,7 +524,7 @@ export function SellView() {
                       ))}
                     </datalist>
                   </Field>
-                  <Field label={t("partNumberLabel")} hint={locale === "km" ? "លេខកូដដើមពីក្រុមហ៊ុន" : "Original part or SKU code"}>
+                  <Field label={t("partNumberLabel")} hint={t("flowPartNumberHint")}>
                     <Input
                       value={form.partNumber}
                       onChange={(e) => set({ partNumber: e.target.value })}
@@ -536,11 +539,11 @@ export function SellView() {
             {form.listingCategory === "MOTOR" && (
               <div className="space-y-4">
                 <div className="grid grid-cols-2 gap-3">
-                  <Field label={locale === "km" ? "ម៉ាកម៉ូតូ (Make)" : "Motorcycle Make"}>
+                  <Field label={t("formMake")}>
                     <Input
                       value={form.make}
                       onChange={(e) => set({ make: e.target.value })}
-                      placeholder="Honda, Yamaha, Suzuki..."
+                      placeholder={t("flowMotorcycleBrandPlaceholder")}
                       list="kl-sell-motor-makes"
                     />
                     <datalist id="kl-sell-motor-makes">
@@ -549,7 +552,7 @@ export function SellView() {
                       ))}
                     </datalist>
                   </Field>
-                  <Field label={locale === "km" ? "ម៉ូដែល (Model)" : "Model"}>
+                  <Field label={t("formModel")}>
                     <Input
                       value={form.model}
                       onChange={(e) => set({ model: e.target.value })}
@@ -616,8 +619,8 @@ export function SellView() {
                       value={form.transmission}
                       onChange={(v) => set({ transmission: v })}
                       options={[
-                        { value: "AUTOMATIC", label: locale === "km" ? "ស្វ័យប្រវត្តិ (Auto)" : "Automatic" },
-                        { value: "MANUAL", label: locale === "km" ? "ធម្មតា / កែប (Manual)" : "Manual / Semi-Auto" },
+                        { value: "AUTOMATIC", label: transmissionLabels.AUTOMATIC[locale] },
+                        { value: "MANUAL", label: transmissionLabels.MANUAL[locale] },
                       ]}
                       placeholder={t("formTransmission")}
                     />
@@ -627,8 +630,8 @@ export function SellView() {
                       value={form.fuel}
                       onChange={(v) => set({ fuel: v })}
                       options={[
-                        { value: "PETROL", label: locale === "km" ? "សាំង" : "Petrol" },
-                        { value: "ELECTRIC", label: locale === "km" ? "អគ្គិសនី" : "Electric" },
+                        { value: "PETROL", label: fuelLabels.PETROL[locale] },
+                        { value: "ELECTRIC", label: fuelLabels.ELECTRIC[locale] },
                       ]}
                       placeholder={t("formFuel")}
                     />
@@ -688,7 +691,7 @@ export function SellView() {
                     <SelectInput
                       value={form.fuel}
                       onChange={(v) => set({ fuel: v })}
-                      options={FUELS.map((f) => ({ value: f, label: f === "PETROL" ? (locale === "km" ? "សាំង" : "Petrol") : f === "DIESEL" ? (locale === "km" ? "ម៉ាសុីត" : "Diesel") : f === "HYBRID" ? (locale === "km" ? "ក្រមាស" : "Hybrid") : (locale === "km" ? "អគ្គិសនី" : "Electric") }))}
+                      options={FUELS.map((f) => ({ value: f, label: fuelLabels[f]?.[locale] ?? f }))}
                       placeholder={t("formFuel")}
                     />
                   </Field>
@@ -696,7 +699,7 @@ export function SellView() {
                     <SelectInput
                       value={form.transmission}
                       onChange={(v) => set({ transmission: v })}
-                      options={TRANSMISSIONS.map((tr) => ({ value: tr, label: tr === "AUTOMATIC" ? (locale === "km" ? "ស្វ័យប្រវត្តិ" : "Automatic") : (locale === "km" ? "ធម្មតា" : "Manual") }))}
+                      options={TRANSMISSIONS.map((tr) => ({ value: tr, label: transmissionLabels[tr]?.[locale] ?? tr }))}
                       placeholder={t("formTransmission")}
                     />
                   </Field>
@@ -707,7 +710,7 @@ export function SellView() {
                     <SelectInput
                       value={form.drivetrain}
                       onChange={(v) => set({ drivetrain: v })}
-                      options={DRIVETRAINS.map((d) => ({ value: d, label: d }))}
+                      options={DRIVETRAINS.map((d) => ({ value: d, label: drivetrainLabels[d]?.[locale] ?? d }))}
                       placeholder="—"
                     />
                   </Field>
@@ -726,7 +729,7 @@ export function SellView() {
 
                   {showMoreInfo && (
                     <div className="mt-3 grid grid-cols-1 sm:grid-cols-3 gap-3 p-3.5 rounded-xl border border-amber-200/80 bg-amber-50/40 animate-in fade-in slide-in-from-top-1">
-                      <Field label={t("specSeats")} hint={locale === "km" ? "ឧ. 5 ឬ 7" : "e.g. 5 or 7"}>
+                      <Field label={t("specSeats")} hint={t("flowSeatsHint")}>
                         <Input
                           type="number"
                           min={1}
@@ -736,14 +739,14 @@ export function SellView() {
                           placeholder="5"
                         />
                       </Field>
-                      <Field label={t("specInteriorColor")} hint={locale === "km" ? "ឧ. ខ្មៅ, លឿងខ្ចី" : "e.g. Beige, Black"}>
+                      <Field label={t("specInteriorColor")} hint={t("flowInteriorColorHint")}>
                         <Input
                           value={form.interiorColor}
                           onChange={(e) => set({ interiorColor: e.target.value })}
-                          placeholder={locale === "km" ? "ខ្មៅ / លឿងខ្ចី" : "Black / Beige"}
+                          placeholder={t("flowInteriorColorPlaceholder")}
                         />
                       </Field>
-                      <Field label={t("specFuelEconomy")} hint={locale === "km" ? "ឧ. 6.5 L/100km ឬ 450 km" : "e.g. 6.5 L/100km or 450 km"}>
+                      <Field label={t("specFuelEconomy")} hint={t("flowFuelEconomyHint")}>
                         <Input
                           value={form.fuelEconomy}
                           onChange={(e) => set({ fuelEconomy: e.target.value })}
@@ -846,8 +849,8 @@ export function SellView() {
           <div className="space-y-4">
             {branches.length > 0 && (
               <Field
-                label={locale === "km" ? "សាខាបង្ហាញរថយន្ត" : "Showroom Branch"}
-                hint={locale === "km" ? "ជ្រើសរើសសាខាដែលរថយន្តនេះកំពុងចត" : "Select which showroom branch this vehicle is located at"}
+                label={t("flowBranch")}
+                hint={t("flowBranchHint")}
               >
                 <SelectInput
                   value={form.branchId || ""}
@@ -859,13 +862,13 @@ export function SellView() {
                     });
                   }}
                   options={[
-                    { value: "", label: locale === "km" ? "— សាខាចម្បង / ទីតាំងដើម —" : "— Main / Default Showroom —" },
+                    { value: "", label: `— ${t("flowDefaultBranch")} —` },
                     ...branches.map((b) => ({
                       value: b.id,
                       label: `${b.name}${b.isMain ? " (Main)" : ""} · ${b.city}${b.district ? `, ${b.district}` : ""}`,
                     })),
                   ]}
-                  placeholder={locale === "km" ? "ជ្រើសរើសសាខា" : "Select branch"}
+                  placeholder={t("flowSelectBranch")}
                 />
               </Field>
             )}
@@ -889,8 +892,8 @@ export function SellView() {
 
             <div className="grid grid-cols-2 gap-3">
               <Field
-                label={form.priceMasked ? `${t("formPrice")} (${locale === "km" ? "ជម្រើស" : "Optional"})` : t("formPrice")}
-                hint={form.priceMasked ? (locale === "km" ? "តម្លៃខាងក្នុងសម្រាប់តម្រៀបតែប៉ុណ្ណោះ" : "Reference price for sorting only") : undefined}
+                label={form.priceMasked ? `${t("formPrice")} (${t("flowOptional")})` : t("formPrice")}
+                hint={form.priceMasked ? t("flowMaskedPriceHint") : undefined}
               >
                 <Input
                   type="number"
@@ -904,7 +907,7 @@ export function SellView() {
                 <Input value={form.city} onChange={(e) => set({ city: e.target.value })} placeholder="Phnom Penh" />
               </Field>
               <Field label={t("formDistrict")}>
-                <Input value={form.district} onChange={(e) => set({ district: e.target.value })} placeholder={locale === "km" ? "ខណ្ឌចំការមន" : "Chamkarmon"} />
+                <Input value={form.district} onChange={(e) => set({ district: e.target.value })} placeholder={t("flowDistrictPlaceholder")} />
               </Field>
             </div>
             <Field label={t("formDescription")}>
@@ -916,9 +919,7 @@ export function SellView() {
             <div className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 p-3">
               <TriangleAlert className="h-4 w-4 mt-0.5 shrink-0 text-amber-600" aria-hidden />
               <p className="text-xs leading-relaxed text-amber-800">
-                {locale === "km"
-                  ? "កុំសរសេរ 'បង់ប្រាក់មុន' ឬពាក្យបញ្ឆោតផ្សេងៗ — ប្រព័ន្ធរបស់យើងនឹងសម្គាល់វាដោយស្វ័យប្រវត្តិ។"
-                  : "Avoid phrases like 'deposit first' or scam-pattern wording — our system flags them automatically."}
+                {t("flowScamWarning")}
               </p>
             </div>
           </div>

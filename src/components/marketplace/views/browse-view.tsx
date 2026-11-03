@@ -200,10 +200,10 @@ export function FiltersPanel({
           </div>
 
           <div>
-            <Label htmlFor="f-make-part" className="text-xs text-slate-500">{locale === "km" ? "ម៉ាក" : "Brand / Make"}</Label>
+            <Label htmlFor="f-make-part" className="text-xs text-slate-500">{t("formMake")}</Label>
             <Input
               id="f-make-part"
-              placeholder={locale === "km" ? "ឧ. Toyota, Honda, Brembo..." : "e.g. Toyota, Honda, Brembo..."}
+              placeholder={t("flowBrandPlaceholder")}
               value={filters.make}
               onChange={(e) => set({ make: e.target.value })}
               className="mt-1.5 h-9"
@@ -213,10 +213,10 @@ export function FiltersPanel({
       ) : filters.category === "MOTOR" ? (
         <>
           <div>
-            <Label htmlFor="f-make-motor" className="text-xs text-slate-500">{locale === "km" ? "ម៉ាកម៉ូតូ" : "Motorcycle Brand"}</Label>
+            <Label htmlFor="f-make-motor" className="text-xs text-slate-500">{t("formMake")}</Label>
             <Input
               id="f-make-motor"
-              placeholder={locale === "km" ? "ឧ. Honda, Yamaha, Suzuki..." : "e.g. Honda, Yamaha, Suzuki..."}
+              placeholder={t("flowMotorcycleBrandPlaceholder")}
               value={filters.make}
               onChange={(e) => set({ make: e.target.value })}
               className="mt-1.5 h-9"

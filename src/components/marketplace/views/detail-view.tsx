@@ -164,7 +164,7 @@ export function DetailView({ vehicleId }: { vehicleId: string }) {
     setGenerating(true);
     try {
       await apiSend(`/api/vehicles/${v.id}/report`, "POST");
-      toast.success(locale === "km" ? "បង្កើតរបាយការណ៍បានជោគជ័យ" : "Report generated");
+      toast.success(t("flowReportSuccess"));
       refetch();
       navigate({ name: "report", vehicleId: v.id });
     } catch (e) {
@@ -249,8 +249,8 @@ export function DetailView({ vehicleId }: { vehicleId: string }) {
           { label: t("partTarget"), value: partTargetLabels[v.partTarget ?? "UNIVERSAL"]?.[locale] ?? v.partTarget ?? "Universal" },
           { label: t("partCategoryLabel"), value: partCategoryLabels[v.partCategory ?? "OTHER"]?.[locale] ?? v.partCategory ?? "Other" },
           { label: t("partConditionLabel"), value: partConditionLabels[v.partCondition ?? "NEW"]?.[locale] ?? v.partCondition ?? "New" },
-          { label: locale === "km" ? "ម៉ាក" : "Brand / Make", value: v.make },
-          { label: locale === "km" ? "ឈ្មោះគ្រឿងបន្លាស់" : "Part / Model", value: v.model },
+          { label: t("formMake"), value: v.make },
+          { label: t("formModel"), value: v.model },
           ...(v.partNumber ? [{ label: t("partNumberLabel"), value: v.partNumber }] : []),
           ...(v.compatibleModels ? [{ label: t("compatibleModelsLabel"), value: v.compatibleModels }] : []),
         ]
@@ -349,7 +349,7 @@ export function DetailView({ vehicleId }: { vehicleId: string }) {
             {v.featured && (
               <Badge className="absolute top-2 left-2 bg-amber-500 text-slate-950 hover:bg-amber-500 gap-1">
                 <Star className="h-3 w-3" aria-hidden />
-                {locale === "km" ? "ពិសេស" : "Featured"}
+                {t("flowFeatured")}
               </Badge>
             )}
           </div>
@@ -527,7 +527,7 @@ export function DetailView({ vehicleId }: { vehicleId: string }) {
               {v.sellerFull.verified && (
                 <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 border border-emerald-200 px-2.5 py-1 text-xs font-semibold text-emerald-700">
                   <BadgeCheck className="h-3.5 w-3.5" aria-hidden />
-                  {v.sellerFull.type === "DEALER" ? t("dealerBadge") : locale === "km" ? "អ្នកលក់ផ្ទៀងផ្ទាត់" : "Verified seller"}
+                  {v.sellerFull.type === "DEALER" ? t("dealerBadge") : t("flowVerifiedSeller")}
                 </span>
               )}
               <span className="inline-flex items-center gap-1 rounded-full bg-slate-50 border border-slate-200 px-2.5 py-1 text-xs font-medium text-slate-600">
@@ -549,7 +549,7 @@ export function DetailView({ vehicleId }: { vehicleId: string }) {
                   className="bg-amber-500 hover:bg-amber-400 text-slate-950 font-semibold h-11"
                 >
                   <CarFront className="h-4 w-4 mr-2" aria-hidden />
-                  {locale === "km" ? "គ្រប់គ្រងការផ្សព្វផ្សាយ" : "Your Listing (Manage)"}
+                  {t("flowManageListing")}
                 </Button>
               ) : (
                 <Button
@@ -573,7 +573,7 @@ export function DetailView({ vehicleId }: { vehicleId: string }) {
                 aria-pressed={isFav}
               >
                 <Heart className={cn("h-4 w-4 mr-2", isFav && "fill-rose-500 text-rose-500")} aria-hidden />
-                {isFav ? (locale === "km" ? "រក្សាទុករួច" : "Saved") : t("navFavorites")}
+                {isFav ? t("flowSaved") : t("navFavorites")}
               </Button>
             </div>
             {v.status === "PUBLISHED" && (
@@ -784,9 +784,9 @@ export function DetailView({ vehicleId }: { vehicleId: string }) {
         <section className="mt-10" aria-labelledby="similar-title">
           <h2 id="similar-title" className="text-lg font-bold text-slate-900">
             {v.listingCategory === "MOTOR"
-              ? (locale === "km" ? "ម៉ូតូស្រដៀងគ្នា" : "Similar Motorcycles")
+              ? t("flowSimilarMotorcycles")
               : v.listingCategory === "SPARE_PART"
-              ? (locale === "km" ? "គ្រឿងបន្លាស់ស្រដៀងគ្នា" : "Similar Spare Parts")
+              ? t("flowSimilarParts")
               : t("similarCars")}
           </h2>
           <div className="mt-4 grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-4">
@@ -898,7 +898,7 @@ export function DetailView({ vehicleId }: { vehicleId: string }) {
               className="flex-1 bg-amber-500 hover:bg-amber-400 text-slate-950 font-semibold h-11"
             >
               <CarFront className="h-4 w-4 mr-2" aria-hidden />
-              {locale === "km" ? "គ្រប់គ្រងឡានរបស់អ្នក" : "Your Listing (Manage)"}
+              {t("flowManageListing")}
             </Button>
           ) : (
             <Button

@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import Image from "next/image";
 import { useAppStore } from "@/lib/store";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -31,6 +32,7 @@ import {
   FileText,
   BadgeAlert,
   Send,
+  Clock,
   Eye,
   ChevronRight,
   Bike,
@@ -42,12 +44,254 @@ interface GuideViewProps {
   initialTab?: "buyer" | "seller" | "dealer" | "payments" | "faq";
 }
 
+type GuideLocale = "vi" | "zh";
+type GuideTab = NonNullable<GuideViewProps["initialTab"]>;
+
+const localizedGuide: Record<GuideLocale, {
+  badge: string;
+  title: string;
+  subtitle: string;
+  browse: string;
+  create: string;
+  tabs: Record<GuideTab, string>;
+  sections: Record<GuideTab, {
+    title: string;
+    intro: string;
+    steps: { title: string; description: string; image?: string; alt?: string; caption?: string }[];
+    note?: string;
+  }>;
+}> = {
+  vi: {
+    badge: "Hướng dẫn sử dụng KhLan",
+    title: "Cách sử dụng chợ xe KhLan",
+    subtitle: "Tìm xe, liên hệ người bán, đăng bán xe hoặc phụ tùng và thanh toán gói đăng ký một cách an toàn.",
+    browse: "Tìm xe",
+    create: "Đăng bán",
+    tabs: { buyer: "1. Người mua", seller: "2. Người bán", dealer: "3. Đại lý", payments: "4. Thanh toán", faq: "5. An toàn & FAQ" },
+    sections: {
+      buyer: {
+        title: "Tìm và mua xe",
+        intro: "Bạn có thể xem tin đăng công khai. Việc mua xe được thỏa thuận và thanh toán trực tiếp với người bán.",
+        steps: [
+          { title: "Tìm kiếm và lọc", description: "Chọn ô tô, xe máy hoặc phụ tùng. Lọc theo hãng, giá, năm sản xuất và địa điểm.", image: "/images/guide/buyer-browse.jpg", alt: "Trang tìm kiếm xe với các bộ lọc", caption: "Chọn danh mục rồi dùng bộ lọc để tìm tin phù hợp." },
+          { title: "Xem thông tin xe", description: "Đọc mô tả, xem ảnh, giá và thông tin người bán. Báo cáo AI, nếu có, chỉ để tham khảo và không bảo đảm tình trạng xe.", image: "/images/guide/buyer-vehicle-detail.jpg", alt: "Trang chi tiết xe và thông tin người bán", caption: "Kiểm tra kỹ thông tin và ảnh trước khi liên hệ." },
+          { title: "Liên hệ và hẹn xem", description: "Gửi tin nhắn để hỏi tình trạng xe, giấy tờ và thời gian xem. Hãy xem xe trực tiếp và tự xác minh giấy tờ.", image: "/images/guide/buyer-contact-seller.jpg", alt: "Hộp thoại liên hệ người bán", caption: "Dùng cuộc trò chuyện để hỏi và thống nhất lịch xem xe." },
+          { title: "Thỏa thuận trực tiếp", description: "Kiểm tra xe và giấy tờ trước khi thanh toán. KhLan không thu tiền mua xe; KHQR trên trang web chỉ dùng để trả phí đăng ký.", image: "/images/guide/buyer-request-viewing.jpg", alt: "Hướng dẫn hẹn xem xe", caption: "Gặp người bán, kiểm tra xe và hoàn tất giao dịch trực tiếp." },
+        ],
+        note: "Không chuyển tiền đặt cọc trước khi xác minh người bán và xe.",
+      },
+      seller: {
+        title: "Đăng bán xe hoặc phụ tùng",
+        intro: "Đăng nhập bằng tài khoản người bán có gói đăng ký hoặc dùng thử còn hiệu lực, sau đó làm theo từng bước.",
+        steps: [
+          { title: "Nhập thông tin", description: "Chọn ô tô, xe máy hoặc phụ tùng. Điền hãng, mẫu xe, năm, tình trạng và mô tả chính xác.", image: "/images/guide/seller-listing-details.jpg", alt: "Bước nhập thông tin tin đăng", caption: "Bước 1: Chọn loại sản phẩm và nhập thông tin." },
+          { title: "Thêm ảnh", description: "Tải ảnh rõ nét do bạn chụp. Thêm ảnh ngoại thất, nội thất, đồng hồ và các khuyết điểm nếu có.", image: "/images/guide/seller-add-photos.jpg", alt: "Bước thêm ảnh cho tin đăng", caption: "Bước 2: Tải ảnh lên và chọn ảnh bìa." },
+          { title: "Đặt giá và đăng", description: "Nhập giá và địa điểm, xem lại thông tin rồi đăng tin. Trả lời người mua và hẹn xem xe trực tiếp.", image: "/images/guide/seller-set-price.jpg", alt: "Bước đặt giá và địa điểm", caption: "Bước 3: Kiểm tra giá và địa điểm trước khi đăng." },
+        ],
+        note: "Giao dịch mua bán xe diễn ra trực tiếp giữa người mua và người bán.",
+      },
+      dealer: {
+        title: "Dành cho đại lý",
+        intro: "Tài khoản đại lý có thể quản lý nhiều tin đăng và thông tin showroom.",
+        steps: [
+          { title: "Quản lý kho xe", description: "Tạo tin riêng cho từng xe, cập nhật giá và tình trạng để thông tin luôn chính xác." },
+          { title: "Thêm chi nhánh", description: "Thiết lập địa điểm showroom và chọn chi nhánh phù hợp khi đăng xe." },
+          { title: "Theo dõi liên hệ", description: "Kiểm tra tin nhắn của người mua thường xuyên và sắp xếp lịch xem xe." },
+        ],
+      },
+      payments: {
+        title: "Thanh toán phí đăng ký",
+        intro: "KHQR trên KhLan chỉ dùng để thanh toán gói đăng ký của người bán. Người mua không trả tiền mua xe cho KhLan.",
+        steps: [
+          { title: "Chọn gói", description: "Mở trang gói đăng ký, chọn gói phù hợp và kiểm tra số tiền cần thanh toán." },
+          { title: "Quét KHQR", description: "Mở ứng dụng ngân hàng, quét mã KHQR hiển thị và kiểm tra tên người nhận cùng số tiền trước khi xác nhận." },
+          { title: "Tải biên lai", description: "Quay lại KhLan, tải ảnh biên lai rõ nét và nhập thông tin giao dịch được yêu cầu rồi gửi yêu cầu." },
+          { title: "Chờ quản trị viên duyệt", description: "Theo dõi trạng thái yêu cầu. Gói đăng ký chỉ được kích hoạt sau khi quản trị viên kiểm tra và phê duyệt." },
+        ],
+        note: "Nếu bị từ chối, đọc lý do, sửa thông tin hoặc biên lai và gửi lại yêu cầu.",
+      },
+      faq: {
+        title: "Câu hỏi thường gặp và an toàn",
+        intro: "Hãy thận trọng khi liên hệ và giao dịch với người bán.",
+        steps: [
+          { title: "KhLan có nhận tiền mua xe không?", description: "Không. Người mua và người bán tự thỏa thuận và thanh toán trực tiếp. KHQR chỉ dành cho phí đăng ký." },
+          { title: "Khi nào gói đăng ký có hiệu lực?", description: "Sau khi bạn gửi biên lai và quản trị viên phê duyệt yêu cầu thanh toán." },
+          { title: "Làm sao tránh lừa đảo?", description: "Gặp ở nơi an toàn, tự kiểm tra xe và giấy tờ, không gửi tiền trước khi xác minh." },
+        ],
+      },
+    },
+  },
+  zh: {
+    badge: "KhLan 使用指南",
+    title: "如何使用 KhLan 车辆交易平台",
+    subtitle: "了解如何寻找车辆、联系卖家、发布车辆或配件，以及安全支付订阅费用。",
+    browse: "浏览车辆",
+    create: "发布商品",
+    tabs: { buyer: "1. 买家指南", seller: "2. 发布商品", dealer: "3. 经销商", payments: "4. 付款", faq: "5. 安全与常见问题" },
+    sections: {
+      buyer: {
+        title: "查找并购买车辆",
+        intro: "您可以公开浏览商品。车辆购买由买家与卖家直接协商并完成付款。",
+        steps: [
+          { title: "搜索和筛选", description: "选择汽车、摩托车或配件，并按品牌、价格、年份和地点筛选。", image: "/images/guide/buyer-browse.jpg", alt: "带有筛选条件的车辆浏览页面", caption: "先选择类别，再使用筛选条件查找合适的商品。" },
+          { title: "查看车辆详情", description: "查看描述、照片、价格和卖家信息。AI 报告（如有）仅供参考，并不保证车辆状况。", image: "/images/guide/buyer-vehicle-detail.jpg", alt: "车辆详情和卖家信息页面", caption: "联系卖家前，请仔细查看车辆信息和照片。" },
+          { title: "联系卖家并预约", description: "询问车辆状况、证件和看车时间。请亲自查看车辆并核实相关证件。", image: "/images/guide/buyer-contact-seller.jpg", alt: "联系卖家对话框", caption: "通过聊天咨询并商定看车时间。" },
+          { title: "直接完成交易", description: "付款前检查车辆和证件。KhLan 不收取车辆购买款；网站上的 KHQR 仅用于支付订阅费。", image: "/images/guide/buyer-request-viewing.jpg", alt: "预约看车说明", caption: "与卖家见面，检查车辆，并直接完成交易。" },
+        ],
+        note: "在核实卖家和车辆之前，请勿支付定金。",
+      },
+      seller: {
+        title: "发布车辆或配件",
+        intro: "请使用具有有效订阅或免费试用资格的卖家账户登录，然后按步骤填写。",
+        steps: [
+          { title: "填写商品信息", description: "选择汽车、摩托车或配件，并准确填写品牌、型号、年份、状况和描述。", image: "/images/guide/seller-listing-details.jpg", alt: "填写商品信息步骤", caption: "第 1 步：选择商品类型并填写所需信息。" },
+          { title: "添加照片", description: "上传清晰的实拍照片，包括外观、内饰、仪表和任何瑕疵。", image: "/images/guide/seller-add-photos.jpg", alt: "为商品添加照片步骤", caption: "第 2 步：上传照片并选择封面图。" },
+          { title: "设置价格并发布", description: "填写价格和地点，检查信息后发布。及时回复买家并安排线下看车。", image: "/images/guide/seller-set-price.jpg", alt: "设置价格和地点步骤", caption: "第 3 步：发布前再次确认价格和地点。" },
+        ],
+        note: "买家和卖家直接进行车辆交易。",
+      },
+      dealer: {
+        title: "经销商指南",
+        intro: "经销商账户可管理多个商品和展厅信息。",
+        steps: [
+          { title: "管理库存", description: "为每辆车单独创建商品，并及时更新价格和车辆状况。" },
+          { title: "添加分店", description: "设置展厅地点，并在发布车辆时选择对应分店。" },
+          { title: "跟进咨询", description: "定期查看买家消息并安排看车时间。" },
+        ],
+      },
+      payments: {
+        title: "支付订阅费用",
+        intro: "KhLan 的 KHQR 仅用于卖家订阅付款。买家无需向 KhLan 支付车辆购买款。",
+        steps: [
+          { title: "选择方案", description: "打开订阅页面，选择合适的方案并确认应付金额。" },
+          { title: "扫描 KHQR", description: "打开银行应用扫描页面上的 KHQR，并在确认前核对收款方和金额。" },
+          { title: "上传收据", description: "返回 KhLan，上传清晰的付款收据，填写所需交易信息并提交申请。" },
+          { title: "等待管理员审核", description: "查看申请状态。管理员检查并批准付款后，订阅才会生效。" },
+        ],
+        note: "如果申请被拒绝，请查看原因，修正信息或收据后重新提交。",
+      },
+      faq: {
+        title: "常见问题与安全提示",
+        intro: "与卖家联系和交易时请保持谨慎。",
+        steps: [
+          { title: "KhLan 会收取车辆款吗？", description: "不会。买家和卖家直接协商并付款。KHQR 仅用于支付订阅费。" },
+          { title: "订阅何时生效？", description: "提交收据后，管理员审核并批准付款，订阅才会生效。" },
+          { title: "如何防范诈骗？", description: "选择安全地点见面，亲自检查车辆和证件，并在核实前不要转账。" },
+        ],
+      },
+    },
+  },
+};
+
+function GuideScreenshot({
+  src,
+  alt,
+  caption,
+}: {
+  src: string;
+  alt: string;
+  caption: string;
+}) {
+  return (
+    <figure className="mt-4 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-xs">
+      <Image
+        src={src}
+        alt={alt}
+        width={1440}
+        height={900}
+        sizes="(max-width: 640px) 100vw, 850px"
+        className="block h-auto w-full"
+      />
+      <figcaption className="border-t border-slate-200 bg-slate-50 px-3 py-2 text-xs leading-relaxed text-slate-600 sm:px-4">
+        {caption}
+      </figcaption>
+    </figure>
+  );
+}
+
 export function GuideView({ initialTab = "buyer" }: GuideViewProps) {
   const [activeTab, setActiveTab] = useState<string>(initialTab);
   const locale = useAppStore((s) => s.locale);
   const navigate = useAppStore((s) => s.navigate);
 
   const isKm = locale === "km";
+
+  if (locale === "vi" || locale === "zh") {
+    const copy = localizedGuide[locale];
+    const tabs: GuideTab[] = ["buyer", "seller", "dealer", "payments", "faq"];
+    const section = copy.sections[activeTab as GuideTab];
+
+    return (
+      <div className="min-h-screen bg-slate-50 dark:bg-slate-950 pb-20">
+        <div className="bg-slate-950 text-white py-12 px-4 sm:px-6 border-b border-slate-800">
+          <div className="max-w-5xl mx-auto text-center space-y-4">
+            <Badge className="bg-amber-500/20 text-amber-300 border-amber-500/30 px-3 py-1 text-xs font-semibold rounded-full">
+              {copy.badge}
+            </Badge>
+            <h1 className="text-3xl sm:text-4xl font-extrabold tracking-tight">{copy.title}</h1>
+            <p className="max-w-3xl mx-auto text-base sm:text-lg text-slate-300 leading-relaxed">{copy.subtitle}</p>
+            <div className="pt-2 flex flex-wrap items-center justify-center gap-3">
+              <Button onClick={() => navigate({ name: "browse" })} className="bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold px-5">
+                <Search className="h-4 w-4 mr-2" />{copy.browse}
+              </Button>
+              <Button onClick={() => navigate({ name: "sell" })} variant="outline" className="border-slate-700 bg-slate-900/60 text-white hover:bg-slate-800 font-semibold px-5">
+                <Tag className="h-4 w-4 mr-2 text-amber-400" />{copy.create}
+              </Button>
+            </div>
+          </div>
+        </div>
+        <div className="max-w-5xl mx-auto px-4 sm:px-6 pt-8 space-y-6">
+          <nav aria-label={copy.badge} className="grid grid-cols-2 sm:grid-cols-5 gap-2">
+            {tabs.map((tab) => (
+              <button
+                key={tab}
+                type="button"
+                aria-current={activeTab === tab ? "page" : undefined}
+                onClick={() => setActiveTab(tab)}
+                className={cn(
+                  "rounded-xl border px-3 py-2.5 text-xs sm:text-sm font-semibold transition-colors",
+                  activeTab === tab
+                    ? "border-amber-500 bg-amber-500 text-slate-950"
+                    : "border-slate-200 bg-white text-slate-700 hover:border-amber-300"
+                )}
+              >
+                {copy.tabs[tab]}
+              </button>
+            ))}
+          </nav>
+          <Card className="border-slate-200 shadow-xs">
+            <CardHeader className="border-b border-slate-100 bg-amber-50/50">
+              <CardTitle className="text-xl">{section.title}</CardTitle>
+              <CardDescription className="text-sm leading-relaxed">{section.intro}</CardDescription>
+            </CardHeader>
+            <CardContent className="p-5 sm:p-6 space-y-5">
+              <ol className="space-y-5">
+                {section.steps.map((step, index) => (
+                  <li key={step.title} className="flex items-start gap-3">
+                    <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-amber-100 text-amber-900 font-bold text-sm">
+                      {index + 1}
+                    </span>
+                    <div className="min-w-0 flex-1 space-y-1.5">
+                      <h3 className="font-bold text-slate-900">{step.title}</h3>
+                      <p className="text-sm text-slate-600 leading-relaxed">{step.description}</p>
+                      {step.image && step.alt && step.caption && (
+                        <GuideScreenshot src={step.image} alt={step.alt} caption={step.caption} />
+                      )}
+                    </div>
+                  </li>
+                ))}
+              </ol>
+              {section.note && (
+                <p className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm leading-relaxed text-amber-950">
+                  {section.note}
+                </p>
+              )}
+            </CardContent>
+          </Card>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-slate-950 pb-20">
@@ -74,8 +318,8 @@ export function GuideView({ initialTab = "buyer" }: GuideViewProps) {
 
           <p className="max-w-3xl mx-auto text-base sm:text-lg text-slate-300 leading-relaxed">
             {isKm
-              ? "ស្វែងយល់ពីរបៀបរុករក ត្រួតពិនិត្យរបាយការណ៍ AI ទាក់ទងអ្នកលក់ ទិញ-លក់រថយន្ត និងបង់ប្រាក់តាម KHQR Bakong ដោយសុវត្ថិភាព និងទំនុកចិត្តខ្ពស់បំផុត។"
-              : "Learn how to discover verified vehicles, analyze AI inspection reports, contact sellers securely, post listings, and complete NBC Bakong KHQR payments with 100% confidence."}
+              ? "ស្វែងយល់ពីរបៀបរុករក ពិនិត្យព័ត៌មានយានយន្ត ទាក់ទងអ្នកលក់ ចុះផ្សាយលក់ និងបង់ថ្លៃគម្រោងជាវតាម KHQR។"
+              : "Learn how to find vehicles, review listing information, contact sellers, post listings, and pay for a seller subscription by KHQR."}
           </p>
 
           {/* Quick CTA actions */}
@@ -183,6 +427,15 @@ export function GuideView({ initialTab = "buyer" }: GuideViewProps) {
                         ? "ចូលទៅកាន់ផ្ទាំង «រុករកឡាន (Browse)» ដើម្បីជ្រើសរើសតាមប្រភេទយានយន្ត (រថយន្ត, ម៉ូតូ, គ្រឿងបន្លាស់), ម៉ាក (Toyota, Lexus, Ford, Honda...), ឆ្នាំផលិត, កម្រិតតម្លៃគិតជាដុល្លារ ($), ប្រភេទប្រអប់លេខ (Auto/Manual), និងទីតាំងខេត្ត/រាជធានី។"
                         : "Navigate to the 'Browse' section to filter by vehicle category (Cars, Motorcycles, Spare Parts), Make (Toyota, Lexus, Ford, Honda...), Year range, Price (USD), Transmission, Fuel type, and Location (Phnom Penh, Siem Reap, etc.)."}
                     </p>
+                    <GuideScreenshot
+                      src="/images/guide/buyer-browse.jpg"
+                      alt={isKm
+                        ? "រូបថតអេក្រង់ទំព័ររុករកដែលមានប្រភេទយានយន្ត តម្រង និងបញ្ជីលក់"
+                        : "Marketplace browse screen showing vehicle categories, filters, and listing cards"}
+                      caption={isKm
+                        ? "ជ្រើសប្រភេទយានយន្ត និងប្រើតម្រង ដើម្បីរកមើលបញ្ជីដែលសមនឹងអ្នក។"
+                        : "Choose a vehicle category and use the filters to find listings that match what you want."}
+                    />
                   </div>
                 </div>
 
@@ -202,8 +455,17 @@ export function GuideView({ initialTab = "buyer" }: GuideViewProps) {
                     <p className="text-sm text-slate-600 leading-relaxed">
                       {isKm
                         ? "នៅលើទំព័រលម្អិតនៃយានយន្តនីមួយៗ ចុចលើ «របាយការណ៍ AI (AI Report)»។ ប្រព័ន្ធនឹងបង្ហាញពិន្ទុទំនុកចិត្ត (Overall Confidence Score 0-100%), ការផ្ទៀងផ្ទាត់លេខតួ/លេខកូដ VIN, ភាពត្រឹមត្រូវនៃកុងទ័រគីឡូម៉ែត្រ (Odometer), កំណត់ត្រាគ្រោះថ្នាក់, និងការប្រៀបធៀបតម្លៃជាមួយទីផ្សារជាក់ស្តែងនៅកម្ពុជា។"
-                        : "On any vehicle page, click 'View AI Vehicle Report'. KhLan evaluates evidence across 10 critical checkpoints: title authenticity, odometer consistency, panel gap alignment, import origin, and fair valuation against recent Cambodian transactions."}
+                        : "Open a listing and review its AI vehicle report when available. If no report is ready, use Generate AI report where offered. Check the evidence and unknowns alongside the vehicle details; an AI report is not a guarantee."}
                     </p>
+                    <GuideScreenshot
+                      src="/images/guide/buyer-vehicle-detail.jpg"
+                      alt={isKm
+                        ? "រូបថតអេក្រង់ព័ត៌មានលម្អិតរថយន្ត បង្ហាញតម្លៃ អ្នកលក់ និងកាតរបាយការណ៍ AI"
+                        : "Vehicle detail screen showing the price, seller information, and AI vehicle report card"}
+                      caption={isKm
+                        ? "ពិនិត្យតម្លៃ ព័ត៌មានអ្នកលក់ និងកាតរបាយការណ៍ AI មុនពេលទាក់ទង។"
+                        : "Review the price, seller information, and AI report card before contacting the seller."}
+                    />
                   </div>
                 </div>
 
@@ -222,6 +484,15 @@ export function GuideView({ initialTab = "buyer" }: GuideViewProps) {
                         ? "ចុច «ទាក់ទងអ្នកលក់ (Contact Seller)» ដើម្បីជជែកសួរព័ត៌មានបន្ថែម ចរចាតម្លៃ ឬសុំមើលរូបភាពបន្ថែម។ ប្រព័ន្ធផ្ញើសាររបស់ KhLan ធានាការរក្សាការសម្ងាត់ខ្ពស់រវាងអ្នកទិញ និងអ្នកលក់ ដោយគ្មានការជ្រៀតជ្រែក ឬក្លែងបន្លំពីភាគីទីបីឡើយ។"
                         : "Click 'Contact Seller' to chat directly with the owner or verified dealership. Conversations are completely private, real-time, and backed by anti-fraud safety advisories warning against upfront wire transfer deposits."}
                     </p>
+                    <GuideScreenshot
+                      src="/images/guide/buyer-contact-seller.jpg"
+                      alt={isKm
+                        ? "ប្រអប់សារទាក់ទងអ្នកលក់ មានសារសុវត្ថិភាព និងប្រអប់សរសេរសារ"
+                        : "Contact seller dialog with a safety reminder, suggested questions, and a message field"}
+                      caption={isKm
+                        ? "សួរអំពីស្ថានភាព រូបភាព និងការមើលយានយន្ត។ ការជជែកត្រូវការគណនី។"
+                        : "Ask about the condition, photos, or viewing time. You need an account to start a conversation."}
+                    />
                   </div>
                 </div>
 
@@ -240,6 +511,15 @@ export function GuideView({ initialTab = "buyer" }: GuideViewProps) {
                         ? "កក់ការណាត់ជួបតាមរយៈប្រព័ន្ធ ឬតាមទូរស័ព្ទ។ សូមពិនិត្យមើលសៀវភៅសម្គាល់យានយន្ត (កាតគ្រី), លេខតួ និងស្ថានភាពម៉ាស៊ីនដោយផ្ទាល់ មុននឹងសម្រេចចិត្តផ្ទេរប្រាក់កក់ ឬទូទាត់ប្រាក់ពេញលេញ។"
                         : "Book an appointment or test drive. Always verify the physical registration card (កាតគ្រី), chassis VIN stamp, and mechanical condition in person before releasing any escrow deposit or final payment."}
                     </p>
+                    <GuideScreenshot
+                      src="/images/guide/buyer-request-viewing.jpg"
+                      alt={isKm
+                        ? "ប្រអប់ស្នើសុំសាកល្បងបើកបរ មានកាលបរិច្ឆេទ ពេលវេលា និងកំណត់ចំណាំ"
+                        : "Test drive request dialog with date, time, and optional notes"}
+                      caption={isKm
+                        ? "ជ្រើសកាលបរិច្ឆេទ និងពេលវេលា បន្ថែមកំណត់ចំណាំ ហើយផ្ញើសំណើ។"
+                        : "Choose a date and time, add an optional note, and send the request when ready."}
+                    />
                   </div>
                 </div>
 
@@ -277,12 +557,12 @@ export function GuideView({ initialTab = "buyer" }: GuideViewProps) {
                   </div>
                   <div>
                     <CardTitle className="text-xl">
-                      {isKm ? "របៀបចុះផ្សាយលក់យានយន្តរបស់អ្នក (Seller Guide)" : "How to Post & Sell on KhLan"}
+                      {isKm ? "របៀបចុះផ្សាយលក់យានយន្តរបស់អ្នក (Seller Guide)" : "How to Create a Listing & Sell on KhLan"}
                     </CardTitle>
                     <CardDescription>
                       {isKm
                         ? "ការចុះផ្សាយលក់រថយន្ត ម៉ូតូ ឬគ្រឿងបន្លាស់ យ៉ាងរហ័ស ជាមួយការសាកល្បងឥតគិតថ្លៃ ១៤ ថ្ងៃ"
-                        : "Reach thousands of genuine Cambodian buyers with a 14-day free trial and instant KHQR listing activation"}
+                        : "Create a listing with an active subscription or free trial. Subscription access starts after payment approval."}
                     </CardDescription>
                   </div>
                 </div>
@@ -320,8 +600,8 @@ export function GuideView({ initialTab = "buyer" }: GuideViewProps) {
                     </h3>
                     <p className="text-sm text-slate-600 leading-relaxed">
                       {isKm
-                        ? "នៅពេលចប់ការសាកល្បង លោកអ្នកអាចជ្រើសរើសគម្រោងជាវប្រចាំខែ ($15/ខែ) ឬប្រចាំឆ្នាំ ($150/ឆ្នាំ) ដើម្បីបន្តការចុះផ្សាយគ្មានដែនកំណត់។ ការបង់ប្រាក់អាចធ្វើបានតាមរយៈ NBC Bakong KHQR (ABA, ACLEDA, Wing...) ជាមួយការបើកដំណើរការដោយស្វ័យប្រវត្តិតែប៉ុន្មានវិនាទី។"
-                        : "When your trial ends, subscribe to our Basic or Pro Seller plans. Pay seamlessly with NBC Bakong KHQR (ABA, ACLEDA, Wing, Canadia...) for instant, automated account activation."}
+                        ? "នៅពេលចប់ការសាកល្បង សូមជ្រើសរើសគម្រោងជាវដែលសមស្រប។ ស្កេន KHQR បង់ប្រាក់ បង្ហោះបង្កាន់ដៃ និងដាក់សំណើ។ គម្រោងជាវនឹងចាប់ផ្ដើមបន្ទាប់ពីអ្នកគ្រប់គ្រងពិនិត្យ និងអនុម័ត។"
+                        : "When your trial ends, choose a subscription plan. Pay by KHQR, upload the receipt, and submit your request. Your subscription starts after an administrator reviews and approves the payment."}
                     </p>
                   </div>
                 </div>
@@ -339,8 +619,8 @@ export function GuideView({ initialTab = "buyer" }: GuideViewProps) {
                     <div className="text-sm text-slate-600 space-y-2">
                       <p>
                         {isKm
-                          ? "ចុចលើប៊ូតុង «លក់ឡាន (Sell)» ហើយបំពេញទិន្នន័យតាមដំណាក់កាលដូចខាងក្រោម៖"
-                          : "Click 'Sell a Car' in the navigation bar and follow our streamlined 4-step wizard:"}
+                          ? "ចុចលើប៊ូតុង «លក់ឡាន (Sell)» ហើយបំពេញព័ត៌មានតាមជំហានទាំង ៣ ខាងក្រោម៖"
+                          : "Click 'Sell your car' in the navigation bar and follow the three-step listing wizard:"}
                       </p>
                       <ul className="list-disc pl-5 space-y-1 text-xs sm:text-sm text-slate-700">
                         <li>
@@ -360,6 +640,35 @@ export function GuideView({ initialTab = "buyer" }: GuideViewProps) {
                           {isKm ? "បង្ហោះរូបភាពខាងក្រៅជុំវិញ ខាងក្នុង កុងទ័រគីឡូ និងម៉ាស៊ីន ដើម្បីទាក់ទាញអ្នកទិញ។" : "Upload crisp exterior 360, interior cockpit, engine bay, and odometer photos."}
                         </li>
                       </ul>
+                      <div className="space-y-4 pt-2">
+                        <GuideScreenshot
+                          src="/images/guide/seller-listing-details.jpg"
+                          alt={isKm
+                            ? "ជំហានព័ត៌មានយានយន្តក្នុងទម្រង់ចុះផ្សាយ បង្ហាញប្រភេទ ម៉ាក ម៉ូដែល ឆ្នាំ និងចម្ងាយ"
+                            : "Listing wizard vehicle details step with category, make, model, year, and mileage fields"}
+                          caption={isKm
+                            ? "ជំហានទី ១៖ ជ្រើសប្រភេទរថយន្ត ម៉ូតូ ឬគ្រឿងបន្លាស់ រួចបញ្ចូលព័ត៌មានដែលត្រូវការ។"
+                            : "Step 1: Choose cars, motorcycles, or spare parts, then enter the required item details."}
+                        />
+                        <GuideScreenshot
+                          src="/images/guide/seller-add-photos.jpg"
+                          alt={isKm
+                            ? "ជំហានបង្ហោះរូបភាពក្នុងទម្រង់ចុះផ្សាយ បង្ហាញរូបភាព និងលំដាប់រូបភាពគម្រប"
+                            : "Listing wizard photo step showing uploaded images and the cover photo order"}
+                          caption={isKm
+                            ? "ជំហានទី ២៖ បង្ហោះ ឬបន្ថែមរូបភាព ហើយរៀបលំដាប់ ដើម្បីជ្រើសរូបភាពគម្រប។"
+                            : "Step 2: Upload or add photos, then reorder them. The first photo is the cover image."}
+                        />
+                        <GuideScreenshot
+                          src="/images/guide/seller-set-price.jpg"
+                          alt={isKm
+                            ? "ជំហានកំណត់តម្លៃ និងទីតាំងក្នុងទម្រង់ចុះផ្សាយ មុនបោះផ្សាយ"
+                            : "Listing wizard price and location step before publishing"}
+                          caption={isKm
+                            ? "ជំហានទី ៣៖ កំណត់តម្លៃ និងទីតាំង ពិនិត្យព័ត៌មាន រួចចុច «បោះផ្សាយ»។"
+                            : "Step 3: Set the price and location, review your details, and select Publish listing."}
+                        />
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -519,7 +828,7 @@ export function GuideView({ initialTab = "buyer" }: GuideViewProps) {
           </TabsContent>
 
           {/* ========================================================================= */}
-          {/* TAB 4: KHQR PAYMENTS & VERIFICATION */}
+          {/* TAB 4: SUBSCRIPTION PAYMENT GUIDE */}
           {/* ========================================================================= */}
           <TabsContent value="payments" className="space-y-6">
             <Card className="border-slate-200 shadow-xs">
@@ -530,81 +839,86 @@ export function GuideView({ initialTab = "buyer" }: GuideViewProps) {
                   </div>
                   <div>
                     <CardTitle className="text-xl">
-                      {isKm ? "ការទូទាត់តាម NBC Bakong KHQR និងការផ្ទៀងផ្ទាត់" : "NBC Bakong KHQR & Automated Payment Verification"}
+                      {isKm ? "របៀបបង់ថ្លៃជាវតាម KHQR" : "How to Pay for Your Subscription"}
                     </CardTitle>
                     <CardDescription>
                       {isKm
-                        ? "ការទូទាត់ថ្លៃសេវាជាវគម្រោងអ្នកលក់ តាមរយៈប្រព័ន្ធធនាគារកម្ពុជា ប្រកបដោយភាពរហ័ស និងសុវត្ថិភាពខ្ពស់"
-                        : "Instant activation via NBC Bakong KHQR, Bank Slip OCR verification, and Telegram audit pipeline"}
+                        ? "អនុវត្តតាមជំហានខាងក្រោម រួចរង់ចាំការបញ្ជាក់ការទូទាត់ជាវរបស់អ្នក។"
+                        : "Follow these steps to pay for a seller subscription and check its status."}
                     </CardDescription>
                   </div>
                 </div>
               </CardHeader>
               <CardContent className="pt-6 space-y-6">
-                {/* Method 1: Instant KHQR Scan */}
-                <div className="border border-slate-200 rounded-xl p-4 bg-white space-y-3">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <span className="h-7 w-7 rounded-full bg-emerald-100 text-emerald-800 font-bold text-xs flex items-center justify-center">
-                        A
-                      </span>
-                      <h3 className="font-bold text-slate-900 text-sm sm:text-base">
-                        {isKm ? "ស្កេនទូទាត់ភ្លាមៗ (Instant Bakong KHQR Scan)" : "Instant KHQR Mobile Scan"}
-                      </h3>
-                    </div>
-                    <Badge className="bg-emerald-600 text-white text-[10px]">
-                      {isKm ? "បើកដំណើរការភ្លាមៗ" : "Instant Activation"}
-                    </Badge>
-                  </div>
-                  <p className="text-xs sm:text-sm text-slate-600 leading-relaxed">
-                    {isKm
-                      ? "បើកកម្មវិធីធនាគារចល័តណាមួយនៅកម្ពុជា (ដូចជា ABA Mobile, ACLEDA mobile, Wing Bank, Canadia Bank, Sathapana, Chip Mong...) ហើយស្កេនកូដ KHQR ដែលបង្ហាញលើអេក្រង់។ ប្រព័ន្ធនឹងផ្ទៀងផ្ទាត់ការទូទាត់ និងបើកដំណើរការគណនីជាវរបស់អ្នកដោយស្វ័យប្រវត្តិតែប៉ុន្មានវិនាទីប៉ុណ្ណោះ។"
-                      : "Open any Cambodian banking app (ABA, ACLEDA, Wing, Canadia, Sathapana, etc.) and scan the dynamic KHQR code on your screen. The payment is verified instantly, activating your subscription without any manual wait."}
-                  </p>
+                <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm leading-relaxed text-amber-950">
+                  <strong>{isKm ? "សូមចំណាំ៖ " : "Please note: "}</strong>
+                  {isKm
+                    ? "ការបង់ប្រាក់ KHQR នៅទីនេះគឺសម្រាប់គម្រោងជាវអ្នកលក់ប៉ុណ្ណោះ។ ការទិញរថយន្តត្រូវទាក់ទង និងរៀបចំជាមួយអ្នកលក់ដោយផ្ទាល់។"
+                    : "KHQR here is only for a seller subscription. Vehicle purchases are arranged directly with the seller."}
                 </div>
 
-                {/* Method 2: Manual Slip Upload with OCR */}
-                <div className="border border-slate-200 rounded-xl p-4 bg-white space-y-3">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <span className="h-7 w-7 rounded-full bg-sky-100 text-sky-800 font-bold text-xs flex items-center justify-center">
-                        B
+                <ol className="grid gap-3 sm:grid-cols-2">
+                  {[
+                    {
+                      icon: <CreditCard className="h-5 w-5" />,
+                      title: isKm ? "១. ជ្រើសរើសគម្រោងជាវ" : "1. Choose a subscription plan",
+                      description: isKm
+                        ? "ចូលទៅកាន់ផ្ទាំងគ្រប់គ្រង ឬទំព័រជាវ។ ជ្រើសរើសគម្រោង រយៈពេល និងរូបិយប័ណ្ណដែលអ្នកចង់បង់។"
+                        : "Open your dashboard or subscription page. Choose a plan, billing period, and payment currency.",
+                    },
+                    {
+                      icon: <QrCode className="h-5 w-5" />,
+                      title: isKm ? "២. ស្កេនកូដ KHQR" : "2. Scan the KHQR code",
+                      description: isKm
+                        ? "បើកកម្មវិធីធនាគាររបស់អ្នក ស្កេនកូដ KHQR ដែលបង្ហាញលើអេក្រង់ ហើយពិនិត្យឈ្មោះអ្នកទទួល និងចំនួនប្រាក់ មុនពេលបញ្ជាក់ការផ្ទេរ។"
+                        : "Open your banking app and scan the KHQR shown on the screen. Check the payee name and amount before confirming the transfer.",
+                    },
+                    {
+                      icon: <Upload className="h-5 w-5" />,
+                      title: isKm ? "៣. បង្ហោះបង្កាន់ដៃ និងផ្ញើសំណើ" : "3. Upload your receipt and submit",
+                      description: isKm
+                        ? "ត្រឡប់មក KhLan បង្ហោះរូបថតបង្កាន់ដៃច្បាស់លាស់។ ពិនិត្យលេខប្រតិបត្តិការ និងកាលបរិច្ឆេទដែលបានបង្ហាញ រួចចុចបញ្ជូនសំណើបង់ប្រាក់។"
+                        : "Return to KhLan and upload a clear photo of your bank receipt. Check the transaction reference and payment date shown, then submit your payment request.",
+                    },
+                    {
+                      icon: <Clock className="h-5 w-5" />,
+                      title: isKm ? "៤. រង់ចាំការត្រួតពិនិត្យ" : "4. Wait for the payment review",
+                      description: isKm
+                        ? "សំណើរបស់អ្នកនឹងបង្ហាញថាកំពុងរង់ចាំការផ្ទៀងផ្ទាត់។ អ្នកគ្រប់គ្រងនឹងពិនិត្យព័ត៌មាន និងបង្កាន់ដៃ។ ប្រើប៊ូតុង «ពិនិត្យស្ថានភាព» ដើម្បីមើលលទ្ធផល។"
+                        : "Your request will show as awaiting verification while an administrator checks the details and receipt. Use “Check Status” to see the result.",
+                    },
+                  ].map((step) => (
+                    <li key={step.title} className="flex gap-3 rounded-xl border border-slate-200 bg-white p-4">
+                      <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-emerald-50 text-emerald-700">
+                        {step.icon}
                       </span>
-                      <h3 className="font-bold text-slate-900 text-sm sm:text-base">
-                        {isKm ? "បង្ហោះវិក្កយបត្រស្កេន AI (Bank Slip OCR Verification)" : "Bank Receipt Screenshot & OCR Match"}
-                      </h3>
-                    </div>
-                    <Badge variant="outline" className="text-xs">
-                      {isKm ? "ស្កេនស្វ័យប្រវត្តិ" : "OCR Matching"}
-                    </Badge>
-                  </div>
-                  <p className="text-xs sm:text-sm text-slate-600 leading-relaxed">
-                    {isKm
-                      ? "ប្រសិនបើលោកអ្នកបានផ្ទេរប្រាក់ដោយឡែក លោកអ្នកគ្រាន់តែថត ឬរក្សាទុកវិក្កយបត្រ (Screenshot/Slip) រួចបង្ហោះចូលទៅក្នុងប្រព័ន្ធ។ បច្ចេកវិទ្យា AI OCR នឹងអានទឹកប្រាក់ កាលបរិច្ឆេទ និងលេខកូដប្រតិបត្តិការ (Transaction ID) ដោយស្វ័យប្រវត្តិ។"
-                      : "If you transferred from an external device, upload the bank payment slip screenshot. Our integrated OCR parser automatically reads the transaction reference, amount, currency, and date to match the subscription."}
-                  </p>
-                </div>
+                      <div className="space-y-1">
+                        <h3 className="text-sm font-bold text-slate-900">{step.title}</h3>
+                        <p className="text-xs leading-relaxed text-slate-600">{step.description}</p>
+                      </div>
+                    </li>
+                  ))}
+                </ol>
 
-                {/* Method 3: Telegram Admin Review */}
-                <div className="border border-slate-200 rounded-xl p-4 bg-white space-y-3">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <span className="h-7 w-7 rounded-full bg-indigo-100 text-indigo-800 font-bold text-xs flex items-center justify-center">
-                        C
-                      </span>
-                      <h3 className="font-bold text-slate-900 text-sm sm:text-base">
-                        {isKm ? "ការត្រួតពិនិត្យដោយក្រុមការងារ Telegram (Admin Verification)" : "Telegram Audit & Interbank Verification"}
-                      </h3>
-                    </div>
-                    <Badge variant="outline" className="text-xs">
-                      {isKm ? "គាំទ្រគ្រប់ធនាគារ" : "All Banks"}
-                    </Badge>
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <div className="flex gap-3 rounded-xl border border-emerald-200 bg-emerald-50 p-4">
+                    <CheckCircle2 className="mt-0.5 h-5 w-5 shrink-0 text-emerald-700" />
+                    <p className="text-xs leading-relaxed text-emerald-950">
+                      <strong>{isKm ? "បានអនុម័ត៖ " : "Approved: "}</strong>
+                      {isKm
+                        ? "គម្រោងជាវរបស់អ្នកនឹងដំណើរការបន្ទាប់ពីការបង់ប្រាក់ត្រូវបានអនុម័ត។"
+                        : "Your subscription becomes active after the payment is approved."}
+                    </p>
                   </div>
-                  <p className="text-xs sm:text-sm text-slate-600 leading-relaxed">
-                    {isKm
-                      ? "ករណីផ្ទេរប្រាក់អន្តរធនាគារ ឬមានបញ្ហាបច្ចេកទេស វិក្កយបត្រនឹងត្រូវបញ្ជូនទៅកាន់ប៉ុស្តិ៍ Telegram Admin ភ្លាមៗ។ ក្រុមការងារ KhLan នឹងត្រួតពិនិត្យ និងអនុម័តឱ្យលោកអ្នកក្នុងរយៈពេលមិនលើសពី ៥-១៥ នាទី។"
-                      : "For interbank transfers or mismatched timestamps, submissions route to our secure Telegram audit channel. Admin moderators verify the transaction directly in the Telegram interface within minutes."}
-                  </p>
+                  <div className="flex gap-3 rounded-xl border border-rose-200 bg-rose-50 p-4">
+                    <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-rose-700" />
+                    <p className="text-xs leading-relaxed text-rose-950">
+                      <strong>{isKm ? "ត្រូវបានបដិសេធ៖ " : "Rejected: "}</strong>
+                      {isKm
+                        ? "អានមូលហេតុដែលបានបង្ហាញ កែតម្រូវព័ត៌មាន ឬបង្កាន់ដៃ ហើយដាក់សំណើម្តងទៀត។"
+                        : "Read the reason shown, correct the details or receipt, and submit a new request."}
+                    </p>
+                  </div>
                 </div>
 
                 {/* Call to Action Box */}
@@ -740,8 +1054,8 @@ export function GuideView({ initialTab = "buyer" }: GuideViewProps) {
                     </AccordionTrigger>
                     <AccordionContent className="text-sm text-slate-600 leading-relaxed">
                       {isKm
-                        ? "KHQR គឺជាស្តង់ដារកូដទូទាត់ជាតិរបស់ធនាគារជាតិនៃកម្ពុជា (NBC) ដែលគាំទ្រគ្រប់គ្រឹះស្ថានធនាគារ។ ប្រព័ន្ធ KhLan ប្រើប្រាស់ការផ្ទៀងផ្ទាត់កូដ Hash ស្វ័យប្រវត្តិ ធានាថារាល់ការបង់ប្រាក់ត្រូវបានទទួលស្គាល់ត្រឹមត្រូវ ១០០%។"
-                        : "Bakong KHQR is the National Bank of Cambodia's official interoperable payment standard. All transactions are securely processed directly through Cambodian commercial banks with cryptographic verification."}
+                        ? "បង់ប្រាក់តាមកម្មវិធីធនាគាររបស់អ្នក ហើយពិនិត្យឈ្មោះអ្នកទទួល និងចំនួនប្រាក់មុនពេលបញ្ជាក់។ បន្ទាប់មក សូមបង្ហោះបង្កាន់ដៃក្នុង KhLan ហើយរង់ចាំអ្នកគ្រប់គ្រងពិនិត្យ។"
+                        : "Pay using your banking app and verify the payee and amount before confirming. Then upload your receipt in KhLan and wait for an administrator to review it."}
                     </AccordionContent>
                   </AccordionItem>
                 </Accordion>

@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import Script from "next/script";
-import { Inter, Kantumruy_Pro } from "next/font/google";
+import { Battambang, Inter } from "next/font/google";
 import "./globals.css";
 import { Toaster } from "@/components/ui/sonner";
 
@@ -10,10 +10,10 @@ const inter = Inter({
   display: "swap",
 });
 
-const kantumruyPro = Kantumruy_Pro({
-  variable: "--font-kantumruy",
+const battambang = Battambang({
+  variable: "--font-battambang",
   subsets: ["khmer", "latin"],
-  weight: ["300", "400", "500", "600", "700"],
+  weight: ["300", "400", "700", "900"],
   display: "swap",
 });
 
@@ -36,7 +36,7 @@ export default function RootLayout({
           attributes like data-gr-ext-installed before React hydrates. */}
       <body
         suppressHydrationWarning
-        className={`${inter.variable} ${kantumruyPro.variable} antialiased bg-background text-foreground font-sans`}
+        className={`${inter.variable} ${battambang.variable} antialiased bg-background text-foreground font-sans`}
       >
         {/* Telegram Mini App SDK — feature-detected in src/lib/telegram.ts,
             silently absent when opened in a plain browser or offline. */}

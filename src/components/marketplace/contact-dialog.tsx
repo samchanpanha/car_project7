@@ -30,18 +30,14 @@ export function ContactDialog({
   sellerName: string;
 }) {
   const t = useT();
-  const locale = useAppStore((s) => s.locale);
   const navigate = useAppStore((s) => s.navigate);
   const me = useAppStore((s) => s.me);
   const [message, setMessage] = useState(
-    locale === "km" ? "សួស្តី ឡាននៅមានទេ?" : "Hello, is this car still available?"
+    t("template1")
   );
   const [sending, setSending] = useState(false);
 
-  const templates =
-    locale === "km"
-      ? ["សួស្តី ឡាននៅមានទេ?", "តើអាចមកមើលឡានចុងសប្តាហ៍នេះបានទេ?", "តម្លៃអាចចរចាបានទេ? មានឯកសារអ្វីខ្លះ?"]
-      : [t("template1"), t("template2"), t("template3")];
+  const templates = [t("template1"), t("template2"), t("template3")];
 
   const send = async () => {
     // Defense in depth: the CTAs are already gated — guests route to register.
