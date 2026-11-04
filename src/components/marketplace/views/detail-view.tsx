@@ -17,6 +17,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { ReportStatusBadge } from "@/components/marketplace/status-badge";
 import { SellerTelegramButtons } from "@/components/marketplace/seller-telegram-buttons";
+import { PromotionalPricingBanner } from "@/components/marketplace/promotional-pricing-banner";
 import {
   ArrowLeft, BadgeCheck, Bike, CalendarClock, CarFront, ChevronLeft, ChevronRight, Eye, FileCheck2, FileText, FileX2,
   Flag, Gauge, Handshake, Heart, Loader2, MapPin, MessageSquare, Phone, PhoneCall, RefreshCw, Send, ShieldCheck,
@@ -517,10 +518,18 @@ export function DetailView({
                 </div>
               </div>
             ) : (
-              <p className="mt-2 flex flex-wrap items-baseline gap-x-3">
-                <span className="text-2xl sm:text-3xl font-bold text-amber-600">{formatUsd(v.priceUsd)}</span>
-                <span className="text-sm text-slate-400">{formatKhr(v.priceUsd)}</span>
-              </p>
+              <PromotionalPricingBanner
+                basePriceUsd={v.basePriceUsd || v.priceUsd}
+                effectivePriceUsd={v.effectivePriceUsd || v.priceUsd}
+                isOnSale={v.isOnSale}
+                activePriceType={v.activePriceType}
+                activeItemPrice={v.activeItemPrice}
+                discountUsd={v.discountUsd}
+                discountPercent={v.discountPercent}
+                savingsBadgeText={v.savingsBadgeText}
+                floorPriceUsd={v.floorPriceUsd}
+                floorEnforced={v.floorEnforced}
+              />
             )}
             <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-slate-500">
               <span className="flex items-center gap-1">
@@ -916,6 +925,29 @@ export function DetailView({
 
       {/* Sticky mobile CTA bar */}
       <div className="fixed bottom-[52px] inset-x-0 z-30 border-t border-slate-200 bg-white/95 backdrop-blur p-2.5 md:hidden">
+        {v.isOnSale && !v.priceMasked && (
+          <div className="mb-2 px-1 flex items-center justify-between text-xs max-w-md mx-auto">
+            <div className="flex items-center gap-1.5">
+              <span
+                className="px-1.5 py-0.5 rounded text-[10px] font-bold text-white uppercase shadow-2xs"
+                style={{ backgroundColor: v.activePriceType?.badgeColor || "#F97316" }}
+              >
+                {v.activePriceType?.label || "Special Sale"}
+              </span>
+              <span className="font-extrabold text-amber-600 text-sm">
+                {formatUsd(v.effectivePriceUsd || v.priceUsd)}
+              </span>
+              <span className="line-through text-slate-400 text-[11px]">
+                {formatUsd(v.basePriceUsd || v.priceUsd)}
+              </span>
+            </div>
+            {v.discountPercent && v.discountPercent > 0 ? (
+              <span className="text-[11px] font-bold text-emerald-600">
+                Save {v.discountPercent}%
+              </span>
+            ) : null}
+          </div>
+        )}
         <div className="flex gap-2 max-w-md mx-auto">
           {isOwner ? (
             <Button

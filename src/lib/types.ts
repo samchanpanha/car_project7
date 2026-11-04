@@ -72,6 +72,12 @@ export interface VehicleCardDTO {
     badgeColor: string;
     mode: string;
   } | null;
+  activeItemPrice?: {
+    id?: string;
+    value?: number;
+    startDate?: string | null;
+    endDate?: string | null;
+  } | null;
   discountUsd?: number;
   discountPercent?: number;
   savingsBadgeText?: string;

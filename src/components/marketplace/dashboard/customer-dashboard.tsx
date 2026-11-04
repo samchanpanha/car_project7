@@ -13,6 +13,7 @@ import { VehicleCard, VehicleCardSkeleton } from "@/components/marketplace/vehic
 import { DashboardShell, type DashboardTabDef } from "./shell";
 import { PurchaseRequestList } from "./purchase-list";
 import { SellerInventory } from "./seller-tabs";
+import { DealerPricingManagement } from "./dealer-pricing-management";
 import { TelegramHub } from "./telegram-hub";
 import { SubscriptionHub } from "./subscription-hub";
 import { LiveStatusPill } from "./live-status-pill";
@@ -30,7 +31,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import {
   CalendarDays, Car, CreditCard, FileCheck2, Handshake, Heart, LayoutDashboard, MessageSquare, Play, Search,
-  Send, Trash2, TriangleAlert, X,
+  Send, Trash2, TriangleAlert, X, Tag,
 } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
@@ -62,6 +63,7 @@ export function CustomerDashboard({ me }: { me: SessionDTO }) {
     ...(isSellerish
       ? [
           { id: "inventory", label: t("tabInventoryMine"), icon: Car } as DashboardTabDef,
+          { id: "pricing", label: "Promotions & Pricing", icon: Tag } as DashboardTabDef,
           { id: "subscription", label: t("tabSubscription"), icon: CreditCard } as DashboardTabDef,
           { id: "telegram", label: t("tabTelegram"), icon: Send } as DashboardTabDef,
         ]
@@ -109,6 +111,16 @@ export function CustomerDashboard({ me }: { me: SessionDTO }) {
           </div>
         ) : (
           <SellerInventory />
+        )
+      )}
+      {active === "pricing" && isSellerish && (
+        !me.subscription || me.subscription.status !== "ACTIVE" ? (
+          <div className="rounded-xl border border-amber-300 bg-amber-50 p-4 text-xs text-amber-900">
+            <p className="font-bold">Promotions & Pricing Locked</p>
+            <p className="mt-1">Please complete your subscription payment to configure promotional tiers and floor pricing.</p>
+          </div>
+        ) : (
+          <DealerPricingManagement />
         )
       )}
       {active === "subscription" && isSellerish && <SubscriptionHub isDealer={false} />}

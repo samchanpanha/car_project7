@@ -45,6 +45,15 @@ export async function backendFetch<T>(path: string, revalidate = 600): Promise<B
 }
 
 export async function fetchVehicle(id: string): Promise<BackendResult<VehicleDetailPayload>> {
+  try {
+    const { getVehicleDetailPayload } = await import("@/lib/api/vehicle-detail");
+    const payload = await getVehicleDetailPayload(id);
+    if (payload) {
+      return { ok: true, data: payload };
+    }
+  } catch {
+    // fallback to backendFetch
+  }
   return backendFetch<VehicleDetailPayload>(`/api/vehicles/${encodeURIComponent(id)}`, 600);
 }
 

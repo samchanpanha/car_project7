@@ -146,6 +146,18 @@ function baseCard(vehicle: VehicleWithCardRelations): VehicleCardDTO {
           mode: String(pricing.activePriceType.mode),
         }
       : null,
+    activeItemPrice: pricing.activeItemPrice
+      ? {
+          id: pricing.activeItemPrice.id,
+          value: pricing.activeItemPrice.value,
+          startDate: pricing.activeItemPrice.startDate instanceof Date
+            ? pricing.activeItemPrice.startDate.toISOString()
+            : pricing.activeItemPrice.startDate ?? null,
+          endDate: pricing.activeItemPrice.endDate instanceof Date
+            ? pricing.activeItemPrice.endDate.toISOString()
+            : pricing.activeItemPrice.endDate ?? null,
+        }
+      : null,
     discountUsd: pricing.discountUsd,
     discountPercent: pricing.discountPercent,
     savingsBadgeText: pricing.savingsBadgeText,
