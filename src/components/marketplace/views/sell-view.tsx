@@ -19,11 +19,11 @@ import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { CarFront, Check, ChevronDown, ChevronUp, Eye, Loader2, Pencil, PhoneCall, Plus, Sparkles, TriangleAlert } from "lucide-react";
-import { useState } from "react";
+import { CarFront, Check, ChevronDown, ChevronUp, Eye, Loader2, Pencil, PhoneCall, Plus, Sparkles, TriangleAlert, Flame, ShieldCheck, Calendar, DollarSign, Tag, AlertCircle } from "lucide-react";
+import { useState, useMemo } from "react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
-import { formatUsd } from "@/lib/format";
+import { formatUsd, formatKhr } from "@/lib/format";
 import {
   getCompatibleVehicleModels,
   getPartManufacturers,
@@ -103,6 +103,12 @@ interface SellForm {
   importOrigin: string;
   priceUsd: string;
   priceMasked: boolean;
+  floorPriceUsd: string;
+  launchPromo: boolean;
+  promoPriceTypeId: string;
+  promoValue: string;
+  promoStartDate: string;
+  promoEndDate: string;
   seats: string;
   interiorColor: string;
   fuelEconomy: string;
@@ -123,6 +129,7 @@ const EMPTY: SellForm = {
   make: "", model: "", variant: "", year: "", mileageKm: "", bodyType: "SEDAN", fuel: "PETROL", transmission: "AUTOMATIC",
   engineCc: "", drivetrain: "", images: [], documents: [], condition: "USED", accidentDeclared: "UNKNOWN",
   ownershipCount: "", vinLast6: "", plateNo: "", importOrigin: "", priceUsd: "", priceMasked: false,
+  floorPriceUsd: "", launchPromo: false, promoPriceTypeId: "", promoValue: "", promoStartDate: "", promoEndDate: "",
   seats: "", interiorColor: "", fuelEconomy: "", city: "Phnom Penh",
   district: "", description: "", descriptionKm: "",
 };
@@ -137,6 +144,11 @@ export function SellView() {
     me?.tenant ? "/api/tenant/branches" : null
   );
   const branches = branchData?.branches ?? [];
+  const { data: promoTypesData } = useFetch<{
+    types: { id: string; code: string; label: string; mode: string; badgeColor: string; priority: number }[];
+  }>("/api/seller/pricing/available-types");
+  const availablePriceTypes = useMemo(() => promoTypesData?.types ?? [], [promoTypesData]);
+
   const [step, setStep] = useState(1);
   const [form, setForm] = useState<SellForm>(EMPTY);
   const [showMoreInfo, setShowMoreInfo] = useState(false);
@@ -156,6 +168,45 @@ export function SellView() {
 
   const isStaff = Boolean(me && (me.user.role === "ADMIN" || me.user.role === "SUPER_ADMIN"));
   const canSellParts = isStaff || Boolean(me?.subscription?.status === "ACTIVE" && (me?.subscription?.plan === "PRO" || me?.subscription?.plan === "ENTERPRISE"));
+
+  const selectedPromoType = useMemo(
+    () => availablePriceTypes.find((t) => t.id === form.promoPriceTypeId),
+    [availablePriceTypes, form.promoPriceTypeId]
+  );
+
+  const pricingPreview = useMemo(() => {
+    const base = Number(form.priceUsd) || 0;
+    const floor = form.floorPriceUsd ? Number(form.floorPriceUsd) : null;
+    const promoVal = Number(form.promoValue) || 0;
+
+    let candidate = base;
+    if (form.launchPromo && selectedPromoType && promoVal > 0) {
+      if (selectedPromoType.mode === "PERCENT") {
+        const clampedPercent = Math.min(Math.max(promoVal, 0), 100);
+        candidate = Math.round(base * (1 - clampedPercent / 100));
+      } else {
+        if (promoVal < base) {
+          candidate = Math.round(promoVal);
+        }
+      }
+    }
+
+    const floorClamped = floor !== null && floor > 0 && candidate < floor;
+    const effective = floorClamped ? (floor as number) : candidate;
+    const discountUsd = Math.max(0, base - effective);
+    const discountPercent = base > 0 ? Math.round((discountUsd / base) * 100) : 0;
+
+    return {
+      base,
+      candidate,
+      effective,
+      floor,
+      floorClamped,
+      discountUsd,
+      discountPercent,
+      isOnSale: Boolean(form.launchPromo && selectedPromoType && discountUsd > 0),
+    };
+  }, [form.priceUsd, form.floorPriceUsd, form.promoValue, form.launchPromo, selectedPromoType]);
 
   const validateStep = (): string | null => {
     if (step === 1) {
@@ -192,6 +243,23 @@ export function SellView() {
       if (!form.priceMasked) {
         const p = Number(form.priceUsd);
         if (!p || p <= 0) return t("flowPriceRequired");
+      }
+      if (form.floorPriceUsd) {
+        const fp = Number(form.floorPriceUsd);
+        const p = Number(form.priceUsd);
+        if (fp < 0) return "Floor price cannot be negative";
+        if (p > 0 && fp > p) return "Floor price cannot exceed the base listing price";
+      }
+      if (form.launchPromo) {
+        if (!form.promoPriceTypeId) return "Please select a promotional tier";
+        const pv = Number(form.promoValue);
+        if (!pv || pv <= 0) return "Please enter a valid promotional discount value";
+        if (selectedPromoType?.mode === "PERCENT" && pv >= 100) {
+          return "Discount percentage must be less than 100%";
+        }
+        if (selectedPromoType?.mode === "FIXED" && pv >= Number(form.priceUsd)) {
+          return "Promotional fixed price must be lower than the base price";
+        }
       }
     }
     return null;
@@ -265,6 +333,35 @@ export function SellView() {
             }
           : {}),
       });
+
+      // Attach floor price and/or promotional pricing if provided
+      if (res?.vehicle?.id) {
+        const vId = res.vehicle.id;
+        if (form.launchPromo && form.promoPriceTypeId && form.promoValue) {
+          try {
+            await apiSend("/api/seller/pricing/item", "POST", {
+              vehicleId: vId,
+              priceTypeId: form.promoPriceTypeId,
+              value: Number(form.promoValue),
+              floorPriceUsd: form.floorPriceUsd ? Number(form.floorPriceUsd) : undefined,
+              startDate: form.promoStartDate ? new Date(form.promoStartDate).toISOString() : undefined,
+              endDate: form.promoEndDate ? new Date(form.promoEndDate).toISOString() : undefined,
+            });
+          } catch (promoErr) {
+            console.error("Failed to attach promotional tier:", promoErr);
+          }
+        } else if (form.floorPriceUsd) {
+          try {
+            await apiSend("/api/seller/pricing/item", "PATCH", {
+              vehicleId: vId,
+              floorPriceUsd: Number(form.floorPriceUsd),
+            });
+          } catch (floorErr) {
+            console.error("Failed to update floor price:", floorErr);
+          }
+        }
+      }
+
       toast.success(t("sellSuccess"));
       navigate({ name: "detail", vehicleId: res.vehicle.id });
     } catch (e) {
@@ -846,7 +943,7 @@ export function SellView() {
 
         {/* STEP 3 — price & contact */}
         {step === 3 && (
-          <div className="space-y-4">
+          <div className="space-y-5">
             {branches.length > 0 && (
               <Field
                 label={t("flowBranch")}
@@ -872,50 +969,227 @@ export function SellView() {
                 />
               </Field>
             )}
-            {/* Mask Price Toggle */}
-            <div className="rounded-xl border border-slate-200 bg-slate-50/70 p-3.5 flex items-start justify-between gap-3">
-              <div>
-                <Label htmlFor="sell-mask-price" className="text-sm font-semibold text-slate-900 cursor-pointer flex items-center gap-1.5">
-                  <PhoneCall className="h-4 w-4 text-amber-600" />
-                  {t("maskPrice")}
-                </Label>
-                <p className="text-xs text-slate-500 mt-0.5">
-                  {t("maskPriceHint")}
-                </p>
+
+            {/* Pricing Card */}
+            <div className="rounded-2xl border border-slate-200 bg-white p-4 sm:p-5 space-y-4 shadow-xs">
+              <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+                <div className="flex items-center gap-2">
+                  <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-emerald-50 text-emerald-600 font-bold">
+                    <DollarSign className="h-4 w-4" />
+                  </div>
+                  <div>
+                    <h3 className="text-sm font-bold text-slate-900">Pricing & Floor Safeguards</h3>
+                    <p className="text-[11px] text-slate-500">Base asking price, currency conversion & floor price protection</p>
+                  </div>
+                </div>
+
+                {/* Mask Price Toggle */}
+                <div className="flex items-center gap-2">
+                  <Label htmlFor="sell-mask-price" className="text-xs font-semibold text-slate-600 cursor-pointer flex items-center gap-1">
+                    <PhoneCall className="h-3.5 w-3.5 text-amber-600" />
+                    {t("maskPrice")}
+                  </Label>
+                  <Switch
+                    id="sell-mask-price"
+                    checked={form.priceMasked}
+                    onCheckedChange={(v) => set({ priceMasked: v })}
+                  />
+                </div>
               </div>
-              <Switch
-                id="sell-mask-price"
-                checked={form.priceMasked}
-                onCheckedChange={(v) => set({ priceMasked: v })}
-              />
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <Field
+                  label={form.priceMasked ? `${t("formPrice")} (${t("flowOptional")})` : `${t("formPrice")} (USD $)`}
+                  hint={form.priceMasked ? t("flowMaskedPriceHint") : (Number(form.priceUsd) > 0 ? `≈ ${formatKhr((Number(form.priceUsd) || 0) * 4100)}` : "Standard asking price")}
+                >
+                  <div className="relative">
+                    <span className="absolute left-3 top-2.5 text-sm font-semibold text-slate-400">$</span>
+                    <Input
+                      type="number"
+                      min={0}
+                      value={form.priceUsd}
+                      onChange={(e) => set({ priceUsd: e.target.value })}
+                      placeholder={form.priceMasked ? "—" : "18500"}
+                      className="pl-7 text-base font-semibold"
+                    />
+                  </div>
+                </Field>
+
+                <Field
+                  label="Floor Price Protection (USD $)"
+                  hint="Minimum acceptable sale price. Promotional campaigns cannot discount below this."
+                >
+                  <div className="relative">
+                    <span className="absolute left-3 top-2.5 text-sm font-semibold text-slate-400">$</span>
+                    <Input
+                      type="number"
+                      min={0}
+                      value={form.floorPriceUsd}
+                      onChange={(e) => set({ floorPriceUsd: e.target.value })}
+                      placeholder="e.g. 16500"
+                      className="pl-7"
+                    />
+                  </div>
+                </Field>
+              </div>
+
+              {/* Promotional Campaign Switch */}
+              <div className="rounded-xl border border-amber-200/80 bg-gradient-to-r from-amber-50/70 via-orange-50/50 to-amber-50/70 p-3.5 space-y-3">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <Flame className="h-4 w-4 text-amber-600 animate-pulse" />
+                    <div>
+                      <Label htmlFor="sell-launch-promo" className="text-xs font-bold text-slate-900 cursor-pointer">
+                        Launch Promotional Offer
+                      </Label>
+                      <p className="text-[11px] text-amber-900">
+                        Highlight your listing with Hot Price, Discount, or Clearance badge
+                      </p>
+                    </div>
+                  </div>
+                  <Switch
+                    id="sell-launch-promo"
+                    checked={form.launchPromo}
+                    onCheckedChange={(v) => {
+                      set({
+                        launchPromo: v,
+                        ...(v && !form.promoPriceTypeId && availablePriceTypes.length > 0
+                          ? { promoPriceTypeId: availablePriceTypes[0].id }
+                          : {}),
+                      });
+                    }}
+                  />
+                </div>
+
+                {form.launchPromo && (
+                  <div className="space-y-3 pt-2 border-t border-amber-200/60 animate-in fade-in slide-in-from-top-1">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      <Field label="Promotional Tier">
+                        <SelectInput
+                          value={form.promoPriceTypeId}
+                          onChange={(v) => set({ promoPriceTypeId: v })}
+                          options={availablePriceTypes.map((pt) => ({
+                            value: pt.id,
+                            label: `${pt.label} (${pt.mode === "PERCENT" ? "% off" : "Fixed $"})`,
+                          }))}
+                          placeholder="Select promo tier"
+                        />
+                      </Field>
+
+                      <Field
+                        label={selectedPromoType?.mode === "PERCENT" ? "Discount Percentage (%)" : "Promotional Price (USD $)"}
+                        hint={selectedPromoType?.mode === "PERCENT" ? "e.g. 10 for 10% off" : "Target discounted sale price"}
+                      >
+                        <div className="relative">
+                          {selectedPromoType?.mode !== "PERCENT" && (
+                            <span className="absolute left-3 top-2.5 text-xs font-semibold text-slate-400">$</span>
+                          )}
+                          <Input
+                            type="number"
+                            min={1}
+                            max={selectedPromoType?.mode === "PERCENT" ? 99 : undefined}
+                            value={form.promoValue}
+                            onChange={(e) => set({ promoValue: e.target.value })}
+                            placeholder={selectedPromoType?.mode === "PERCENT" ? "10" : "17500"}
+                            className={selectedPromoType?.mode !== "PERCENT" ? "pl-7" : ""}
+                          />
+                          {selectedPromoType?.mode === "PERCENT" && (
+                            <span className="absolute right-3 top-2.5 text-xs font-semibold text-slate-400">%</span>
+                          )}
+                        </div>
+                      </Field>
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      <Field label="Schedule Start Date (Optional)" hint="Leave blank to start immediately">
+                        <Input
+                          type="datetime-local"
+                          value={form.promoStartDate}
+                          onChange={(e) => set({ promoStartDate: e.target.value })}
+                        />
+                      </Field>
+                      <Field label="Schedule End Date (Optional)" hint="Leave blank for ongoing promo">
+                        <Input
+                          type="datetime-local"
+                          value={form.promoEndDate}
+                          onChange={(e) => set({ promoEndDate: e.target.value })}
+                        />
+                      </Field>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Real-time Pricing Preview Card */}
+              {pricingPreview.base > 0 && (
+                <div className="rounded-xl border border-slate-200 bg-slate-50/80 p-3.5 space-y-2">
+                  <div className="flex items-center justify-between text-xs font-bold text-slate-600">
+                    <span className="flex items-center gap-1.5">
+                      <Sparkles className="h-3.5 w-3.5 text-amber-500" />
+                      Live Pricing Preview
+                    </span>
+                    {pricingPreview.isOnSale && (
+                      <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-bold text-emerald-800">
+                        Save {formatUsd(pricingPreview.discountUsd)} ({pricingPreview.discountPercent}% OFF)
+                      </span>
+                    )}
+                  </div>
+
+                  <div className="flex flex-wrap items-baseline gap-2.5">
+                    {pricingPreview.isOnSale && (
+                      <span className="text-sm font-semibold text-slate-400 line-through">
+                        {formatUsd(pricingPreview.base)}
+                      </span>
+                    )}
+                    <span className="text-2xl font-black text-slate-900 tracking-tight">
+                      {formatUsd(pricingPreview.effective)}
+                    </span>
+                    <span className="text-xs text-slate-500">
+                      ≈ {formatKhr(pricingPreview.effective * 4100)}
+                    </span>
+
+                    {pricingPreview.isOnSale && selectedPromoType && (
+                      <span
+                        className="rounded-md px-2 py-0.5 text-xs font-extrabold uppercase tracking-wide text-white shadow-xs"
+                        style={{ backgroundColor: selectedPromoType.badgeColor || "#ef4444" }}
+                      >
+                        {selectedPromoType.label}
+                      </span>
+                    )}
+                  </div>
+
+                  {pricingPreview.floorClamped && (
+                    <div className="flex items-start gap-2 rounded-lg border border-amber-300 bg-amber-50 p-2 text-xs text-amber-800">
+                      <ShieldCheck className="h-4 w-4 shrink-0 text-amber-600 mt-0.5" />
+                      <div>
+                        <span className="font-bold">Floor Price Enforced: </span>
+                        Promotional rule calculated to {formatUsd(pricingPreview.candidate)}, but is clamped to your minimum floor price of {formatUsd(pricingPreview.floor || 0)}.
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
 
-            <div className="grid grid-cols-2 gap-3">
-              <Field
-                label={form.priceMasked ? `${t("formPrice")} (${t("flowOptional")})` : t("formPrice")}
-                hint={form.priceMasked ? t("flowMaskedPriceHint") : undefined}
-              >
-                <Input
-                  type="number"
-                  min={0}
-                  value={form.priceUsd}
-                  onChange={(e) => set({ priceUsd: e.target.value })}
-                  placeholder={form.priceMasked ? "—" : "18500"}
-                />
+            {/* Location & Details Card */}
+            <div className="rounded-2xl border border-slate-200 bg-white p-4 sm:p-5 space-y-4 shadow-xs">
+              <h3 className="text-sm font-bold text-slate-900">Location & Description</h3>
+              <div className="grid grid-cols-2 gap-3">
+                <Field label={t("formCity")}>
+                  <Input value={form.city} onChange={(e) => set({ city: e.target.value })} placeholder="Phnom Penh" />
+                </Field>
+                <Field label={t("formDistrict")}>
+                  <Input value={form.district} onChange={(e) => set({ district: e.target.value })} placeholder={t("flowDistrictPlaceholder")} />
+                </Field>
+              </div>
+              <Field label={t("formDescription")}>
+                <Textarea rows={3} value={form.description} onChange={(e) => set({ description: e.target.value })} />
               </Field>
-              <Field label={t("formCity")}>
-                <Input value={form.city} onChange={(e) => set({ city: e.target.value })} placeholder="Phnom Penh" />
-              </Field>
-              <Field label={t("formDistrict")}>
-                <Input value={form.district} onChange={(e) => set({ district: e.target.value })} placeholder={t("flowDistrictPlaceholder")} />
+              <Field label={t("formDescriptionKm")}>
+                <Textarea rows={3} value={form.descriptionKm} onChange={(e) => set({ descriptionKm: e.target.value })} className="font-khmer" />
               </Field>
             </div>
-            <Field label={t("formDescription")}>
-              <Textarea rows={3} value={form.description} onChange={(e) => set({ description: e.target.value })} />
-            </Field>
-            <Field label={t("formDescriptionKm")}>
-              <Textarea rows={3} value={form.descriptionKm} onChange={(e) => set({ descriptionKm: e.target.value })} className="font-khmer" />
-            </Field>
+
             <div className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 p-3">
               <TriangleAlert className="h-4 w-4 mt-0.5 shrink-0 text-amber-600" aria-hidden />
               <p className="text-xs leading-relaxed text-amber-800">

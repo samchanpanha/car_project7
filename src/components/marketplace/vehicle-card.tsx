@@ -17,7 +17,7 @@ import type { VehicleCardDTO } from "@/lib/types";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { SafeImage } from "@/components/marketplace/safe-image";
-import { BadgeCheck, CarFront, Eye, FileCheck2, Heart, Scale, MapPin, Sparkles, PhoneCall } from "lucide-react";
+import { BadgeCheck, CarFront, Eye, FileCheck2, Heart, Scale, MapPin, Sparkles, PhoneCall, Flame } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import { apiSend } from "@/lib/client-hooks";
@@ -112,6 +112,15 @@ export function VehicleCard({ vehicle, showCompare = true }: { vehicle: VehicleC
               ⚙️ {vehicle.partTarget === "MOTOR" ? (locale === "km" ? "គ្រឿងម៉ូតូ" : "Motor Part") : vehicle.partTarget === "CAR" ? (locale === "km" ? "គ្រឿងឡាន" : "Car Part") : (locale === "km" ? "គ្រឿងបន្លាស់" : "Spare Part")}
             </Badge>
           )}
+          {vehicle.activePriceType && vehicle.isOnSale && (
+            <Badge
+              className="text-white gap-1 text-[10px] font-bold shadow-xs border-0"
+              style={{ backgroundColor: vehicle.activePriceType.badgeColor || "#EF4444" }}
+            >
+              <Flame className="h-3 w-3 fill-white" />
+              {vehicle.activePriceType.label}
+            </Badge>
+          )}
           {vehicle.featured && (
             <Badge className="bg-amber-500 text-slate-950 hover:bg-amber-500 gap-1 shadow-xs">
               <Sparkles className="h-3 w-3" aria-hidden />
@@ -179,10 +188,29 @@ export function VehicleCard({ vehicle, showCompare = true }: { vehicle: VehicleC
               {t("contactForPrice")}
             </span>
           </div>
+        ) : vehicle.isOnSale && vehicle.basePriceUsd && vehicle.effectivePriceUsd && vehicle.effectivePriceUsd < vehicle.basePriceUsd ? (
+          <div className="mt-0.5 space-y-0.5">
+            <div className="flex flex-wrap items-baseline gap-2">
+              <span className="text-lg font-extrabold text-rose-600">
+                {formatUsd(vehicle.effectivePriceUsd)}
+              </span>
+              <span className="text-xs text-slate-400 line-through decoration-slate-400">
+                {formatUsd(vehicle.basePriceUsd)}
+              </span>
+              {vehicle.savingsBadgeText && (
+                <span className="rounded bg-rose-100 px-1.5 py-0.5 text-[10px] font-bold text-rose-700">
+                  {vehicle.savingsBadgeText}
+                </span>
+              )}
+            </div>
+            <p className="text-[11px] text-slate-400">
+              {formatKhr(vehicle.effectivePriceUsd)}
+            </p>
+          </div>
         ) : (
           <p className="mt-0.5 flex items-baseline gap-2">
-            <span className="text-lg font-bold text-amber-600">{formatUsd(vehicle.priceUsd)}</span>
-            <span className="text-xs text-slate-400">{formatKhr(vehicle.priceUsd)}</span>
+            <span className="text-lg font-bold text-amber-600">{formatUsd(vehicle.effectivePriceUsd || vehicle.priceUsd)}</span>
+            <span className="text-xs text-slate-400">{formatKhr(vehicle.effectivePriceUsd || vehicle.priceUsd)}</span>
           </p>
         )}
         {vehicle.listingCategory === "SPARE_PART" ? (

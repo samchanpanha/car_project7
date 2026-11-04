@@ -35,6 +35,7 @@ import { formatUsd } from "@/lib/format";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { errorText } from "@/components/marketplace/dashboard/bits";
+import { CategoryFilterTabs, type FilterState } from "@/components/marketplace/category-filter-tabs";
 
 const BODY_TYPES = ["SUV", "SEDAN", "PICKUP", "VAN", "HATCHBACK", "COUPE"];
 const MOTOR_BODY_TYPES = ["SCOOTER", "CUB", "SPORT", "CRUISER", "DIRT", "ELECTRIC", "OTHER"];
@@ -54,22 +55,43 @@ export interface BrowseFilters {
   partTarget: string;
   q: string;
   make: string;
+  model?: string;
+  variant?: string;
   bodyType: string[]; // multi-value, comma-joined to the API
   fuel: string[]; // multi-value
   transmission: string[]; // multi-value
   drivetrain: string[]; // multi-value
   condition: string; // LIKE_NEW | USED | ""
   city: string;
+  locationPort?: string;
   sellerType: string; // PRIVATE | DEALER | ""
   sellerVerified: boolean;
   featured: boolean;
   hasReport: boolean;
   priceMin: string;
   priceMax: string;
+  priceType?: string;
+  onSale?: boolean;
   yearMin: string;
   yearMax: string;
   mileageMin: string;
   mileageMax: string;
+  seats?: string;
+  doors?: string;
+  steering?: string;
+  chassisNo?: string;
+  stockNo?: string;
+  features?: string[];
+  motorType?: string;
+  hasAbs?: string;
+  startType?: string;
+  partNumber?: string;
+  oemBrand?: string;
+  isOem?: string;
+  position?: string;
+  compatibleMake?: string;
+  compatibleModel?: string;
+  compatibleYear?: string;
 }
 
 export function emptyFilters(): BrowseFilters {
@@ -77,10 +99,15 @@ export function emptyFilters(): BrowseFilters {
     category: "ALL",
     partCategory: "",
     partTarget: "",
-    q: "", make: "", bodyType: [], fuel: [], transmission: [], drivetrain: [],
-    condition: "", city: "", sellerType: "", sellerVerified: false,
+    q: "", make: "", model: "", variant: "", bodyType: [], fuel: [], transmission: [], drivetrain: [],
+    condition: "", city: "", locationPort: "", sellerType: "", sellerVerified: false,
     featured: false, hasReport: false,
-    priceMin: "", priceMax: "", yearMin: "", yearMax: "", mileageMin: "", mileageMax: "",
+    priceMin: "", priceMax: "", priceType: "", onSale: false,
+    yearMin: "", yearMax: "", mileageMin: "", mileageMax: "",
+    seats: "", doors: "", steering: "", chassisNo: "", stockNo: "",
+    features: [], motorType: "", hasAbs: "", startType: "",
+    partNumber: "", oemBrand: "", isOem: "", position: "",
+    compatibleMake: "", compatibleModel: "", compatibleYear: "",
   };
 }
 
@@ -93,23 +120,44 @@ function buildParams(f: BrowseFilters, sort: SortOption, page: number): Record<s
   if (f.partCategory) params.partCategory = f.partCategory;
   if (f.partTarget) params.partTarget = f.partTarget;
   if (f.q.trim()) params.q = f.q.trim();
-  if (f.make) params.make = f.make;
+  if (f.make && f.make !== "all" && f.make !== "ALL") params.make = f.make;
+  if (f.model && f.model !== "all" && f.model !== "ALL") params.model = f.model;
+  if (f.variant) params.variant = f.variant;
   if (f.bodyType.length) params.bodyType = f.bodyType.join(",");
   if (f.fuel.length) params.fuel = f.fuel.join(",");
   if (f.transmission.length) params.transmission = f.transmission.join(",");
   if (f.drivetrain.length) params.drivetrain = f.drivetrain.join(",");
-  if (f.condition) params.condition = f.condition;
-  if (f.city) params.city = f.city;
+  if (f.condition && f.condition !== "ALL") params.condition = f.condition;
+  if (f.city && f.city !== "all" && f.city !== "ALL") params.city = f.city;
+  if (f.locationPort && f.locationPort !== "ALL") params.locationPort = f.locationPort;
   if (f.sellerType) params.sellerType = f.sellerType;
   if (f.sellerVerified) params.sellerVerified = "true";
   if (f.featured) params.featured = "true";
   if (f.hasReport) params.hasReport = "true";
   if (f.priceMin) params.priceMin = Number(f.priceMin);
   if (f.priceMax) params.priceMax = Number(f.priceMax);
+  if (f.priceType && f.priceType !== "ALL") params.priceType = f.priceType;
+  if (f.onSale) params.onSale = "true";
   if (f.yearMin) params.yearMin = Number(f.yearMin);
   if (f.yearMax) params.yearMax = Number(f.yearMax);
   if (f.mileageMin) params.mileageMin = Number(f.mileageMin);
   if (f.mileageMax) params.mileageMax = Number(f.mileageMax);
+  if (f.seats && f.seats !== "ALL") params.seats = f.seats;
+  if (f.doors && f.doors !== "ALL") params.doors = f.doors;
+  if (f.steering && f.steering !== "ALL") params.steering = f.steering;
+  if (f.chassisNo) params.chassisNo = f.chassisNo;
+  if (f.stockNo) params.stockNo = f.stockNo;
+  if (f.features && f.features.length) params.features = f.features.join(",");
+  if (f.motorType && f.motorType !== "ALL") params.motorType = f.motorType;
+  if (f.hasAbs && f.hasAbs !== "ALL") params.hasAbs = f.hasAbs;
+  if (f.startType && f.startType !== "ALL") params.startType = f.startType;
+  if (f.partNumber) params.partNumber = f.partNumber;
+  if (f.oemBrand && f.oemBrand !== "ALL") params.oemBrand = f.oemBrand;
+  if (f.isOem && f.isOem !== "ALL") params.isOem = f.isOem;
+  if (f.position && f.position !== "ALL") params.position = f.position;
+  if (f.compatibleMake && f.compatibleMake !== "ALL") params.compatibleMake = f.compatibleMake;
+  if (f.compatibleModel && f.compatibleModel !== "ALL") params.compatibleModel = f.compatibleModel;
+  if (f.compatibleYear) params.compatibleYear = f.compatibleYear;
   return params;
 }
 
@@ -830,7 +878,100 @@ export function BrowseView({
         </div>
       </div>
 
-      {/* 5-Way Category switcher pills */}
+      {/* Upgraded 3-Category Tabbed Filter Toolbar with Dependent Dropdowns & Price Types */}
+      <div className="mt-4">
+        <CategoryFilterTabs
+          filters={{
+            category: applied.category === "SPARE_PART" ? "SPARE_PART" : applied.category === "MOTOR" ? "MOTOR" : "CAR",
+            q: applied.q || "",
+            make: applied.make || "ALL",
+            model: applied.model || "ALL",
+            variant: applied.variant || "",
+            priceMin: applied.priceMin ? String(applied.priceMin) : "",
+            priceMax: applied.priceMax ? String(applied.priceMax) : "",
+            priceType: applied.priceType || "ALL",
+            onSale: Boolean(applied.onSale),
+            condition: applied.condition || "ALL",
+            status: "PUBLISHED",
+            city: applied.city || "ALL",
+            locationPort: applied.locationPort || "ALL",
+            sort,
+            yearMin: applied.yearMin ? String(applied.yearMin) : "",
+            yearMax: applied.yearMax ? String(applied.yearMax) : "",
+            mileageMin: applied.mileageMin ? String(applied.mileageMin) : "",
+            mileageMax: applied.mileageMax ? String(applied.mileageMax) : "",
+            engineCcMin: "",
+            engineCcMax: "",
+            transmission: applied.transmission[0] || "ALL",
+            fuel: applied.fuel[0] || "ALL",
+            drivetrain: applied.drivetrain[0] || "ALL",
+            steering: applied.steering || "ALL",
+            bodyType: applied.bodyType[0] || "ALL",
+            seats: applied.seats || "ALL",
+            doors: applied.doors || "ALL",
+            chassisNo: applied.chassisNo || "",
+            stockNo: applied.stockNo || "",
+            features: applied.features || [],
+            motorType: applied.motorType || "ALL",
+            hasAbs: applied.hasAbs || "ALL",
+            startType: applied.startType || "ALL",
+            partCategory: applied.partCategory || "ALL",
+            partNumber: applied.partNumber || "",
+            oemBrand: applied.oemBrand || "ALL",
+            isOem: applied.isOem || "ALL",
+            position: applied.position || "ALL",
+            compatibleMake: applied.compatibleMake || "ALL",
+            compatibleModel: applied.compatibleModel || "ALL",
+            compatibleYear: applied.compatibleYear || "",
+          }}
+          onChange={(next) => {
+            if (next.sort !== sort) {
+              setSort(next.sort as SortOption);
+            }
+            applyFilters({
+              ...applied,
+              category: next.category,
+              q: next.q,
+              make: next.make === "ALL" ? "" : next.make,
+              model: next.model === "ALL" ? "" : next.model,
+              variant: next.variant,
+              priceMin: next.priceMin,
+              priceMax: next.priceMax,
+              priceType: next.priceType === "ALL" ? "" : next.priceType,
+              onSale: next.onSale,
+              condition: next.condition === "ALL" ? "" : next.condition,
+              city: next.city === "ALL" ? "" : next.city,
+              locationPort: next.locationPort === "ALL" ? "" : next.locationPort,
+              yearMin: next.yearMin,
+              yearMax: next.yearMax,
+              mileageMin: next.mileageMin,
+              mileageMax: next.mileageMax,
+              bodyType: next.bodyType !== "ALL" ? [next.bodyType] : [],
+              transmission: next.transmission !== "ALL" ? [next.transmission] : [],
+              fuel: next.fuel !== "ALL" ? [next.fuel] : [],
+              drivetrain: next.drivetrain !== "ALL" ? [next.drivetrain] : [],
+              steering: next.steering === "ALL" ? "" : next.steering,
+              seats: next.seats === "ALL" ? "" : next.seats,
+              doors: next.doors === "ALL" ? "" : next.doors,
+              chassisNo: next.chassisNo,
+              stockNo: next.stockNo,
+              features: next.features,
+              motorType: next.motorType === "ALL" ? "" : next.motorType,
+              hasAbs: next.hasAbs === "ALL" ? "" : next.hasAbs,
+              startType: next.startType === "ALL" ? "" : next.startType,
+              partCategory: next.partCategory === "ALL" ? "" : next.partCategory,
+              partNumber: next.partNumber,
+              oemBrand: next.oemBrand === "ALL" ? "" : next.oemBrand,
+              isOem: next.isOem === "ALL" ? "" : next.isOem,
+              position: next.position === "ALL" ? "" : next.position,
+              compatibleMake: next.compatibleMake === "ALL" ? "" : next.compatibleMake,
+              compatibleModel: next.compatibleModel === "ALL" ? "" : next.compatibleModel,
+              compatibleYear: next.compatibleYear,
+            });
+          }}
+          totalResults={data?.total}
+        />
+      </div>
       <div className="mt-4 flex items-center gap-2 overflow-x-auto pb-1 no-scrollbar" role="tablist">
         {[
           { id: "ALL", label: t("categoryAll"), icon: null, count: meta?.categoryCounts?.total },

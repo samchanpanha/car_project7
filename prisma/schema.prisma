@@ -418,6 +418,23 @@ model Vehicle {
   partCondition   String? @map("part_condition") // BRAND_NEW | USED_GENUINE | AFTERMARKET
   compatibleModels String? @map("compatible_models") // e.g. "Toyota Prius 2004-2009", "Honda Dream 125, Scoopy"
   partNumber      String? @map("part_number") // optional OEM / manufacturer part number
+  doors           Int?
+  steering        String? @default("LEFT") // LEFT | RIGHT
+  chassisNo       String? @map("chassis_no")
+  stockNo         String? @map("stock_no")
+  locationPort    String? @map("location_port")
+  floorPriceUsd   Float? @map("floor_price_usd")
+  features        String? // JSON string array of vehicle features
+  motorType       String? @map("motor_type") // SCOOTER | CUB | SPORT | CRUISER | DIRT | NAKED | TOURING | ELECTRIC
+  hasAbs          Boolean? @default(false) @map("has_abs")
+  startType       String? @map("start_type") // ELECTRIC | KICK | BOTH
+  oemBrand        String? @map("oem_brand")
+  isOem           Boolean? @default(true) @map("is_oem")
+  position        String? // FRONT | REAR | LEFT | RIGHT | FRONT_LEFT | FRONT_RIGHT | REAR_LEFT | REAR_RIGHT | UNIVERSAL
+  compatibleYearMin Int? @map("compatible_year_min")
+  compatibleYearMax Int? @map("compatible_year_max")
+  compatibleMake    String? @map("compatible_make")
+  compatibleModel   String? @map("compatible_model")
   createdAt       DateTime @default(now()) @map("created_at")
   updatedAt       DateTime @updatedAt @map("updated_at")
 
@@ -429,6 +446,7 @@ model Vehicle {
   reportsAbuse  ReportedContent[]
   appointments  Appointment[]
   purchaseRequests PurchaseRequest[]
+  itemPrices    ItemPrice[]
   tenantId      String? @map("tenant_id")
   tenant        Tenant?          @relation(fields: [tenantId], references: [id])
   branchId      String? @map("branch_id")
@@ -582,4 +600,80 @@ model PendingStorageSync {
   @@index([status])
   @@map("pending_storage_sync")
 }
+
+// ---------- Flexible Pricing Engine ----------
+
+model PriceType {
+  id         String   @id @default(cuid())
+  code       String   @unique
+  label      String
+  mode       String   @default("FIXED") // FIXED | PERCENT
+  badgeColor String   @default("#EF4444") @map("badge_color")
+  priority   Int      @default(0)
+  stackable  Boolean  @default(false)
+  active     Boolean  @default(true)
+  createdAt  DateTime @default(now()) @map("created_at")
+  updatedAt  DateTime @updatedAt @map("updated_at")
+
+  itemPrices ItemPrice[]
+
+  @@index([active, priority])
+  @@map("price_types")
+}
+
+model ItemPrice {
+  id          String    @id @default(cuid())
+  vehicleId   String    @map("vehicle_id")
+  vehicle     Vehicle   @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
+  priceTypeId String    @map("price_type_id")
+  priceType   PriceType @relation(fields: [priceTypeId], references: [id], onDelete: Cascade)
+  value       Float
+  currency    String    @default("USD")
+  startDate   DateTime? @map("start_date")
+  endDate     DateTime? @map("end_date")
+  active      Boolean   @default(true)
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+
+  @@index([vehicleId])
+  @@index([priceTypeId])
+  @@index([active, startDate, endDate])
+  @@map("item_prices")
+}
+
+// ---------- Catalog Makes & Models (Dependent Dropdowns) ----------
+
+model VehicleMake {
+  id         String   @id @default(cuid())
+  name       String
+  category   String   @default("CAR") // CAR | MOTOR | SPARE_PART
+  slug       String
+  logoUrl    String?  @map("logo_url")
+  externalId String?  @map("external_id")
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  models     VehicleModel[]
+
+  @@unique([name, category])
+  @@index([category])
+  @@map("vehicle_makes")
+}
+
+model VehicleModel {
+  id         String      @id @default(cuid())
+  makeId     String      @map("make_id")
+  make       VehicleMake @relation(fields: [makeId], references: [id], onDelete: Cascade)
+  name       String
+  category   String      @default("CAR") // CAR | MOTOR | SPARE_PART
+  bodyType   String?     @map("body_type")
+  yearMin    Int?        @map("year_min")
+  yearMax    Int?        @map("year_max")
+  externalId String?     @map("external_id")
+  createdAt  DateTime    @default(now()) @map("created_at")
+
+  @@unique([makeId, name])
+  @@index([category, makeId])
+  @@map("vehicle_models")
+}
+
 

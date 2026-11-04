@@ -6,6 +6,7 @@ import type {
 } from "@/lib/types";
 import type { VehicleDocumentRowDTO } from "@/lib/listing-types";
 import type { Prisma, SellerProfile, User } from "@prisma/client";
+import { resolveEffectivePrice } from "@/lib/pricing/price-engine";
 
 /** Vehicle row with the relations needed to build a VehicleCardDTO. */
 export type VehicleWithCardRelations = Prisma.VehicleGetPayload<{
@@ -14,6 +15,7 @@ export type VehicleWithCardRelations = Prisma.VehicleGetPayload<{
     documents: true;
     seller: { include: { sellerProfile: true } };
     reports: { select: { id: true; status: true } };
+    itemPrices?: { include: { priceType: true } };
   };
 }> & {
   branchId?: string | null;
@@ -97,6 +99,28 @@ function baseCard(vehicle: VehicleWithCardRelations): VehicleCardDTO {
     (d) => d.status === "PROVIDED" || d.status === "VERIFIED",
   ).length;
   const reportAvailable = vehicle.reports.some((r) => r.status === "COMPLETE");
+
+  // Calculate pricing resolution
+  const pricing = resolveEffectivePrice({
+    id: vehicle.id,
+    priceUsd: vehicle.priceUsd,
+    floorPriceUsd: (vehicle as any).floorPriceUsd ?? null,
+    itemPrices: (vehicle as any).itemPrices ?? [],
+  });
+
+  // Safely parse features if stored as JSON string
+  let parsedFeatures: string[] | null = null;
+  const rawFeatures = (vehicle as any).features;
+  if (Array.isArray(rawFeatures)) {
+    parsedFeatures = rawFeatures;
+  } else if (typeof rawFeatures === "string" && rawFeatures.trim()) {
+    try {
+      parsedFeatures = JSON.parse(rawFeatures);
+    } catch {
+      parsedFeatures = rawFeatures.split(",").map((s) => s.trim()).filter(Boolean);
+    }
+  }
+
   return {
     id: vehicle.id,
     listingCategory: (vehicle as any).listingCategory ?? "CAR",
@@ -110,7 +134,39 @@ function baseCard(vehicle: VehicleWithCardRelations): VehicleCardDTO {
     model: vehicle.model,
     variant: vehicle.variant ?? null,
     year: vehicle.year,
-    priceUsd: vehicle.priceUsd,
+    priceUsd: pricing.effectivePriceUsd,
+    effectivePriceUsd: pricing.effectivePriceUsd,
+    basePriceUsd: vehicle.priceUsd,
+    isOnSale: pricing.isOnSale,
+    activePriceType: pricing.activePriceType
+      ? {
+          code: pricing.activePriceType.code,
+          label: pricing.activePriceType.label,
+          badgeColor: pricing.activePriceType.badgeColor,
+          mode: String(pricing.activePriceType.mode),
+        }
+      : null,
+    discountUsd: pricing.discountUsd,
+    discountPercent: pricing.discountPercent,
+    savingsBadgeText: pricing.savingsBadgeText,
+    floorPriceUsd: pricing.floorPriceUsd,
+    floorEnforced: pricing.floorEnforced,
+    doors: (vehicle as any).doors ?? null,
+    steering: (vehicle as any).steering ?? "LEFT",
+    chassisNo: (vehicle as any).chassisNo ?? null,
+    stockNo: (vehicle as any).stockNo ?? null,
+    locationPort: (vehicle as any).locationPort ?? null,
+    features: parsedFeatures,
+    motorType: (vehicle as any).motorType ?? null,
+    hasAbs: Boolean((vehicle as any).hasAbs),
+    startType: (vehicle as any).startType ?? null,
+    oemBrand: (vehicle as any).oemBrand ?? null,
+    isOem: (vehicle as any).isOem != null ? Boolean((vehicle as any).isOem) : true,
+    position: (vehicle as any).position ?? null,
+    compatibleYearMin: (vehicle as any).compatibleYearMin ?? null,
+    compatibleYearMax: (vehicle as any).compatibleYearMax ?? null,
+    compatibleMake: (vehicle as any).compatibleMake ?? null,
+    compatibleModel: (vehicle as any).compatibleModel ?? null,
     priceMasked: Boolean((vehicle as any).priceMasked),
     mileageKm: vehicle.mileageKm,
     transmission: vehicle.transmission,
@@ -122,7 +178,7 @@ function baseCard(vehicle: VehicleWithCardRelations): VehicleCardDTO {
     status: vehicle.status as VehicleCardDTO["status"],
     featured: vehicle.featured,
     views: vehicle.views,
-    createdAt: vehicle.createdAt.toISOString(),
+    createdAt: vehicle.createdAt instanceof Date ? vehicle.createdAt.toISOString() : String(vehicle.createdAt),
     seller: toSellerSummary(vehicle.seller),
     images,
     trust: { docsProvided, reportAvailable },
@@ -169,4 +225,5 @@ export const vehicleCardInclude = {
   seller: { include: { sellerProfile: true } },
   reports: { select: { id: true, status: true } },
   branch: true,
+  itemPrices: { include: { priceType: true } },
 } as const;

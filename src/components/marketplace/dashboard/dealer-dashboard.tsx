@@ -19,6 +19,7 @@ import { ListingEditorDialog } from "@/components/marketplace/listing-editor";
 import { Pagination } from "@/components/marketplace/pagination";
 import { DealerBranches } from "./dealer-branches";
 import { DealerAnalyticsCharts } from "./dealer-analytics-charts";
+import { DealerPricingManagement } from "./dealer-pricing-management";
 import { LiveStatusPill } from "./live-status-pill";
 import { TelegramHub } from "./telegram-hub";
 import { SubscriptionHub } from "./subscription-hub";
@@ -44,7 +45,7 @@ import {
 import { Badge } from "@/components/ui/badge";
 import {
   Bike, CalendarDays, Car, CheckCircle2, ChevronDown, CreditCard, Eye, Heart, Hourglass, LayoutDashboard, Loader2,
-  MapPin, MessageSquare, MoreHorizontal, Package, Plus, Search, Send, Settings, Star, Store, Trash2, TriangleAlert, UserPlus, Users, Wrench, X,
+  MapPin, MessageSquare, MoreHorizontal, Package, Plus, Search, Send, Settings, Star, Store, Tag, Trash2, TriangleAlert, UserPlus, Users, Wrench, X,
 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
@@ -66,6 +67,7 @@ export function DealerDashboard({ me }: { me: SessionDTO }) {
   const tabs: DashboardTabDef[] = [
     { id: "overview", label: t("tabOverview"), icon: LayoutDashboard },
     { id: "inventory", label: t("tabInventory"), icon: Car },
+    { id: "pricing", label: "Promotions & Pricing", icon: Tag },
     { id: "branches", label: "Branches", icon: Store },
     { id: "leads", label: t("tabLeads"), icon: MessageSquare },
     { id: "appointments", label: t("tabAppointments"), icon: CalendarDays },
@@ -126,6 +128,16 @@ export function DealerDashboard({ me }: { me: SessionDTO }) {
           </div>
         ) : (
           <DealerInventory />
+        )
+      )}
+      {active === "pricing" && (
+        !me.subscription || me.subscription.status !== "ACTIVE" ? (
+          <div className="rounded-xl border border-amber-300 bg-amber-50 p-4 text-xs text-amber-900">
+            <p className="font-bold">Dealership Pricing & Promotions Locked</p>
+            <p className="mt-1">Please complete your subscription payment above to access pricing tools and promotional campaigns.</p>
+          </div>
+        ) : (
+          <DealerPricingManagement />
         )
       )}
       {active === "branches" && <DealerBranches />}

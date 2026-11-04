@@ -10,7 +10,7 @@ export type ReportStatus =
 
 export type SellerType = "PRIVATE" | "DEALER";
 export type VehicleStatus = "DRAFT" | "PENDING_REVIEW" | "PUBLISHED" | "REJECTED" | "SOLD" | "ARCHIVED";
-export type SortOption = "newest" | "price_asc" | "price_desc" | "year_desc" | "mileage_asc";
+export type SortOption = "newest" | "price_asc" | "price_desc" | "year_desc" | "mileage_asc" | "discount_desc";
 
 export type ListingCategory = "CAR" | "MOTOR" | "SPARE_PART";
 export type PartTarget = "CAR" | "MOTOR" | "UNIVERSAL";
@@ -62,6 +62,40 @@ export interface VehicleCardDTO {
   variant?: string | null;
   year: number;
   priceUsd: number;
+  // Flexible Pricing & Floor Price
+  effectivePriceUsd?: number;
+  basePriceUsd?: number;
+  isOnSale?: boolean;
+  activePriceType?: {
+    code: string;
+    label: string;
+    badgeColor: string;
+    mode: string;
+  } | null;
+  discountUsd?: number;
+  discountPercent?: number;
+  savingsBadgeText?: string;
+  floorPriceUsd?: number | null;
+  floorEnforced?: boolean;
+  // Additional Specs & Cambodia Import Attributes
+  doors?: number | null;
+  steering?: string | null; // LEFT | RIGHT
+  chassisNo?: string | null;
+  stockNo?: string | null;
+  locationPort?: string | null;
+  features?: string[] | null;
+  // Motor Specific
+  motorType?: string | null;
+  hasAbs?: boolean | null;
+  startType?: string | null;
+  // Spare Part Specific
+  oemBrand?: string | null;
+  isOem?: boolean | null;
+  position?: string | null;
+  compatibleYearMin?: number | null;
+  compatibleYearMax?: number | null;
+  compatibleMake?: string | null;
+  compatibleModel?: string | null;
   priceMasked?: boolean;
   mileageKm: number;
   transmission: string; // AUTOMATIC | MANUAL

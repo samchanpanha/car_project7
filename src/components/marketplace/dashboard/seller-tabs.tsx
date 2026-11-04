@@ -7,8 +7,8 @@
 
 import { useAppStore } from "@/lib/store";
 import { useT } from "@/hooks/use-t";
-import { useFetch } from "@/lib/client-hooks";
-import { formatUsd, timeAgo } from "@/lib/format";
+import { useFetch, apiSend } from "@/lib/client-hooks";
+import { formatUsd, formatKhr, timeAgo } from "@/lib/format";
 import type { MyListingRowDTO } from "@/lib/listing-types";
 import type { PlanDTO, SellerSubscriptionDTO } from "@/lib/dashboard-types";
 import { ListingEditorDialog } from "@/components/marketplace/listing-editor";
@@ -18,15 +18,21 @@ import {
   EmptyState, FetchErrorState, SectionCard, StatCard, VehicleStatusBadge, formatDateTime,
 } from "./bits";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { Progress } from "@/components/ui/progress";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
+import {
+  Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle,
+} from "@/components/ui/dialog";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { AdvancedFilterToolbar, type AdvancedFilterValues } from "@/components/marketplace/advanced-filter-toolbar";
 import {
-  CalendarClock, CarFront, CheckCircle2, CreditCard, Eye, Pencil, Plus, ShieldCheck, Sparkles, TriangleAlert,
+  CalendarClock, CarFront, CheckCircle2, CreditCard, Eye, Flame, Loader2, Pencil, Plus, ShieldCheck, Sparkles, Tag, TriangleAlert, X,
 } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 
@@ -46,6 +52,7 @@ export function SellerInventory() {
   const navigate = useAppStore((s) => s.navigate);
   const [editorId, setEditorId] = useState<string | null>(null);
   const [editorOpen, setEditorOpen] = useState(false);
+  const [promoVehicle, setPromoVehicle] = useState<MyListingRowDTO | null>(null);
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(8);
   const [filters, setFilters] = useState<AdvancedFilterValues>({
@@ -190,29 +197,64 @@ export function SellerInventory() {
                       onClick={() => navigate({ name: "detail", vehicleId: v.id })}
                       className="min-w-0 flex-1 text-left cursor-pointer"
                     >
-                      <p className="truncate text-sm font-medium text-slate-900 hover:text-amber-700">
-                        {v.make} {v.model} {v.variant ?? ""} {v.year}
-                      </p>
-                      <p className="mt-0.5 flex items-center gap-2 text-[11px] text-slate-400">
-                        <span>{formatUsd(v.priceUsd)}</span>
+                      <div className="flex items-center gap-2">
+                        <p className="truncate text-sm font-medium text-slate-900 hover:text-amber-700">
+                          {v.make} {v.model} {v.variant ?? ""} {v.year}
+                        </p>
+                        {v.isOnSale && v.activePriceType && (
+                          <span
+                            className="inline-flex items-center gap-0.5 rounded-full px-2 py-0.5 text-[10px] font-black uppercase text-white shrink-0"
+                            style={{ backgroundColor: v.activePriceType.badgeColor || "#ef4444" }}
+                          >
+                            <Flame className="h-2.5 w-2.5" />
+                            {v.activePriceType.label}
+                          </span>
+                        )}
+                      </div>
+                      <p className="mt-0.5 flex flex-wrap items-center gap-2 text-[11px] text-slate-400">
+                        {v.isOnSale && v.effectivePriceUsd != null && v.effectivePriceUsd < v.priceUsd ? (
+                          <>
+                            <span className="line-through text-slate-400">{formatUsd(v.priceUsd)}</span>
+                            <span className="font-bold text-slate-900">{formatUsd(v.effectivePriceUsd)}</span>
+                          </>
+                        ) : (
+                          <span className="font-medium text-slate-900">{formatUsd(v.priceUsd)}</span>
+                        )}
+                        {v.floorPriceUsd != null && v.floorPriceUsd > 0 && (
+                          <span className="inline-flex items-center gap-0.5 text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200">
+                            <ShieldCheck className="h-2.5 w-2.5" /> Floor {formatUsd(v.floorPriceUsd)}
+                          </span>
+                        )}
                         <span>· <Eye className="inline h-3 w-3" aria-hidden /> {v.views}</span>
                         <span className="hidden sm:inline">· {timeAgo(v.createdAt, locale)}</span>
                       </p>
                     </button>
                     <VehicleStatusBadge status={v.status} />
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="h-8 shrink-0"
-                      onClick={() => {
-                        setEditorId(v.id);
-                        setEditorOpen(true);
-                      }}
-                      aria-label={`${t("actEditListing")} — ${v.make} ${v.model}`}
-                    >
-                      <Pencil className="h-3.5 w-3.5" aria-hidden />
-                      <span className="ml-1.5 hidden sm:inline">{t("actEditListing")}</span>
-                    </Button>
+                    <div className="flex items-center gap-1.5">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="h-8 shrink-0 text-amber-700 hover:text-amber-800 hover:bg-amber-50 border-amber-200 cursor-pointer"
+                        onClick={() => setPromoVehicle(v)}
+                        aria-label={`Promo — ${v.make} ${v.model}`}
+                      >
+                        <Flame className="h-3.5 w-3.5 text-amber-600 mr-1" />
+                        <span className="text-xs font-semibold">Promo</span>
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="h-8 shrink-0 cursor-pointer"
+                        onClick={() => {
+                          setEditorId(v.id);
+                          setEditorOpen(true);
+                        }}
+                        aria-label={`${t("actEditListing")} — ${v.make} ${v.model}`}
+                      >
+                        <Pencil className="h-3.5 w-3.5" aria-hidden />
+                        <span className="ml-1.5 hidden sm:inline">{t("actEditListing")}</span>
+                      </Button>
+                    </div>
                   </li>
                 ))}
               </ul>
@@ -244,7 +286,298 @@ export function SellerInventory() {
           if (!o) refetch();
         }}
       />
+
+      <SellerPromoModal
+        vehicle={promoVehicle}
+        onClose={() => setPromoVehicle(null)}
+        onSaved={refetch}
+      />
     </>
+  );
+}
+
+function SellerPromoModal({
+  vehicle,
+  onClose,
+  onSaved,
+}: {
+  vehicle: MyListingRowDTO | null;
+  onClose: () => void;
+  onSaved: () => void;
+}) {
+  const [submitting, setSubmitting] = useState(false);
+  const { data: promoTypesData } = useFetch<{
+    types: { id: string; code: string; label: string; mode: string; badgeColor: string; priority: number }[];
+  }>("/api/seller/pricing/available-types");
+  const priceTypes = promoTypesData?.types ?? [];
+
+  const [priceTypeId, setPriceTypeId] = useState("");
+  const [value, setValue] = useState("10");
+  const [floorPrice, setFloorPrice] = useState("");
+  const [startDate, setStartDate] = useState("");
+  const [endDate, setEndDate] = useState("");
+
+  useEffect(() => {
+    if (vehicle) {
+      setFloorPrice(vehicle.floorPriceUsd ? String(vehicle.floorPriceUsd) : "");
+      if (priceTypes.length > 0 && !priceTypeId) {
+        setPriceTypeId(priceTypes[0].id);
+      }
+    }
+  }, [vehicle, priceTypes]);
+
+  const selectedType = useMemo(
+    () => priceTypes.find((p) => p.id === priceTypeId) ?? priceTypes[0],
+    [priceTypes, priceTypeId]
+  );
+
+  const preview = useMemo(() => {
+    if (!vehicle) return null;
+    const base = vehicle.priceUsd;
+    const floor = floorPrice ? Number(floorPrice) : null;
+    const promoVal = Number(value) || 0;
+
+    let candidate = base;
+    if (selectedType && promoVal > 0) {
+      if (selectedType.mode === "PERCENT") {
+        candidate = Math.round(base * (1 - Math.min(promoVal, 100) / 100));
+      } else {
+        if (promoVal < base) {
+          candidate = Math.round(promoVal);
+        }
+      }
+    }
+
+    const floorClamped = floor != null && floor > 0 && candidate < floor;
+    const effective = floorClamped ? (floor as number) : candidate;
+    const discountUsd = Math.max(0, base - effective);
+    const discountPercent = base > 0 ? Math.round((discountUsd / base) * 100) : 0;
+
+    return {
+      base,
+      candidate,
+      effective,
+      floor,
+      floorClamped,
+      discountUsd,
+      discountPercent,
+    };
+  }, [vehicle, selectedType, value, floorPrice]);
+
+  const handleSave = async () => {
+    if (!vehicle) return;
+    const val = Number(value);
+    if (!val || val <= 0) {
+      toast.warning("Please enter a valid promotional discount value");
+      return;
+    }
+
+    setSubmitting(true);
+    try {
+      await apiSend("/api/seller/pricing/item", "POST", {
+        vehicleId: vehicle.id,
+        priceTypeId: priceTypeId || priceTypes[0]?.id,
+        value: val,
+        floorPriceUsd: floorPrice ? Number(floorPrice) : null,
+        startDate: startDate ? new Date(startDate).toISOString() : null,
+        endDate: endDate ? new Date(endDate).toISOString() : null,
+      });
+      toast.success("Promotional pricing updated!");
+      onSaved();
+      onClose();
+    } catch (err: any) {
+      toast.error(err.message || "Failed to update promotional price");
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleClear = async () => {
+    if (!vehicle) return;
+    setSubmitting(true);
+    try {
+      await apiSend(`/api/seller/pricing/item?vehicleId=${vehicle.id}`, "DELETE");
+      toast.success("Promotion removed. Listing restored to base asking price.");
+      onSaved();
+      onClose();
+    } catch (err: any) {
+      toast.error(err.message || "Failed to clear promotion");
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  if (!vehicle) return null;
+
+  return (
+    <Dialog open={Boolean(vehicle)} onOpenChange={(o) => !o && onClose()}>
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2 text-base">
+            <Flame className="h-5 w-5 text-amber-600" />
+            Manage Listing Pricing & Promotion
+          </DialogTitle>
+        </DialogHeader>
+
+        <div className="space-y-4 py-2">
+          <div className="rounded-xl border border-slate-200 bg-slate-50/70 p-3 flex items-center gap-3">
+            <div className="h-10 w-14 shrink-0 rounded-lg overflow-hidden bg-slate-200">
+              {vehicle.images[0] ? (
+                <img src={vehicle.images[0]} alt="" className="h-full w-full object-cover" />
+              ) : null}
+            </div>
+            <div className="min-w-0">
+              <p className="text-sm font-bold text-slate-900 truncate">
+                {vehicle.make} {vehicle.model} {vehicle.variant || ""} {vehicle.year}
+              </p>
+              <p className="text-xs text-slate-500">
+                Base asking: <span className="font-semibold text-slate-800">{formatUsd(vehicle.priceUsd)}</span>
+              </p>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <Label className="text-xs font-semibold text-slate-600">Base Price</Label>
+              <Input disabled value={formatUsd(vehicle.priceUsd)} className="mt-1.5 bg-slate-100 font-bold" />
+            </div>
+            <div>
+              <Label className="text-xs font-semibold text-slate-600">Floor Protection ($)</Label>
+              <Input
+                type="number"
+                min={0}
+                value={floorPrice}
+                onChange={(e) => setFloorPrice(e.target.value)}
+                placeholder="e.g. 16500"
+                className="mt-1.5"
+              />
+            </div>
+          </div>
+
+          <div>
+            <Label className="text-xs font-semibold text-slate-600">Promotional Tier</Label>
+            <div className="mt-1.5">
+              <Select value={priceTypeId} onValueChange={setPriceTypeId}>
+                <SelectTrigger className="h-10 text-xs">
+                  <SelectValue placeholder="Select Tier" />
+                </SelectTrigger>
+                <SelectContent>
+                  {priceTypes.map((pt) => (
+                    <SelectItem key={pt.id} value={pt.id}>
+                      {pt.label} ({pt.mode === "PERCENT" ? "% off" : "Fixed $"})
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+
+          <div>
+            <Label className="text-xs font-semibold text-slate-600">
+              {selectedType?.mode === "PERCENT" ? "Discount Percentage (%)" : "Promotional Target Price (USD $)"}
+            </Label>
+            <Input
+              type="number"
+              min={1}
+              value={value}
+              onChange={(e) => setValue(e.target.value)}
+              placeholder={selectedType?.mode === "PERCENT" ? "10" : "17500"}
+              className="mt-1.5"
+            />
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <Label className="text-xs font-semibold text-slate-600">Start Date (Optional)</Label>
+              <Input
+                type="datetime-local"
+                value={startDate}
+                onChange={(e) => setStartDate(e.target.value)}
+                className="mt-1.5 h-9 text-xs"
+              />
+            </div>
+            <div>
+              <Label className="text-xs font-semibold text-slate-600">End Date (Optional)</Label>
+              <Input
+                type="datetime-local"
+                value={endDate}
+                onChange={(e) => setEndDate(e.target.value)}
+                className="mt-1.5 h-9 text-xs"
+              />
+            </div>
+          </div>
+
+          {/* Real-time Preview */}
+          {preview && (
+            <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 space-y-2">
+              <div className="flex items-center justify-between text-xs font-bold text-slate-700">
+                <span>Card Price Preview</span>
+                {preview.discountUsd > 0 && (
+                  <span className="text-emerald-700 bg-emerald-100 px-2 py-0.5 rounded-full text-[10px]">
+                    Save {formatUsd(preview.discountUsd)} ({preview.discountPercent}% OFF)
+                  </span>
+                )}
+              </div>
+
+              <div className="flex items-baseline gap-2">
+                {preview.discountUsd > 0 && (
+                  <span className="text-xs text-slate-400 line-through">
+                    {formatUsd(preview.base)}
+                  </span>
+                )}
+                <span className="text-xl font-black text-slate-900">
+                  {formatUsd(preview.effective)}
+                </span>
+                {selectedType && (
+                  <span
+                    className="rounded-md px-2 py-0.5 text-[10px] font-black uppercase text-white shadow-xs"
+                    style={{ backgroundColor: selectedType.badgeColor || "#ef4444" }}
+                  >
+                    {selectedType.label}
+                  </span>
+                )}
+              </div>
+
+              {preview.floorClamped && (
+                <div className="flex items-start gap-1.5 text-xs text-amber-800 bg-amber-50 p-2 rounded-lg border border-amber-200 font-medium">
+                  <ShieldCheck className="h-4 w-4 shrink-0 text-amber-600 mt-0.5" />
+                  <span>
+                    Floor Protected: Candidate price of {formatUsd(preview.candidate)} is clamped to your minimum floor price of {formatUsd(preview.floor || 0)}.
+                  </span>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+
+        <DialogFooter className="flex-row items-center justify-between gap-2">
+          {vehicle.isOnSale ? (
+            <Button
+              variant="outline"
+              onClick={handleClear}
+              disabled={submitting}
+              className="text-rose-600 hover:text-rose-700 border-rose-200"
+            >
+              Clear Promo
+            </Button>
+          ) : <div />}
+
+          <div className="flex items-center gap-2">
+            <Button variant="outline" onClick={onClose}>
+              Cancel
+            </Button>
+            <Button
+              onClick={handleSave}
+              disabled={submitting}
+              className="bg-amber-500 text-slate-950 hover:bg-amber-400 font-bold"
+            >
+              {submitting ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : null}
+              Save Pricing
+            </Button>
+          </div>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
 

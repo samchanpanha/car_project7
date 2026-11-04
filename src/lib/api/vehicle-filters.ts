@@ -24,6 +24,7 @@ export const ALLOWED_SORTS: SortOption[] = [
   "price_desc",
   "year_desc",
   "mileage_asc",
+  "discount_desc",
 ];
 
 function num(value: string | null): number | undefined {
@@ -51,17 +52,58 @@ function rangeFilter(min: number | undefined, max: number | undefined) {
 }
 
 /**
- * Build the Prisma where clause for the PUBLIC vehicle list (always PUBLISHED
- * only). Used by GET /api/vehicles and by saved-search runs so both apply
- * exactly the same filter semantics.
+ * Build the Prisma where clause for vehicle list queries.
+ * Used by GET /api/vehicles and saved searches.
  */
 export function buildVehicleWhere(sp: URLSearchParams): Prisma.VehicleWhereInput {
-  const where: Prisma.VehicleWhereInput = { status: "PUBLISHED" };
+  const statusParam = sp.get("status");
+  const where: Prisma.VehicleWhereInput = {
+    status: statusParam && statusParam !== "ALL" ? statusParam : "PUBLISHED",
+  };
 
   const make = sp.get("make") || undefined;
-  if (make) where.make = make;
+  if (make && make !== "all" && make !== "ALL") where.make = make;
+
+  const model = sp.get("model") || undefined;
+  if (model && model !== "all" && model !== "ALL") where.model = model;
+
   const city = sp.get("city") || undefined;
-  if (city) where.city = city;
+  if (city && city !== "all" && city !== "ALL") where.city = city;
+
+  const locationPort = sp.get("locationPort") || undefined;
+  if (locationPort && locationPort !== "all" && locationPort !== "ALL") {
+    (where as any).locationPort = locationPort;
+  }
+
+  const steering = sp.get("steering") || undefined;
+  if (steering && steering !== "ALL") {
+    (where as any).steering = steering.toUpperCase();
+  }
+
+  const chassisNo = sp.get("chassisNo") || undefined;
+  if (chassisNo) {
+    (where as any).chassisNo = { contains: chassisNo, mode: "insensitive" };
+  }
+
+  const stockNo = sp.get("stockNo") || undefined;
+  if (stockNo) {
+    (where as any).stockNo = { contains: stockNo, mode: "insensitive" };
+  }
+
+  const seats = num(sp.get("seats"));
+  if (seats != null) {
+    (where as any).seats = seats;
+  }
+
+  const doors = num(sp.get("doors"));
+  if (doors != null) {
+    (where as any).doors = doors;
+  }
+
+  const variant = sp.get("variant") || sp.get("grade") || undefined;
+  if (variant) {
+    where.variant = { contains: variant, mode: "insensitive" };
+  }
 
   const bodyTypes = multi(sp.get("bodyType"), ALLOWED_BODY_TYPES);
   if (bodyTypes) where.bodyType = { in: bodyTypes };
@@ -81,11 +123,98 @@ export function buildVehicleWhere(sp: URLSearchParams): Prisma.VehicleWhereInput
   const priceRange = rangeFilter(num(sp.get("priceMin")), num(sp.get("priceMax")));
   if (priceRange) where.priceUsd = priceRange;
 
+  // Engine cc range (motor & car)
+  const engineMin = num(sp.get("engineMin") || sp.get("engineCcMin"));
+  const engineMax = num(sp.get("engineMax") || sp.get("engineCcMax"));
+  const engineRange = rangeFilter(engineMin, engineMax);
+  if (engineRange) where.engineCc = engineRange;
+
   const yearRange = rangeFilter(num(sp.get("yearMin")), num(sp.get("yearMax")));
   if (yearRange) where.year = yearRange;
 
   const mileageRange = rangeFilter(num(sp.get("mileageMin")), num(sp.get("mileageMax")));
   if (mileageRange) where.mileageKm = mileageRange;
+
+  // Motor-specific attributes
+  const motorType = sp.get("motorType");
+  if (motorType && motorType !== "ALL") {
+    (where as any).motorType = motorType.toUpperCase();
+  }
+
+  const hasAbsParam = sp.get("hasAbs");
+  if (hasAbsParam === "true" || hasAbsParam === "1") {
+    (where as any).hasAbs = true;
+  } else if (hasAbsParam === "false" || hasAbsParam === "0") {
+    (where as any).hasAbs = false;
+  }
+
+  const startType = sp.get("startType");
+  if (startType && startType !== "ALL") {
+    (where as any).startType = startType.toUpperCase();
+  }
+
+  // Spare-part specific attributes
+  const partNumber = sp.get("partNumber");
+  if (partNumber) {
+    (where as any).partNumber = { contains: partNumber, mode: "insensitive" };
+  }
+
+  const oemBrand = sp.get("oemBrand") || sp.get("brand");
+  if (oemBrand && oemBrand !== "all" && oemBrand !== "ALL") {
+    (where as any).oemBrand = oemBrand;
+  }
+
+  const isOemParam = sp.get("isOem");
+  if (isOemParam === "true" || isOemParam === "1") {
+    (where as any).isOem = true;
+  } else if (isOemParam === "false" || isOemParam === "0") {
+    (where as any).isOem = false;
+  }
+
+  const position = sp.get("position");
+  if (position && position !== "ALL") {
+    (where as any).position = position.toUpperCase();
+  }
+
+  const compatibleMake = sp.get("compatibleMake");
+  if (compatibleMake && compatibleMake !== "ALL") {
+    (where as any).compatibleMake = compatibleMake;
+  }
+
+  const compatibleModel = sp.get("compatibleModel");
+  if (compatibleModel && compatibleModel !== "ALL") {
+    (where as any).compatibleModel = compatibleModel;
+  }
+
+  const compatibleYear = num(sp.get("compatibleYear"));
+  if (compatibleYear != null) {
+    (where as any).AND = [
+      ...((where as any).AND || []),
+      {
+        OR: [
+          { compatibleYearMin: null, compatibleYearMax: null },
+          {
+            compatibleYearMin: { lte: compatibleYear },
+            compatibleYearMax: { gte: compatibleYear },
+          },
+        ],
+      },
+    ];
+  }
+
+  // Price type filter (e.g. HOT_PRICE, DISCOUNT_PRICE)
+  const priceType = sp.get("priceType");
+  if (priceType && priceType !== "ALL") {
+    where.itemPrices = {
+      some: {
+        active: true,
+        priceType: {
+          code: priceType.toUpperCase(),
+          active: true,
+        },
+      },
+    };
+  }
 
   const sellerType = sp.get("sellerType") || undefined;
   const sellerVerified = sp.get("sellerVerified") === "true";
@@ -142,6 +271,13 @@ export async function listVehicles(sp: URLSearchParams): Promise<PagedVehiclesRe
   const where = buildVehicleWhere(sp);
   const pageSize = Math.min(Math.max(Math.trunc(num(sp.get("limit")) ?? 12), 1), 48);
   const q = sp.get("q")?.trim().toLowerCase() || undefined;
+  const onSaleOnly = sp.get("onSale") === "true" || sp.get("onSale") === "1";
+  const priceMin = num(sp.get("priceMin"));
+  const priceMax = num(sp.get("priceMax"));
+  const featuresFilter = sp.get("features")
+    ? sp.get("features")!.split(",").map((f) => f.trim().toLowerCase()).filter(Boolean)
+    : [];
+
   const sortParam = sp.get("sort") || "newest";
   const sort: SortOption = ALLOWED_SORTS.includes(sortParam as SortOption)
     ? (sortParam as SortOption)
@@ -153,36 +289,63 @@ export async function listVehicles(sp: URLSearchParams): Promise<PagedVehiclesRe
     orderBy: { createdAt: "desc" },
   });
 
-  // q needs case-insensitive matching, which SQLite + Prisma does not support.
-  const filtered = q
-    ? matches.filter((v: any) => {
-        const text = `${v.make} ${v.model} ${v.variant ?? ""} ${v.city ?? ""} ${v.year} ${v.partNumber ?? ""} ${v.compatibleModels ?? ""} ${v.partCategory ?? ""} ${v.seller?.name ?? ""} ${v.seller?.sellerProfile?.shopName ?? ""}`.toLowerCase();
-        return text.includes(q);
-      })
-    : matches;
+  // Map to card DTOs with pricing resolution
+  let cards = matches.map(toCardDTO);
 
-  switch (sort) {
-    case "price_asc":
-      filtered.sort((a, b) => a.priceUsd - b.priceUsd);
-      break;
-    case "price_desc":
-      filtered.sort((a, b) => b.priceUsd - a.priceUsd);
-      break;
-    case "year_desc":
-      filtered.sort((a, b) => b.year - a.year);
-      break;
-    case "mileage_asc":
-      filtered.sort((a, b) => a.mileageKm - b.mileageKm);
-      break;
-    default:
-      filtered.sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
+  // Filter by q (case-insensitive across keywords, specs, and identifiers)
+  if (q) {
+    cards = cards.filter((v) => {
+      const text = `${v.make} ${v.model} ${v.variant ?? ""} ${v.city ?? ""} ${v.year} ${v.partNumber ?? ""} ${v.compatibleModels ?? ""} ${v.partCategory ?? ""} ${v.chassisNo ?? ""} ${v.stockNo ?? ""} ${v.seller?.name ?? ""} ${v.seller?.shopName ?? ""}`.toLowerCase();
+      return text.includes(q);
+    });
   }
 
-  const total = filtered.length;
+  // Effective price range filtering
+  if (priceMin != null) {
+    cards = cards.filter((v) => (v.effectivePriceUsd ?? v.priceUsd) >= priceMin);
+  }
+  if (priceMax != null) {
+    cards = cards.filter((v) => (v.effectivePriceUsd ?? v.priceUsd) <= priceMax);
+  }
+
+  // On-sale promotional filter
+  if (onSaleOnly) {
+    cards = cards.filter((v) => Boolean(v.isOnSale));
+  }
+
+  // Features filter
+  if (featuresFilter.length > 0) {
+    cards = cards.filter((v) => {
+      const vFeatures = (v.features || []).map((f) => f.toLowerCase());
+      return featuresFilter.every((req) => vFeatures.includes(req));
+    });
+  }
+
+  // Sorting
+  switch (sort) {
+    case "price_asc":
+      cards.sort((a, b) => (a.effectivePriceUsd ?? a.priceUsd) - (b.effectivePriceUsd ?? b.priceUsd));
+      break;
+    case "price_desc":
+      cards.sort((a, b) => (b.effectivePriceUsd ?? b.priceUsd) - (a.effectivePriceUsd ?? a.priceUsd));
+      break;
+    case "discount_desc":
+      cards.sort((a, b) => (b.discountUsd ?? 0) - (a.discountUsd ?? 0));
+      break;
+    case "year_desc":
+      cards.sort((a, b) => b.year - a.year);
+      break;
+    case "mileage_asc":
+      cards.sort((a, b) => a.mileageKm - b.mileageKm);
+      break;
+    default:
+      cards.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+  }
+
+  const total = cards.length;
   const pageCount = Math.max(1, Math.ceil(total / pageSize));
 
-  // 1-based "page" wins; legacy "cursor" is a 0-based page index. Requests
-  // beyond the last page clamp onto it (never a blank page from a stale link).
+  // 1-based "page" wins; legacy "cursor" is a 0-based page index.
   const pageParam = sp.get("page");
   let page: number;
   if (pageParam != null && pageParam.trim() !== "") {
@@ -193,11 +356,11 @@ export async function listVehicles(sp: URLSearchParams): Promise<PagedVehiclesRe
   const current = Math.min(page, pageCount);
 
   const start = (current - 1) * pageSize;
-  const pageItems = filtered.slice(start, start + pageSize);
+  const pageItems = cards.slice(start, start + pageSize);
   const nextCursor = start + pageSize < total ? String(current) : null;
 
   const response: VehiclesResponseDTO = {
-    items: pageItems.map(toCardDTO),
+    items: pageItems,
     nextCursor,
     total,
   };

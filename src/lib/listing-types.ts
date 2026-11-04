@@ -18,6 +18,17 @@ export interface MyListingRowDTO {
   variant: string | null;
   year: number;
   priceUsd: number;
+  basePriceUsd?: number;
+  effectivePriceUsd?: number;
+  isOnSale?: boolean;
+  activePriceType?: {
+    code: string;
+    label: string;
+    badgeColor: string;
+    mode: string;
+  } | null;
+  floorPriceUsd?: number | null;
+  floorEnforced?: boolean;
   priceMasked?: boolean;
   mileageKm: number;
   status: VehicleStatus;

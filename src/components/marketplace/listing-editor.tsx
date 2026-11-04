@@ -673,6 +673,7 @@ interface EditorForm {
   mileageKm: string;
   priceUsd: string;
   priceMasked: boolean;
+  floorPriceUsd: string;
   seats: string;
   interiorColor: string;
   fuelEconomy: string;
@@ -713,6 +714,7 @@ function toForm(v: ManageableVehicleDetailDTO): EditorForm {
     mileageKm: String(v.mileageKm),
     priceUsd: String(v.priceUsd),
     priceMasked: Boolean(v.priceMasked),
+    floorPriceUsd: (v as any).floorPriceUsd != null ? String((v as any).floorPriceUsd) : "",
     seats: v.seats != null ? String(v.seats) : "",
     interiorColor: v.interiorColor ?? "",
     fuelEconomy: v.fuelEconomy ?? "",
@@ -883,6 +885,19 @@ export function ListingEditorDialog({
           fileUrl: d.fileUrl,
         })),
       });
+
+      // Sync floor price to Postgres via flexible pricing engine
+      if (vehicleId) {
+        try {
+          await apiSend("/api/seller/pricing/item", "PATCH", {
+            vehicleId,
+            floorPriceUsd: form.floorPriceUsd ? Number(form.floorPriceUsd) : null,
+          });
+        } catch (pe) {
+          console.warn("Floor price sync warning:", pe);
+        }
+      }
+
       toast.success(t("listingUpdated"));
       onOpenChange(false);
       onSaved?.();
@@ -1268,6 +1283,18 @@ export function ListingEditorDialog({
                     value={form.priceUsd}
                     onChange={(e) => set({ priceUsd: e.target.value })}
                     placeholder={form.priceMasked ? "—" : "18500"}
+                  />
+                </EditField>
+                <EditField
+                  label="Floor Price Protection ($)"
+                  hint="Promotions will never discount below this floor"
+                >
+                  <Input
+                    type="number"
+                    min={0}
+                    value={form.floorPriceUsd}
+                    onChange={(e) => set({ floorPriceUsd: e.target.value })}
+                    placeholder="e.g. 16500"
                   />
                 </EditField>
                 <EditField label={t("formCity")}>

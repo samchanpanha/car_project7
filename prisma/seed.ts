@@ -1,21 +1,18 @@
-// KhLan — demo seed script (Cambodia AI car marketplace)
+// KhLan — Complete Demo Seed Script (Cambodia AI Vehicle Marketplace)
 import "dotenv/config";
 import crypto from "node:crypto";
 import { fileURLToPath } from "node:url";
-// Deterministic ids so API routes / frontend can reference them (see worklog Task 2-b).
-
 import fs from "node:fs";
 import path from "node:path";
 import { PrismaClient } from "@prisma/client";
 import type { ReportCheck } from "../src/lib/types";
+import { importCatalogModels } from "../scripts/import-vehicle-models";
 
 const scriptDirectory = path.dirname(fileURLToPath(import.meta.url));
 const seedImages = JSON.parse(
-  fs.readFileSync(path.join(scriptDirectory, "seed-images.json"), "utf8"),
+  fs.readFileSync(path.join(scriptDirectory, "seed-images.json"), "utf8")
 ) as Record<string, string[]>;
 
-// Belt & suspenders: Prisma Client usually loads .env itself, but make sure
-// DATABASE_URL is available when running the seed directly with Node.
 if (!process.env.DATABASE_URL) {
   const envFile = path.resolve(scriptDirectory, "..", ".env");
   if (fs.existsSync(envFile)) {
@@ -35,14 +32,12 @@ const HOUR = 60 * 60 * 1000;
 const daysAgo = (d: number) => new Date(Date.now() - d * DAY);
 const daysFromNow = (d: number) => new Date(Date.now() + d * DAY);
 const hoursAgo = (h: number) => new Date(Date.now() - h * HOUR);
-// N days from now at a fixed local hour (for appointment demo slots, e.g. 10:00).
 const daysFromNowAt = (d: number, hour: number) => {
   const dt = daysFromNow(d);
   dt.setHours(hour, 0, 0, 0);
   return dt;
 };
 
-// Unified tenant model: every seller is backed by a tenant.
 const TENANT_BY_SELLER: Record<string, string> = {
   usr_dealer_sokha: "tenant_sokha",
   usr_dealer_ppauto: "tenant_ppauto",
@@ -50,10 +45,10 @@ const TENANT_BY_SELLER: Record<string, string> = {
   usr_priv_sopheak: "tenant_sopheak",
 };
 
-const IMG = seedImages as Record<string, string[]>;
+const IMG = seedImages;
 
 // ---------------------------------------------------------------------------
-// Users
+// 1. Users
 // ---------------------------------------------------------------------------
 
 async function seedUsers() {
@@ -116,87 +111,28 @@ async function seedUsers() {
     ],
   });
 
-  // Auth demo data: every persona shares the password "khlan123" (scrypt
-  // salt:hash, matching src/lib/auth.ts) so the login form is testable;
-  // the buyer carries a demo Telegram binding for Mini App sign-in testing.
   const salt = crypto.randomBytes(16).toString("hex");
   const demoHash = `${salt}:${crypto.scryptSync("khlan123", salt, 64).toString("hex")}`;
   await prisma.user.updateMany({
-    where: { id: { in: ["usr_demo_buyer", "usr_dealer_sokha", "usr_staff_chan", "usr_staff_sophea", "usr_dealer_ppauto", "usr_priv_vireak", "usr_priv_sopheak", "usr_admin"] } },
+    where: {
+      id: {
+        in: [
+          "usr_demo_buyer", "usr_dealer_sokha", "usr_staff_chan", "usr_staff_sophea",
+          "usr_dealer_ppauto", "usr_priv_vireak", "usr_priv_sopheak", "usr_admin"
+        ],
+      },
+    },
     data: { passwordHash: demoHash },
   });
+
   await prisma.user.update({
     where: { id: "usr_demo_buyer" },
     data: { telegramId: "77700001", telegramUsername: "dara_khlan" },
   });
 }
 
-async function seedSellerProfiles() {
-  await prisma.sellerProfile.createMany({
-    data: [
-      {
-        userId: "usr_dealer_sokha",
-        type: "DEALER",
-        shopName: "Sokha Motors",
-        tenantId: "tenant_sokha",
-        city: "Phnom Penh",
-        verified: true,
-        verification: "VERIFIED",
-        responseRate: 96,
-        ratingAvg: 4.7,
-        ratingCount: 128,
-        memberSince: new Date("2021-03-15T00:00:00Z"),
-        bio: "Trusted dealer of premium Japanese SUVs and MPVs in Phnom Penh since 2015. Every car inspected and documented.",
-        bioKm:
-          "ពាណិជ្ជករទំនុកចិត្ត លក់ឡានត្រកូលជប៉ុនពីឆ្នាំ២០១៥។ ឡានទាំងអស់ត្រូវបានពិនិត្យនិងមានឯកសារច្បាស់លាស់។",
-        phone: "+85512998001",
-        telegram: "@sokhamotors",
-      },
-      {
-        userId: "usr_dealer_ppauto",
-        type: "DEALER",
-        shopName: "PP Auto Trust",
-        tenantId: "tenant_ppauto",
-        city: "Phnom Penh",
-        verified: true,
-        verification: "VERIFIED",
-        responseRate: 88,
-        ratingAvg: 4.4,
-        ratingCount: 63,
-        memberSince: new Date("2022-07-01T00:00:00Z"),
-        bio: "Family-run dealership focusing on well-maintained family SUVs and crossovers.",
-        bioKm: "រង្វាន់គ្រួសារលក់ឡានគ្រួសារដែលថែរក្សាល្អ។",
-      },
-      {
-        userId: "usr_priv_vireak",
-        type: "PRIVATE",
-        tenantId: "tenant_vireak",
-        city: "Phnom Penh",
-        verified: false,
-        verification: "UNVERIFIED",
-        responseRate: 72,
-        ratingAvg: 4.1,
-        ratingCount: 7,
-        memberSince: new Date("2024-02-10T00:00:00Z"),
-      },
-      {
-        userId: "usr_priv_sopheak",
-        type: "PRIVATE",
-        tenantId: "tenant_sopheak",
-        city: "Kandal",
-        verified: false,
-        verification: "UNVERIFIED",
-        responseRate: 64,
-        ratingAvg: 3.9,
-        ratingCount: 4,
-        memberSince: new Date("2024-09-22T00:00:00Z"),
-      },
-    ],
-  });
-}
-
 // ---------------------------------------------------------------------------
-// Tenants (multi-tenant dealership orgs), members & subscriptions
+// 2. Tenants, Branches, Members & Subscriptions
 // ---------------------------------------------------------------------------
 
 async function seedTenants() {
@@ -213,33 +149,32 @@ async function seedTenants() {
         verified: true,
         verification: "VERIFIED",
         status: "ACTIVE",
-        bio: "Sokha Motors Group is a trusted Phnom Penh dealership group with two showrooms, offering fully inspected and documented vehicles backed by transparent AI history reports.",
-        bioKm:
-          "ក្រុមហ៊ុន Sokha Motors Group គឺជាក្រុមអាជីវកម្មលក់ឡានដែលមានទំនុកចិត្តនៅភ្នំពេញ មានសាលបង្ហាញ ២ ដែលលក់ឡានបានពិនិត្យពេញលេញ និងមានរបាយការណ៍ AI ច្បាស់លាស់។",
+        bio: "Sokha Motors Group is a premier automotive dealer in Phnom Penh with showrooms in Toul Kork and BKK1. All vehicles inspected with AI history reports.",
+        bioKm: "ក្រុមហ៊ុន Sokha Motors Group ជាក្រុមអាជីវកម្មលក់ឡានឈានមុខនៅភ្នំពេញ មានសាខា Toul Kork និង BKK1។",
       },
       {
         id: "tenant_ppauto",
         name: "PP Auto Trust",
         slug: "pp-auto-trust",
         city: "Phnom Penh",
-        address: "Russian Blvd 110",
+        address: "Russian Blvd 110, Sen Sok",
         phone: "+85512444555",
-        verified: false,
-        verification: "PENDING",
+        verified: true,
+        verification: "VERIFIED",
         status: "ACTIVE",
-        bio: "Family-run dealership on Russian Blvd focusing on well-maintained family SUVs and crossovers.",
-        bioKm: "ក្រុមហ៊ុនលក់ឡានគ្រួសារនៅផ្លូវរុស្ស៊ី ផ្តោតលើឡានគ្រួសារដែលថែរក្សាល្អ។",
+        bio: "Family-run dealership on Russian Blvd focusing on reliable family SUVs, crossovers, and verified motorcycles.",
+        bioKm: "ក្រុមហ៊ុនលក់ឡានគ្រួសារនៅមហាវិថីសហព័ន្ធរុស្ស៊ី ផ្តោតលើឡានគ្រួសារ និងម៉ូតូដែលមានការធានា។",
       },
       {
         id: "tenant_vireak",
-        name: "Vireak Tan (Seller)",
+        name: "Vireak Tan (Private Seller)",
         slug: "vireak-tan",
         city: "Phnom Penh",
         status: "ACTIVE",
       },
       {
         id: "tenant_sopheak",
-        name: "Sopheak Ngin (Seller)",
+        name: "Sopheak Ngin (Private Seller)",
         slug: "sopheak-ngin",
         city: "Kandal",
         status: "ACTIVE",
@@ -247,22 +182,66 @@ async function seedTenants() {
     ],
   });
 
+  // Dealership Branches (Showrooms)
+  await prisma.tenantBranch.createMany({
+    data: [
+      {
+        id: "branch_sokha_main",
+        tenantId: "tenant_sokha",
+        name: "Toul Kork Main Showroom",
+        nameKm: "សាខាចម្បងទួលគោក",
+        city: "Phnom Penh",
+        district: "Toul Kork",
+        address: "St. 271, Sangkat Teuk Laak 3, Khan Toul Kork",
+        phone: "+85511777888",
+        telegram: "@sokhamotors",
+        isMain: true,
+        status: "ACTIVE",
+        openingHours: "Mon-Sun: 08:00 - 18:00",
+      },
+      {
+        id: "branch_sokha_bkk",
+        tenantId: "tenant_sokha",
+        name: "BKK1 Luxury Showroom",
+        nameKm: "សាខាបឹងកេងកង ១",
+        city: "Phnom Penh",
+        district: "Boeung Keng Kang",
+        address: "St. 51 corner St. 302, BKK1",
+        phone: "+85512777999",
+        telegram: "@sokha_bkk",
+        isMain: false,
+        status: "ACTIVE",
+        openingHours: "Mon-Sat: 08:30 - 19:00",
+      },
+      {
+        id: "branch_ppauto_main",
+        tenantId: "tenant_ppauto",
+        name: "Russian Blvd Showroom",
+        nameKm: "សាខាមហាវិថីរុស្ស៊ី",
+        city: "Phnom Penh",
+        district: "Sen Sok",
+        address: "Russian Blvd 110, Sangkat Toek Thla",
+        phone: "+85512444555",
+        isMain: true,
+        status: "ACTIVE",
+        openingHours: "Mon-Sun: 08:00 - 17:30",
+      },
+    ],
+  });
+
+  // Staff Members
   await prisma.tenantMember.createMany({
     data: [
       { tenantId: "tenant_sokha", userId: "usr_dealer_sokha", role: "OWNER" },
-      { tenantId: "tenant_sokha", userId: "usr_staff_chan", role: "SALES_STAFF" },
-      {
-        tenantId: "tenant_sokha",
-        userId: "usr_staff_sophea",
-        role: "INVENTORY_MANAGER",
-      },
+      { tenantId: "tenant_sokha", userId: "usr_staff_chan", role: "MANAGER" },
+      { tenantId: "tenant_sokha", userId: "usr_staff_sophea", role: "INVENTORY_MANAGER" },
       { tenantId: "tenant_ppauto", userId: "usr_dealer_ppauto", role: "OWNER" },
       { tenantId: "tenant_vireak", userId: "usr_priv_vireak", role: "OWNER" },
       { tenantId: "tenant_sopheak", userId: "usr_priv_sopheak", role: "OWNER" },
     ],
   });
 
-  // Plans/limits match the PlanDTO tier contract in src/lib/dashboard-types.ts.
+  // Subscriptions
   await prisma.subscription.createMany({
     data: [
       {
@@ -271,11 +250,11 @@ async function seedTenants() {
         status: "ACTIVE",
         billingCycle: "MONTHLY",
         priceUsd: 59,
-        listingsLimit: 50,
-        featuredLimit: 10,
+        listingsLimit: 100,
+        featuredLimit: 20,
         seats: 5,
         startedAt: daysAgo(45),
-        currentPeriodEnd: daysFromNow(15),
+        currentPeriodEnd: daysFromNow(45),
       },
       {
         tenantId: "tenant_ppauto",
@@ -283,11 +262,11 @@ async function seedTenants() {
         status: "ACTIVE",
         billingCycle: "MONTHLY",
         priceUsd: 29,
-        listingsLimit: 15,
-        featuredLimit: 3,
+        listingsLimit: 30,
+        featuredLimit: 5,
         seats: 2,
         startedAt: daysAgo(20),
-        currentPeriodEnd: daysFromNow(10),
+        currentPeriodEnd: daysFromNow(20),
       },
       {
         tenantId: "tenant_vireak",
@@ -295,8 +274,8 @@ async function seedTenants() {
         status: "ACTIVE",
         billingCycle: "MONTHLY",
         priceUsd: 0,
-        listingsLimit: 3,
-        featuredLimit: 0,
+        listingsLimit: 5,
+        featuredLimit: 1,
         seats: 1,
         startedAt: daysAgo(30),
         currentPeriodEnd: daysFromNow(30),
@@ -307,8 +286,8 @@ async function seedTenants() {
         status: "ACTIVE",
         billingCycle: "MONTHLY",
         priceUsd: 0,
-        listingsLimit: 3,
-        featuredLimit: 0,
+        listingsLimit: 5,
+        featuredLimit: 1,
         seats: 1,
         startedAt: daysAgo(10),
         currentPeriodEnd: daysFromNow(20),
@@ -318,187 +297,113 @@ async function seedTenants() {
 }
 
 // ---------------------------------------------------------------------------
-// Dashboard demo data: saved searches, appointments, platform settings
+// 3. Seller Profiles
 // ---------------------------------------------------------------------------
 
-async function seedDashboardData() {
-  // Customer dashboard — saved searches for the demo buyer.
-  await prisma.savedSearch.createMany({
+async function seedSellerProfiles() {
+  await prisma.sellerProfile.createMany({
     data: [
       {
-        userId: "usr_demo_buyer",
-        name: "SUVs under $30k",
-        queryJson: JSON.stringify({ bodyType: "SUV", priceMax: 30000, sort: "newest" }),
-        alertsEnabled: true,
-      },
-      {
-        userId: "usr_demo_buyer",
-        name: "Toyota latest",
-        queryJson: JSON.stringify({ make: "Toyota", sort: "newest" }),
-        alertsEnabled: false,
-      },
-    ],
-  });
-
-  // Buyer appointments — sellerId/tenantId mirror the vehicle's owner.
-  await prisma.appointment.createMany({
-    data: [
-      {
-        id: "apt_demo_prado",
-        vehicleId: "veh_prado_2018",
-        buyerId: "usr_demo_buyer",
-        sellerId: "usr_dealer_sokha",
+        userId: "usr_dealer_sokha",
+        type: "DEALER",
+        shopName: "Sokha Motors Group",
         tenantId: "tenant_sokha",
-        scheduledAt: daysFromNowAt(3, 10),
-        status: "REQUESTED",
-        notes: "Want to inspect and test drive on weekend.",
-        createdAt: daysAgo(1),
+        city: "Phnom Penh",
+        verified: true,
+        verification: "VERIFIED",
+        responseRate: 98,
+        ratingAvg: 4.8,
+        ratingCount: 142,
+        memberSince: new Date("2021-03-15T00:00:00Z"),
+        bio: "Trusted dealer of premium Japanese and luxury SUVs, MPVs, and genuine OEM auto parts.",
+        bioKm: "ពាណិជ្ជករទំនុកចិត្ត លក់ឡានត្រកូលជប៉ុន និងឡានប្រណីតពីឆ្នាំ២០១៥។",
+        phone: "+85512998001",
+        telegram: "@sokhamotors",
       },
       {
-        id: "apt_demo_lexus",
-        vehicleId: "veh_lexus_rx350",
-        buyerId: "usr_demo_buyer",
-        sellerId: "usr_dealer_sokha",
-        tenantId: "tenant_sokha",
-        scheduledAt: daysFromNowAt(2, 14),
-        status: "CONFIRMED",
-        notes: "Please prepare service records.",
-        createdAt: daysAgo(1),
-      },
-      {
-        id: "apt_demo_crv",
-        vehicleId: "veh_crv_2019",
-        buyerId: "usr_demo_buyer",
-        sellerId: "usr_dealer_ppauto",
+        userId: "usr_dealer_ppauto",
+        type: "DEALER",
+        shopName: "PP Auto Trust",
         tenantId: "tenant_ppauto",
-        scheduledAt: daysAgo(6),
-        status: "COMPLETED",
-        notes: null,
-        createdAt: daysAgo(8),
-      },
-    ],
-  });
-
-  // Platform settings (super admin dashboard) — valueJson stores the raw JSON value.
-  await prisma.platformSetting.createMany({
-    data: [
-      { key: "commissionPct", valueJson: JSON.stringify(2.5) },
-      { key: "featuredListingPriceUsd", valueJson: JSON.stringify(25) },
-      { key: "autoApproveListings", valueJson: JSON.stringify(false) },
-      { key: "maintenanceMode", valueJson: JSON.stringify(false) },
-      // Manual KHQR payment instructions shown to sellers (KHQR payload intentionally
-      // empty — the Super Admin pastes their own bank-issued KHQR in Settings).
-      {
-        key: "payments.manualConfig",
-        valueJson: JSON.stringify({
-          enabled: true,
-          accountName: "KhLan Payments (Sokha Chan)",
-          khqrPayload: null,
-          khqrImageUrl: null,
-          instructionsEn:
-            "1. Scan the KHQR with your banking app\n2. Transfer the exact USD amount\n3. Include the payment reference in the transfer note\n4. Send your transaction reference to the admin on Telegram\n5. The admin verifies and activates your subscription",
-          instructionsKm:
-            "១. ស្កេន KHQR ដោយកម្មវិធីធនាគាររបស់អ្នក\n២. បញ្ជូនចំនួនត្រឹមត្រូវជាដុល្លារ\n៣. ដាក់លេខយោងក្នុងកំណត់សម្គាល់បញ្ជូន\n៤. ផ្ញើលេខយោងប្រតិបត្តិការធនាគារទៅអ្នកគ្រប់គ្រងតាម Telegram\n៥. អ្នកគ្រប់គ្រងផ្ទៀងផ្ទាត់ និងដំណើរការការជាវរបស់អ្នក",
-          telegram: "@khlan_admin",
-          freePlan: { enabled: true, listingsLimit: 3, featuredLimit: 0, seats: 1 },
-        }),
-      },
-    ],
-  });
-
-  // Subscription payment demo — one manual request awaiting admin verification.
-  await prisma.subscriptionPayment.create({
-    data: {
-      id: "pay_demo_manual_1",
-      tenantId: "tenant_ppauto",
-      plan: "BASIC",
-      billingCycle: "MONTHLY",
-      amountUsd: 29,
-      months: 1,
-      method: "MANUAL",
-      status: "AWAITING_VERIFICATION",
-      reference: "PAY-DEMO-000001",
-      manualRef: "FT241118Z8877",
-      note: "Transferred via ACLEDA this morning, receipt attached.",
-      createdAt: daysAgo(1),
-    },
-  });
-
-  // Buyer purchase requests — one pending, one accepted (seller can complete it).
-  await prisma.purchaseRequest.createMany({
-    data: [
-      {
-        id: "pur_demo_prado",
-        vehicleId: "veh_prado_2018",
-        buyerId: "usr_demo_buyer",
-        tenantId: "tenant_sokha",
-        sellerUserId: "usr_dealer_sokha",
-        status: "PENDING",
-        message: "Hi, I inspected the Prado yesterday. I'd like to buy it at the listed price — can we finalize this week?",
-        priceUsd: 52500,
-        createdAt: daysAgo(1),
+        city: "Phnom Penh",
+        verified: true,
+        verification: "VERIFIED",
+        responseRate: 92,
+        ratingAvg: 4.5,
+        ratingCount: 78,
+        memberSince: new Date("2022-07-01T00:00:00Z"),
+        bio: "Well-maintained family SUVs, crossovers, and authentic motorcycle inventory.",
+        bioKm: "ក្រុមហ៊ុនលក់ឡានគ្រួសារដែលថែរក្សាល្អ និងម៉ូតូទំនុកចិត្ត។",
       },
       {
-        id: "pur_demo_crv",
-        vehicleId: "veh_crv_2019",
-        buyerId: "usr_demo_buyer",
-        tenantId: "tenant_ppauto",
-        sellerUserId: "usr_dealer_ppauto",
-        status: "ACCEPTED",
-        message: "Please hold the CR-V for me, my loan approval is nearly done.",
-        priceUsd: 25900,
-        decidedById: "usr_dealer_ppauto",
-        decidedAt: daysAgo(2),
-        createdAt: daysAgo(3),
-      },
-    ],
-  });
-
-  // Tenant lifecycle audit entries.
-  const sokhaSub = await prisma.subscription.findUnique({
-    where: { tenantId: "tenant_sokha" },
-  });
-  await prisma.auditLog.createMany({
-    data: [
-      {
-        actorId: "usr_dealer_sokha",
-        action: "TENANT_CREATED",
-        entity: "Tenant",
-        entityId: "tenant_sokha",
-        metaJson: JSON.stringify({ name: "Sokha Motors Group", slug: "sokha-motors" }),
-        createdAt: daysAgo(46),
+        userId: "usr_priv_vireak",
+        type: "PRIVATE",
+        tenantId: "tenant_vireak",
+        city: "Phnom Penh",
+        verified: false,
+        verification: "UNVERIFIED",
+        responseRate: 75,
+        ratingAvg: 4.2,
+        ratingCount: 9,
+        memberSince: new Date("2024-02-10T00:00:00Z"),
       },
       {
-        actorId: "usr_dealer_sokha",
-        action: "SUBSCRIPTION_STARTED",
-        entity: "Subscription",
-        entityId: sokhaSub?.id ?? null,
-        metaJson: JSON.stringify({
-          plan: "PRO",
-          billingCycle: "MONTHLY",
-          priceUsd: 59,
-          tenantId: "tenant_sokha",
-        }),
-        createdAt: daysAgo(45),
+        userId: "usr_priv_sopheak",
+        type: "PRIVATE",
+        tenantId: "tenant_sopheak",
+        city: "Kandal",
+        verified: false,
+        verification: "UNVERIFIED",
+        responseRate: 68,
+        ratingAvg: 4.0,
+        ratingCount: 5,
+        memberSince: new Date("2024-09-22T00:00:00Z"),
       },
     ],
   });
 }
 
 // ---------------------------------------------------------------------------
-// Vehicles
+// 4. Flexible Pricing Tiers (8 Price Types)
 // ---------------------------------------------------------------------------
 
-interface SeedVehicle {
+const PRICE_TYPES = [
+  { id: "pt_hot_price", code: "HOT_PRICE", label: "Hot Price", mode: "FIXED", badgeColor: "#EF4444", priority: 100, stackable: false, active: true },
+  { id: "pt_promote_price", code: "PROMOTE_PRICE", label: "Promote Price", mode: "PERCENT", badgeColor: "#F59E0B", priority: 80, stackable: false, active: true },
+  { id: "pt_clearance", code: "CLEARANCE", label: "Clearance", mode: "FIXED", badgeColor: "#8B5CF6", priority: 70, stackable: false, active: true },
+  { id: "pt_flash_sale", code: "FLASH_SALE", label: "Flash Sale", mode: "PERCENT", badgeColor: "#F97316", priority: 60, stackable: false, active: true },
+  { id: "pt_discount_price", code: "DISCOUNT_PRICE", label: "Discount Price", mode: "PERCENT", badgeColor: "#10B981", priority: 50, stackable: false, active: true },
+  { id: "pt_wholesale", code: "WHOLESALE", label: "Wholesale", mode: "PERCENT", badgeColor: "#3B82F6", priority: 40, stackable: false, active: true },
+  { id: "pt_member", code: "MEMBER", label: "Member Special", mode: "PERCENT", badgeColor: "#6366F1", priority: 30, stackable: false, active: true },
+  { id: "pt_bundle", code: "BUNDLE", label: "Bundle Deal", mode: "FIXED", badgeColor: "#06B6D4", priority: 20, stackable: false, active: true },
+];
+
+async function seedPriceTypes() {
+  await prisma.priceType.createMany({
+    data: PRICE_TYPES,
+  });
+}
+
+// ---------------------------------------------------------------------------
+// 5. Vehicles (34 Listings: 18 Cars, 8 Motorcycles, 8 Spare Parts)
+// ---------------------------------------------------------------------------
+
+interface SeedVehicleDef {
   id: string;
   sellerId: string;
-  slug: string;
-  imgCount: number;
+  branchId?: string;
+  listingCategory: "CAR" | "MOTOR" | "SPARE_PART";
   make: string;
   model: string;
   variant?: string;
   year: number;
   priceUsd: number;
+  floorPriceUsd?: number;
+  stockNo: string;
+  chassisNo?: string;
+  steering?: string;
+  doors?: number;
+  seats?: number;
   mileageKm: number;
   transmission: string;
   fuel: string;
@@ -508,804 +413,1424 @@ interface SeedVehicle {
   exteriorColor?: string;
   city: string;
   district?: string;
-  description?: string;
-  descriptionKm?: string;
-  status?: string;
+  importOrigin?: string;
+  locationPort?: string;
+  condition?: string;
+  accidentDeclared?: string;
+  ownershipCount?: number;
+  vinLast6?: string;
+  plateNo?: string;
+  description: string;
+  descriptionKm: string;
   featured?: boolean;
   views: number;
   daysAgo: number;
-  vinLast6?: string;
-  plateNo?: string;
-  ownershipCount?: number;
-  accidentDeclared?: string;
-  importOrigin?: string;
-  listingCategory?: "CAR" | "MOTOR" | "SPARE_PART";
+  images: string[];
+  docs: { type: string; status: string; notes?: string }[];
+  // Category-specific specs
+  motorType?: string;
+  hasAbs?: boolean;
+  startType?: string;
   partCategory?: string;
   partCondition?: string;
   partTarget?: string;
-  compatibleModels?: string;
   partNumber?: string;
-  docs: { type: string; status: string; notes?: string }[];
+  oemBrand?: string;
+  isOem?: boolean;
+  position?: string;
+  compatibleModels?: string;
+  compatibleMake?: string;
+  compatibleModel?: string;
+  // Promotion rule (optional)
+  promo?: {
+    priceTypeId: string;
+    value: number;
+    startDate?: Date | null;
+    endDate?: Date | null;
+  };
 }
 
-const VEHICLES: SeedVehicle[] = [
+const VEHICLES: SeedVehicleDef[] = [
+  // ================= CARS (18) =================
+  {
+    id: "veh_prado_alphard",
+    sellerId: "usr_dealer_sokha",
+    branchId: "branch_sokha_bkk",
+    listingCategory: "CAR",
+    make: "Toyota",
+    model: "Alphard",
+    variant: "Executive Lounge VIP",
+    year: 2022,
+    priceUsd: 118000,
+    floorPriceUsd: 105000, // Floor clamp test: 20% off = 94,400 -> Clamped to 105,000!
+    stockNo: "STK-SK-001",
+    chassisNo: "AGH30-019823",
+    steering: "LEFT",
+    doors: 5,
+    seats: 7,
+    mileageKm: 28000,
+    transmission: "AUTOMATIC",
+    fuel: "HYBRID",
+    engineCc: 2500,
+    drivetrain: "AWD",
+    bodyType: "VAN",
+    exteriorColor: "White Pearl",
+    city: "Phnom Penh",
+    district: "Boeung Keng Kang",
+    importOrigin: "JAPAN",
+    locationPort: "PAS Sihanoukville",
+    condition: "LIKE_NEW",
+    accidentDeclared: "NONE_DECLARED",
+    ownershipCount: 1,
+    vinLast6: "019823",
+    plateNo: "2BX-1122",
+    description: "Toyota Alphard Executive Lounge 2022 Hybrid. Ottoman VIP seats, JBL surround sound, dual sunroof, full 360 camera.",
+    descriptionKm: "Toyota Alphard 2022 Executive Lounge VIP កៅអីម៉ាស្សា កាមេរ៉ា៣៦០ សម្លេង JBL ស្ថានភាពស្អាតដូចថ្មី។",
+    featured: true,
+    views: 412,
+    daysAgo: 2,
+    images: IMG.vellfire || IMG.prado,
+    docs: [{ type: "REGISTRATION_CARD", status: "VERIFIED", notes: "Genuine 1-owner book" }],
+    promo: {
+      priceTypeId: "pt_promote_price",
+      value: 20, // 20% off -> Clamps to floor $105,000
+    },
+  },
+  {
+    id: "veh_lx570",
+    sellerId: "usr_dealer_sokha",
+    branchId: "branch_sokha_bkk",
+    listingCategory: "CAR",
+    make: "Lexus",
+    model: "LX",
+    variant: "570 Super Sport",
+    year: 2019,
+    priceUsd: 115000,
+    floorPriceUsd: 102000, // Floor clamp test: $95,000 promo clamped to $102,000!
+    stockNo: "STK-SK-002",
+    chassisNo: "URJ201-882310",
+    steering: "LEFT",
+    doors: 5,
+    seats: 7,
+    mileageKm: 62000,
+    transmission: "AUTOMATIC",
+    fuel: "PETROL",
+    engineCc: 5700,
+    drivetrain: "4WD",
+    bodyType: "SUV",
+    exteriorColor: "Black",
+    city: "Phnom Penh",
+    district: "Boeung Keng Kang",
+    importOrigin: "DUBAI",
+    locationPort: "PAS Sihanoukville",
+    condition: "USED",
+    accidentDeclared: "NONE_DECLARED",
+    ownershipCount: 1,
+    vinLast6: "882310",
+    plateNo: "2BW-8899",
+    description: "Lexus LX570 Super Sport 2019 Dubai full options. Red leather interior, Mark Levinson audio, hydraulic suspension.",
+    descriptionKm: "Lexus LX570 Super Sport 2019 កៅអីក្រហម ម៉ាស៊ីន Mark Levinson បូមឡើងចុះ នាំចូលពីឌូបៃ។",
+    featured: true,
+    views: 520,
+    daysAgo: 3,
+    images: IMG.lexus,
+    docs: [{ type: "IMPORT_DECLARATION", status: "VERIFIED" }],
+    promo: {
+      priceTypeId: "pt_hot_price",
+      value: 95000, // Target $95,000 -> Clamps to floor $102,000
+    },
+  },
   {
     id: "veh_prado_2018",
     sellerId: "usr_dealer_sokha",
-    slug: "prado",
-    imgCount: 4,
+    branchId: "branch_sokha_main",
+    listingCategory: "CAR",
     make: "Toyota",
     model: "Land Cruiser Prado",
-    variant: "TX",
+    variant: "TX-L Diesel",
     year: 2018,
-    priceUsd: 52500,
+    priceUsd: 72000,
+    floorPriceUsd: 64000,
+    stockNo: "STK-SK-003",
+    chassisNo: "TRJ150-554122",
+    steering: "LEFT",
+    doors: 5,
+    seats: 7,
     mileageKm: 89000,
     transmission: "AUTOMATIC",
     fuel: "DIESEL",
     engineCc: 2800,
-    drivetrain: "AWD",
+    drivetrain: "4WD",
     bodyType: "SUV",
-    exteriorColor: "white",
+    exteriorColor: "Pearl White",
     city: "Phnom Penh",
-    district: "Chamkarmon",
-    description:
-      "Single-owner overseas unit, full service history at authorized workshop. New tires, clean interior, no repaint. Documents complete: registration book and import declaration available for inspection.",
-    descriptionKm:
-      "ឡានស្អាត ប្រវត្តិសកម្រងពេញលេញ កង់ថ្មី ខាងក្នុងស្អាត គ្មានសព្ទថ្ម។ ឯកសារពេញលេញ។",
-    featured: true,
-    views: 2140,
-    daysAgo: 2,
-    vinLast6: "T8H229",
-    plateNo: "1KH-8823",
-    ownershipCount: 2,
-    accidentDeclared: "NONE_DECLARED",
+    district: "Toul Kork",
     importOrigin: "DUBAI",
+    locationPort: "PAS Sihanoukville",
+    condition: "USED",
+    accidentDeclared: "NONE_DECLARED",
+    ownershipCount: 1,
+    vinLast6: "554122",
+    plateNo: "1KH-8823",
+    description: "2018 Toyota Land Cruiser Prado TX-L 2.8L turbo diesel. Full service records at Toyota Cambodia. Excellent suspension.",
+    descriptionKm: "Toyota Land Cruiser Prado TX-L ឆ្នាំ២០១៨ ម៉ាស៊ូត ២.៨L ថែទាំនៅក្រុមហ៊ុនតូយ៉ូតាផ្ទាល់។",
+    featured: true,
+    views: 890,
+    daysAgo: 4,
+    images: IMG.prado,
     docs: [
-      { type: "REGISTRATION_BOOK", status: "VERIFIED" },
+      { type: "REGISTRATION_CARD", status: "VERIFIED" },
       { type: "IMPORT_DECLARATION", status: "VERIFIED" },
-      {
-        type: "SERVICE_RECORD",
-        status: "PROVIDED",
-        notes: "Authorized workshop records 2019-2024",
-      },
+      { type: "SERVICE_RECORD", status: "PROVIDED" },
     ],
+    promo: {
+      priceTypeId: "pt_hot_price",
+      value: 66000, // Hot Price $66,000
+    },
   },
   {
-    id: "veh_lexus_rx350",
+    id: "veh_rx350",
     sellerId: "usr_dealer_sokha",
-    slug: "lexus",
-    imgCount: 4,
+    branchId: "branch_sokha_main",
+    listingCategory: "CAR",
     make: "Lexus",
     model: "RX",
-    variant: "350",
-    year: 2015,
-    priceUsd: 34900,
-    mileageKm: 118000,
+    variant: "350 F-Sport AWD",
+    year: 2020,
+    priceUsd: 68000,
+    floorPriceUsd: 60000,
+    stockNo: "STK-SK-004",
+    chassisNo: "2T2BZMCA-5819",
+    steering: "LEFT",
+    doors: 5,
+    seats: 5,
+    mileageKm: 52000,
     transmission: "AUTOMATIC",
     fuel: "PETROL",
     engineCc: 3500,
     drivetrain: "AWD",
     bodyType: "SUV",
-    exteriorColor: "pearl white",
+    exteriorColor: "Sonic Titanium",
     city: "Phnom Penh",
     district: "Toul Kork",
-    description:
-      "US-imported RX 350 in good condition. Minor parking-lot dent repaired on rear bumper (documented). Navigation and leather in great shape.",
-    descriptionKm:
-      "RX 350 នាំចូលពីអាមេរិក ស្ថានភាពល្អ។ ស្ពានក្រោយបានជួសជុលគ្រោះថ្នាក់តូច (មានឯកសារបញ្ជាក់)។ ប្រព័ន្ធនាវាចរណ៍ និងកៅអ៊ីស្បែកនៅល្អ។",
-    featured: true,
-    views: 1860,
-    daysAgo: 6,
-    vinLast6: "5T4119",
-    plateNo: "2AB-1194",
-    ownershipCount: 3,
-    accidentDeclared: "MINOR_DECLARED",
     importOrigin: "USA",
-    docs: [
-      { type: "REGISTRATION_BOOK", status: "PROVIDED" },
-      { type: "IMPORT_DECLARATION", status: "PROVIDED" },
-      { type: "SERVICE_RECORD", status: "MISSING" },
-    ],
+    locationPort: "PPAP Phnom Penh",
+    condition: "LIKE_NEW",
+    accidentDeclared: "NONE_DECLARED",
+    ownershipCount: 1,
+    vinLast6: "CA5819",
+    plateNo: "2BL-3399",
+    description: "Lexus RX350 F-Sport 2020 imported from California. Head-up display, panoramic roof, wireless charger.",
+    descriptionKm: "Lexus RX350 F-Sport 2020 ក្រដាសពន្ធ USA កុងទ័រ HUD ដំបូលកញ្ចក់បើកបាន ឡានស្អាតគ្មានកន្លែងទាស់។",
+    featured: true,
+    views: 630,
+    daysAgo: 5,
+    images: IMG.lexus,
+    docs: [{ type: "REGISTRATION_CARD", status: "VERIFIED" }],
+    promo: {
+      priceTypeId: "pt_promote_price",
+      value: 10, // 10% off -> $61,200
+    },
   },
   {
-    id: "veh_revo_2020",
-    sellerId: "usr_priv_vireak",
-    slug: "revo",
-    imgCount: 4,
+    id: "veh_revo_2021",
+    sellerId: "usr_dealer_sokha",
+    branchId: "branch_sokha_main",
+    listingCategory: "CAR",
     make: "Toyota",
-    model: "Hilux Revo",
-    variant: "2.8 G",
-    year: 2020,
-    priceUsd: 29800,
-    mileageKm: 76000,
-    transmission: "MANUAL",
+    model: "Hilux",
+    variant: "Revo Rocco 4x4",
+    year: 2021,
+    priceUsd: 39500,
+    floorPriceUsd: 35000,
+    stockNo: "STK-SK-005",
+    chassisNo: "GUN125-998124",
+    steering: "RIGHT", // Authentic RHD Thailand import
+    doors: 4,
+    seats: 5,
+    mileageKm: 48000,
+    transmission: "AUTOMATIC",
     fuel: "DIESEL",
     engineCc: 2800,
     drivetrain: "4WD",
     bodyType: "PICKUP",
-    exteriorColor: "silver",
-    city: "Phnom Penh",
-    district: "Sen Sok",
-    description:
-      "One-owner Thai import used for both work and family. Engine and 4WD system strong on test drives. Serviced on schedule, new battery and tires.",
-    descriptionKm:
-      "ឡានម្ចាស់តែម្នាក់ នាំចូលពីប្រទេសថៃ។ ម៉ាស៊ីន និងប្រព័ន្ធ 4WD នៅមានកម្លាំងល្អ។ ការថែទាំទាន់ពេលវេលា ថ្ម និងកង់ថ្មី។",
-    views: 940,
-    daysAgo: 10,
-    plateNo: "3CD-5567",
-    ownershipCount: 1,
-    accidentDeclared: "NONE_DECLARED",
-    importOrigin: "THAILAND",
-    docs: [
-      { type: "REGISTRATION_BOOK", status: "PROVIDED" },
-      {
-        type: "IMPORT_DECLARATION",
-        status: "MISSING",
-        notes: "Seller to provide before sale",
-      },
-    ],
-  },
-  {
-    id: "veh_crv_2019",
-    sellerId: "usr_dealer_ppauto",
-    slug: "crv",
-    imgCount: 4,
-    make: "Honda",
-    model: "CR-V",
-    variant: "1.5 Turbo",
-    year: 2019,
-    priceUsd: 25900,
-    mileageKm: 95000,
-    transmission: "AUTOMATIC",
-    fuel: "PETROL",
-    engineCc: 1500,
-    drivetrain: "FWD",
-    bodyType: "SUV",
-    exteriorColor: "gray",
-    city: "Phnom Penh",
-    district: "Mean Chey",
-    description:
-      "Well-kept CR-V turbo: smooth CVT, excellent fuel economy, non-smoker interior. All electronics working. A great family SUV.",
-    descriptionKm:
-      "CR-V ទួរបូថែរក្សាល្អ បញ្ជូនរលូន សន្សំសាំង។ ខាងក្នុងស្អាត ឧបករណ៍អេឡិចត្រូនិកទាំងអស់ដំណើរការល្អ។ ល្អសម្រាប់គ្រួសារ។",
-    featured: true,
-    views: 1520,
-    daysAgo: 14,
-    vinLast6: "2HK331",
-    ownershipCount: 1,
-    accidentDeclared: "NONE_DECLARED",
-    importOrigin: "THAILAND",
-    docs: [
-      { type: "REGISTRATION_BOOK", status: "VERIFIED" },
-      { type: "IMPORT_DECLARATION", status: "PROVIDED" },
-    ],
-  },
-  {
-    id: "veh_camry_2018",
-    sellerId: "usr_priv_sopheak",
-    slug: "camry",
-    imgCount: 4,
-    make: "Toyota",
-    model: "Camry",
-    variant: "2.0 G",
-    year: 2018,
-    priceUsd: 21500,
-    mileageKm: 124000,
-    transmission: "AUTOMATIC",
-    fuel: "PETROL",
-    engineCc: 2000,
-    drivetrain: "FWD",
-    bodyType: "SEDAN",
-    exteriorColor: "black",
-    city: "Phnom Penh",
-    district: "Chamkarmon",
-    description:
-      "urgent sale this week — owner relocating abroad. Daily-driver condition, engine and transmission smooth. Priced below market for a quick sale; import declaration to be provided.",
-    descriptionKm:
-      "លក់ប្រញាប់ក្នុងសប្តាហ៍នេះ — ម្ចាស់ត្រូវចេញដំណើរទៅបរទេស។ ឡានប្រើប្រចាំថ្ងៃ ម៉ាស៊ីន និងការបញ្ជូនដំណើរការរលូន។ តម្លៃក្រោមទីផ្សារសម្រាប់លក់រហ័ស។",
-    views: 720,
-    daysAgo: 18,
-    plateNo: "1EF-7781",
-    ownershipCount: 2,
-    accidentDeclared: "UNKNOWN",
-    importOrigin: "LOCAL",
-    docs: [
-      { type: "REGISTRATION_BOOK", status: "PROVIDED" },
-      { type: "IMPORT_DECLARATION", status: "MISSING" },
-      { type: "SERVICE_RECORD", status: "MISSING" },
-    ],
-  },
-  {
-    id: "veh_ranger_2019",
-    sellerId: "usr_priv_vireak",
-    slug: "ranger",
-    imgCount: 4,
-    make: "Ford",
-    model: "Ranger",
-    variant: "Wildtrak 2.0",
-    year: 2019,
-    priceUsd: 24700,
-    mileageKm: 102000,
-    transmission: "AUTOMATIC",
-    fuel: "DIESEL",
-    engineCc: 2000,
-    drivetrain: "4WD",
-    bodyType: "PICKUP",
-    exteriorColor: "white",
-    city: "Kandal",
-    district: "Ta Khmau",
-    description:
-      "Wildtrak 2.0 with declared minor panel damage (door dent professionally repaired, documented). 4WD and towing package fully functional. New all-terrain tires.",
-    descriptionKm:
-      "Wildtrak មានប្រកាសគ្រោះថ្នាក់តូចតាច (ស្ពានទ្វារបានជួសជុលដោយវិជ្ជាជីវៈ មានឯកសារបញ្ជាក់)។ ប្រព័ន្ធ 4WD ដំណើរការពេញលេញ។ កង់ថ្មី។",
-    views: 880,
-    daysAgo: 22,
-    plateNo: "3BK-2201",
-    ownershipCount: 1,
-    accidentDeclared: "MINOR_DECLARED",
-    importOrigin: "THAILAND",
-    docs: [
-      { type: "REGISTRATION_BOOK", status: "PROVIDED" },
-      { type: "SERVICE_RECORD", status: "PROVIDED" },
-    ],
-  },
-  {
-    id: "veh_tucson_2020",
-    sellerId: "usr_dealer_ppauto",
-    slug: "tucson",
-    imgCount: 4,
-    make: "Hyundai",
-    model: "Tucson",
-    variant: "2.0",
-    year: 2020,
-    priceUsd: 23400,
-    mileageKm: 68000,
-    transmission: "AUTOMATIC",
-    fuel: "PETROL",
-    engineCc: 2000,
-    drivetrain: "FWD",
-    bodyType: "SUV",
-    exteriorColor: "white",
-    city: "Phnom Penh",
-    district: "Russey Keo",
-    description:
-      "Korean import with low mileage and clean body panels. Registration book platform-verified. Great-value family crossover.",
-    descriptionKm:
-      "Tucson នាំចូលពីកូរ៉េ ចំនួនគ.មតិច សន្លឹកខាងក្រៅស្អាត។ សៀវភៅចុះបញ្ជីបានផ្ទៀងផ្ទាត់ដោយវេទិកា។ តម្លៃល្អសម្រាប់ឡានគ្រួសារ។",
-    views: 760,
-    daysAgo: 26,
-    vinLast6: "KMHD241",
-    ownershipCount: 1,
-    accidentDeclared: "NONE_DECLARED",
-    importOrigin: "KOREA",
-    docs: [
-      { type: "REGISTRATION_BOOK", status: "VERIFIED" },
-      { type: "IMPORT_DECLARATION", status: "PROVIDED" },
-    ],
-  },
-  {
-    id: "veh_carnival_2018",
-    sellerId: "usr_dealer_ppauto",
-    slug: "carnival",
-    imgCount: 4,
-    make: "Kia",
-    model: "Carnival",
-    variant: "2.2 D",
-    year: 2018,
-    priceUsd: 27300,
-    mileageKm: 131000,
-    transmission: "AUTOMATIC",
-    fuel: "DIESEL",
-    engineCc: 2200,
-    drivetrain: "FWD",
-    bodyType: "VAN",
-    exteriorColor: "silver",
+    exteriorColor: "Crimson Red",
     city: "Phnom Penh",
     district: "Toul Kork",
-    description:
-      "Spacious 8-seat Carnival, ideal for family use or airport transfer business. Oil changed on schedule, new tires all round. Third row folds flat.",
-    descriptionKm:
-      "Carnival កៅអ៊ី ៨ ធំធេង ល្អសម្រាប់គ្រួសារ ឬសេវាដឹកជន។ ប្តូរប្រេងទាន់ពេល កង់ថ្មីទាំង ៤។ កៅអ៊ីជួរទី៣អាចបត់បានរាបស្មើ។",
-    views: 690,
-    daysAgo: 30,
-    plateNo: "2GH-9014",
-    ownershipCount: 3,
+    importOrigin: "THAILAND",
+    locationPort: "PAS Sihanoukville",
+    condition: "USED",
     accidentDeclared: "NONE_DECLARED",
-    importOrigin: "KOREA",
-    docs: [
-      { type: "REGISTRATION_BOOK", status: "PROVIDED" },
-      { type: "IMPORT_DECLARATION", status: "PROVIDED" },
-      { type: "SERVICE_RECORD", status: "PROVIDED" },
-    ],
+    ownershipCount: 1,
+    vinLast6: "998124",
+    plateNo: "2BN-5566",
+    description: "Hilux Revo Rocco 2021 top spec 2.8L 4x4. Right-hand drive Thailand direct import. Off-road bar and roller lid installed.",
+    descriptionKm: "Hilux Revo Rocco 2021 កំពូល Option ចង្កូតស្តាំនាំចូលពីថៃផ្ទាល់ ម៉ាស៊ីនខ្លាំង ស៊ីប្រេងតិច។",
+    views: 410,
+    daysAgo: 6,
+    images: IMG.revo,
+    docs: [{ type: "IMPORT_DECLARATION", status: "VERIFIED" }],
   },
   {
-    id: "veh_vellfire_2017",
+    id: "veh_raptor_2023",
     sellerId: "usr_dealer_sokha",
-    slug: "vellfire",
-    imgCount: 4,
+    branchId: "branch_sokha_main",
+    listingCategory: "CAR",
+    make: "Ford",
+    model: "Ranger",
+    variant: "Raptor 3.0L V6 Twin-Turbo",
+    year: 2023,
+    priceUsd: 69000,
+    floorPriceUsd: 60000,
+    stockNo: "STK-SK-006",
+    chassisNo: "MNBMS-771239",
+    steering: "LEFT",
+    doors: 4,
+    seats: 5,
+    mileageKm: 21000,
+    transmission: "AUTOMATIC",
+    fuel: "PETROL",
+    engineCc: 3000,
+    drivetrain: "4WD",
+    bodyType: "PICKUP",
+    exteriorColor: "Code Orange",
+    city: "Phnom Penh",
+    district: "Toul Kork",
+    importOrigin: "THAILAND",
+    locationPort: "PAS Sihanoukville",
+    condition: "LIKE_NEW",
+    accidentDeclared: "NONE_DECLARED",
+    ownershipCount: 1,
+    vinLast6: "771239",
+    plateNo: "2CA-8877",
+    description: "Next-Gen Ranger Raptor 2023 V6 EcoBoost twin turbo. Fox Live Valve 2.5 shocks, 10-speed auto, sports exhaust mode.",
+    descriptionKm: "Ford Ranger Raptor 2023 ម៉ាស៊ីនសាំង 3.0L V6 Twin Turbo បូម FOX Live Valve សម្លេងស្ព័រពីរោងចក្រ។",
+    featured: true,
+    views: 740,
+    daysAgo: 1,
+    images: IMG.ranger,
+    docs: [{ type: "REGISTRATION_CARD", status: "VERIFIED" }],
+    promo: {
+      priceTypeId: "pt_flash_sale",
+      value: 10, // 10% off -> $62,100
+      startDate: daysAgo(1),
+      endDate: daysFromNow(3), // Flash Sale expires in 3 days!
+    },
+  },
+  {
+    id: "veh_camry_2021",
+    sellerId: "usr_dealer_sokha",
+    branchId: "branch_sokha_bkk",
+    listingCategory: "CAR",
     make: "Toyota",
-    model: "Vellfire",
-    variant: "2.5 Z",
-    year: 2017,
-    priceUsd: 49800,
-    mileageKm: 92000,
+    model: "Camry",
+    variant: "Hybrid XLE",
+    year: 2021,
+    priceUsd: 38000,
+    floorPriceUsd: 34000,
+    stockNo: "STK-SK-007",
+    chassisNo: "4T1B11-662194",
+    steering: "LEFT",
+    doors: 4,
+    seats: 5,
+    mileageKm: 39000,
     transmission: "AUTOMATIC",
     fuel: "HYBRID",
     engineCc: 2500,
     drivetrain: "FWD",
-    bodyType: "VAN",
-    exteriorColor: "black",
+    bodyType: "SEDAN",
+    exteriorColor: "Midnight Black",
     city: "Phnom Penh",
-    district: "Chamkarmon",
-    description:
-      "Japan-imported Vellfire 2.5 Z hybrid, full options: power doors, twin sunroof, premium audio. Immaculate garage-kept interior. Complete documents including technical inspection certificate.",
-    descriptionKm:
-      "Vellfire 2.5 Z Hybrid នាំចូលពីជប៉ុន បរិក្ខារពេញលេញ៖ ទ្វារអគ្គិសនី ស៊ុនរូហ្វទ្វេ ប្រព័ន្ធសំឡេងពិសេស។ ខាងក្នុងស្អាតខ្លាំង ចតក្នុងផ្ទះ។ ឯកសារពេញលេញ រួមទាំងសញ្ញាបត្រពិនិត្យបច្ចេកទេស។",
-    featured: true,
-    views: 1290,
-    daysAgo: 34,
-    vinLast6: "JTH778",
-    plateNo: "1AA-3390",
-    ownershipCount: 1,
+    district: "Boeung Keng Kang",
+    importOrigin: "USA",
+    locationPort: "PPAP Phnom Penh",
+    condition: "USED",
     accidentDeclared: "NONE_DECLARED",
-    importOrigin: "JAPAN",
-    docs: [
-      { type: "REGISTRATION_BOOK", status: "VERIFIED" },
-      { type: "IMPORT_DECLARATION", status: "VERIFIED" },
-      { type: "SERVICE_RECORD", status: "PROVIDED" },
-      { type: "INSPECTION_CERT", status: "PROVIDED" },
-    ],
+    ownershipCount: 1,
+    vinLast6: "662194",
+    plateNo: "2BM-1188",
+    description: "Toyota Camry XLE Hybrid 2021. Fuel consumption 4.5L/100km, JBL premium audio, heated leather seats, blind spot monitor.",
+    descriptionKm: "Camry Hybrid 2021 XLE ស៊ីសាំងតិច ៤.៥លីត្រ/១០០គ.ម គ្រឿងក្នុងប្រណីត បំពាក់ឧបករណ៍ជំនួយសុវត្ថិភាពពេញលេញ។",
+    views: 380,
+    daysAgo: 7,
+    images: IMG.camry,
+    docs: [{ type: "REGISTRATION_CARD", status: "VERIFIED" }],
   },
   {
-    id: "veh_cclass_2016",
+    id: "veh_santafe_2022",
     sellerId: "usr_dealer_sokha",
-    slug: "cclass",
-    imgCount: 4,
+    branchId: "branch_sokha_main",
+    listingCategory: "CAR",
+    make: "Hyundai",
+    model: "Santa Fe",
+    variant: "Calligraphy HTRAC",
+    year: 2022,
+    priceUsd: 42000,
+    floorPriceUsd: 37000,
+    stockNo: "STK-SK-008",
+    chassisNo: "KM8SM-331902",
+    steering: "LEFT",
+    doors: 5,
+    seats: 7,
+    mileageKm: 31000,
+    transmission: "AUTOMATIC",
+    fuel: "DIESEL",
+    engineCc: 2200,
+    drivetrain: "AWD",
+    bodyType: "SUV",
+    exteriorColor: "Magnetic Force Grey",
+    city: "Phnom Penh",
+    district: "Toul Kork",
+    importOrigin: "KOREA",
+    locationPort: "PAS Sihanoukville",
+    condition: "LIKE_NEW",
+    accidentDeclared: "NONE_DECLARED",
+    ownershipCount: 1,
+    vinLast6: "331902",
+    plateNo: "2BK-9911",
+    description: "Hyundai Santa Fe 2022 Calligraphy Korea import. Nappa leather, 360 blind view camera, remote smart parking assist.",
+    descriptionKm: "Hyundai Santa Fe 2022 Calligraphy ម៉ាស៊ូត កៅអីស្បែក Nappa បញ្ជាចតពីចម្ងាយដោយតេឡេ។",
+    views: 290,
+    daysAgo: 8,
+    images: IMG.tucson,
+    docs: [{ type: "IMPORT_DECLARATION", status: "VERIFIED" }],
+    promo: {
+      priceTypeId: "pt_discount_price",
+      value: 10, // 10% off -> $37,800
+    },
+  },
+  {
+    id: "veh_c200_2020",
+    sellerId: "usr_dealer_sokha",
+    branchId: "branch_sokha_bkk",
+    listingCategory: "CAR",
     make: "Mercedes-Benz",
     model: "C-Class",
-    variant: "C 200",
-    year: 2016,
-    priceUsd: 30200,
-    mileageKm: 111000,
+    variant: "C200 AMG Dynamic",
+    year: 2020,
+    priceUsd: 46000,
+    floorPriceUsd: 40000,
+    stockNo: "STK-SK-009",
+    chassisNo: "WDD205-001928",
+    steering: "LEFT",
+    doors: 4,
+    seats: 5,
+    mileageKm: 42000,
     transmission: "AUTOMATIC",
     fuel: "PETROL",
     engineCc: 2000,
     drivetrain: "RWD",
     bodyType: "SEDAN",
-    exteriorColor: "silver",
+    exteriorColor: "Polar White",
     city: "Phnom Penh",
-    district: "7 Makara",
-    description:
-      "Elegant C 200 with service stamps up to 2022. Suspension and A/C recently checked. Comes with two keys. Import declaration missing — seller is obtaining a copy.",
-    descriptionKm:
-      "C 200 ស្អាត កំណត់ហេតុសេវាកម្មដល់ឆ្នាំ ២០២២។ ស៊ុស និងម៉ាស៊ីនត្រជាក់ទើបពិនិត្យថ្មី។ លក់ជាមួយកូនសោ ២។ លិខិតប្រកាសនាំចូលបាត់ — អ្នកលក់កំពុងសុំចម្លង។",
-    views: 1050,
-    daysAgo: 38,
-    plateNo: "1KL-4412",
-    ownershipCount: 2,
-    accidentDeclared: "UNKNOWN",
-    importOrigin: "DUBAI",
-    docs: [
-      { type: "REGISTRATION_BOOK", status: "PROVIDED" },
-      { type: "IMPORT_DECLARATION", status: "MISSING" },
-    ],
+    district: "Boeung Keng Kang",
+    importOrigin: "LOCAL",
+    condition: "USED",
+    accidentDeclared: "NONE_DECLARED",
+    ownershipCount: 1,
+    vinLast6: "001928",
+    plateNo: "2BH-7722",
+    description: "Mercedes-Benz C200 AMG 2020. Local Star Auto Cambodia official purchase. Digital cockpit, 64-color ambient lighting.",
+    descriptionKm: "Mercedes-Benz C200 AMG ឆ្នាំ២០២០ ឡានក្រុមហ៊ុនផ្លូវការ Star Auto Cambodia មានកុងទ័រឌីជីថល អំពូល ៦៤ ពណ៌។",
+    views: 310,
+    daysAgo: 9,
+    images: IMG.cclass,
+    docs: [{ type: "REGISTRATION_CARD", status: "VERIFIED" }],
   },
   {
-    id: "veh_civic_2019",
-    sellerId: "usr_priv_sopheak",
-    slug: "civic",
-    imgCount: 4,
+    id: "veh_carnival_2022",
+    sellerId: "usr_dealer_sokha",
+    branchId: "branch_sokha_main",
+    listingCategory: "CAR",
+    make: "Kia",
+    model: "Carnival",
+    variant: "Signature 7-Seater",
+    year: 2022,
+    priceUsd: 51000,
+    floorPriceUsd: 45000,
+    stockNo: "STK-SK-010",
+    chassisNo: "KNDMA-884129",
+    steering: "LEFT",
+    doors: 5,
+    seats: 7,
+    mileageKm: 34000,
+    transmission: "AUTOMATIC",
+    fuel: "DIESEL",
+    engineCc: 2200,
+    drivetrain: "FWD",
+    bodyType: "VAN",
+    exteriorColor: "Snow White Pearl",
+    city: "Phnom Penh",
+    district: "Toul Kork",
+    importOrigin: "KOREA",
+    locationPort: "PAS Sihanoukville",
+    condition: "LIKE_NEW",
+    accidentDeclared: "NONE_DECLARED",
+    ownershipCount: 1,
+    vinLast6: "884129",
+    plateNo: "2BP-4411",
+    description: "Kia Carnival 2022 Signature VIP 7-seater diesel. Relaxation captain seats, twin sunroof, dual 12.3-inch displays.",
+    descriptionKm: "Kia Carnival 2022 Signature VIP ៧កៅអី ម៉ាស៊ីនម៉ាស៊ូត កៅអីកាពីតែន ដំបូលកញ្ចក់ភ្លោះ។",
+    views: 450,
+    daysAgo: 3,
+    images: IMG.carnival,
+    docs: [{ type: "REGISTRATION_CARD", status: "VERIFIED" }],
+    promo: {
+      priceTypeId: "pt_clearance",
+      value: 47000, // Clearance target $47,000
+    },
+  },
+  {
+    id: "veh_crv_2021",
+    sellerId: "usr_dealer_ppauto",
+    branchId: "branch_ppauto_main",
+    listingCategory: "CAR",
     make: "Honda",
-    model: "Civic",
-    variant: "1.8 E",
-    year: 2019,
-    priceUsd: 19400,
-    mileageKm: 88000,
+    model: "CR-V",
+    variant: "Prestige Turbo",
+    year: 2021,
+    priceUsd: 36500,
+    floorPriceUsd: 32000,
+    stockNo: "STK-PP-001",
+    chassisNo: "RW1-119284",
+    steering: "LEFT",
+    doors: 5,
+    seats: 7,
+    mileageKm: 38000,
+    transmission: "AUTOMATIC",
+    fuel: "PETROL",
+    engineCc: 1500,
+    drivetrain: "AWD",
+    bodyType: "SUV",
+    exteriorColor: "Modern Steel Metallic",
+    city: "Phnom Penh",
+    district: "Sen Sok",
+    importOrigin: "LOCAL",
+    condition: "USED",
+    accidentDeclared: "NONE_DECLARED",
+    ownershipCount: 1,
+    vinLast6: "119284",
+    plateNo: "2BI-6688",
+    description: "Honda CR-V 2021 Turbo 7-seater. Honda Sensing safety suite, hands-free power tailgate, panoramic roof.",
+    descriptionKm: "Honda CR-V 2021 ម៉ាស៊ីន Turbo ៧កៅអី មានប្រព័ន្ធសុវត្ថិភាព Honda Sensing និងទ្វារក្រោយអូតូ។",
+    views: 420,
+    daysAgo: 4,
+    images: IMG.crv,
+    docs: [{ type: "REGISTRATION_CARD", status: "VERIFIED" }],
+    promo: {
+      priceTypeId: "pt_hot_price",
+      value: 33500, // Hot Price $33,500
+    },
+  },
+  {
+    id: "veh_cx5_2023",
+    sellerId: "usr_dealer_ppauto",
+    branchId: "branch_ppauto_main",
+    listingCategory: "CAR",
+    make: "Mazda",
+    model: "CX-5",
+    variant: "2.5L AWD Exclusive",
+    year: 2023,
+    priceUsd: 33000,
+    floorPriceUsd: 29000,
+    stockNo: "STK-PP-002",
+    chassisNo: "KF2P-441920",
+    steering: "LEFT",
+    doors: 5,
+    seats: 5,
+    mileageKm: 19000,
+    transmission: "AUTOMATIC",
+    fuel: "PETROL",
+    engineCc: 2500,
+    drivetrain: "AWD",
+    bodyType: "SUV",
+    exteriorColor: "Soul Red Crystal",
+    city: "Phnom Penh",
+    district: "Sen Sok",
+    importOrigin: "JAPAN",
+    locationPort: "PAS Sihanoukville",
+    condition: "LIKE_NEW",
+    accidentDeclared: "NONE_DECLARED",
+    ownershipCount: 1,
+    vinLast6: "441920",
+    plateNo: "2BZ-9922",
+    description: "Mazda CX-5 2023 Exclusive AWD. Bose 10-speaker sound, ventilated seats, wireless Apple CarPlay, 360 view.",
+    descriptionKm: "Mazda CX-5 2023 ពណ៌ក្រហមគ្រីស្តាល់ កៅអីខ្យល់ត្រជាក់ សម្លេង Bose ១០គ្រាប់។",
+    views: 390,
+    daysAgo: 5,
+    images: IMG.cx5,
+    docs: [{ type: "REGISTRATION_CARD", status: "VERIFIED" }],
+    // Future scheduled campaign (starts in 7 days -> currently resolves to base price $33,000!)
+    promo: {
+      priceTypeId: "pt_flash_sale",
+      value: 15,
+      startDate: daysFromNow(7),
+      endDate: daysFromNow(21),
+    },
+  },
+  {
+    id: "veh_prius_2017",
+    sellerId: "usr_dealer_ppauto",
+    branchId: "branch_ppauto_main",
+    listingCategory: "CAR",
+    make: "Toyota",
+    model: "Prius",
+    variant: "Four Touring",
+    year: 2017,
+    priceUsd: 21500,
+    floorPriceUsd: 18500,
+    stockNo: "STK-PP-003",
+    chassisNo: "JTDKN-771239",
+    steering: "LEFT",
+    doors: 5,
+    seats: 5,
+    mileageKm: 76000,
+    transmission: "AUTOMATIC",
+    fuel: "HYBRID",
+    engineCc: 1800,
+    drivetrain: "FWD",
+    bodyType: "HATCHBACK",
+    exteriorColor: "Sea Glass Pearl",
+    city: "Phnom Penh",
+    district: "Sen Sok",
+    importOrigin: "USA",
+    locationPort: "PPAP Phnom Penh",
+    condition: "USED",
+    accidentDeclared: "NONE_DECLARED",
+    ownershipCount: 1,
+    vinLast6: "771239",
+    plateNo: "2AX-4433",
+    description: "Toyota Prius 2017 Four Touring. Excellent hybrid battery health, leather interior, lane keep assist, heads-up display.",
+    descriptionKm: "Toyota Prius 2017 Four Touring អាគុយហាយប្រ៊ីដនៅល្អណាស់ គ្រឿងក្នុងស្បែក សន្សំសំចៃខ្ពស់។",
+    views: 340,
+    daysAgo: 8,
+    images: IMG.civic, // representative compact sedan/hatchback
+    docs: [{ type: "REGISTRATION_CARD", status: "VERIFIED" }],
+    promo: {
+      priceTypeId: "pt_clearance",
+      value: 19500, // Clearance $19,500
+    },
+  },
+  {
+    id: "veh_everest_2022",
+    sellerId: "usr_dealer_ppauto",
+    branchId: "branch_ppauto_main",
+    listingCategory: "CAR",
+    make: "Ford",
+    model: "Everest",
+    variant: "Titanium+ 4x4",
+    year: 2022,
+    priceUsd: 52000,
+    floorPriceUsd: 46000,
+    stockNo: "STK-PP-004",
+    chassisNo: "MPB11-884192",
+    steering: "LEFT",
+    doors: 5,
+    seats: 7,
+    mileageKm: 37000,
+    transmission: "AUTOMATIC",
+    fuel: "DIESEL",
+    engineCc: 2000,
+    drivetrain: "4WD",
+    bodyType: "SUV",
+    exteriorColor: "Alabaster White",
+    city: "Phnom Penh",
+    district: "Sen Sok",
+    importOrigin: "THAILAND",
+    locationPort: "PAS Sihanoukville",
+    condition: "USED",
+    accidentDeclared: "NONE_DECLARED",
+    ownershipCount: 1,
+    vinLast6: "884192",
+    plateNo: "2BW-3311",
+    description: "Next-Gen Ford Everest Titanium+ 4x4 Bi-Turbo. Panoramic sunroof, 12-inch vertical screen, terrain management.",
+    descriptionKm: "Ford Everest 2022 Titanium+ 4x4 Bi-Turbo ដំបូលកញ្ចក់បើកបាន អេក្រង់ធំ១២អ៊ីញ ៧កៅអី។",
+    views: 480,
+    daysAgo: 4,
+    images: IMG.fortuner,
+    docs: [{ type: "REGISTRATION_CARD", status: "VERIFIED" }],
+  },
+  {
+    id: "veh_pajero_2020",
+    sellerId: "usr_dealer_ppauto",
+    branchId: "branch_ppauto_main",
+    listingCategory: "CAR",
+    make: "Mitsubishi",
+    model: "Pajero Sport",
+    variant: "GT-Premium 4WD",
+    year: 2020,
+    priceUsd: 35000,
+    floorPriceUsd: 31000,
+    stockNo: "STK-PP-005",
+    chassisNo: "KR1W-009281",
+    steering: "RIGHT", // Authentic RHD Thailand import
+    doors: 5,
+    seats: 7,
+    mileageKm: 58000,
+    transmission: "AUTOMATIC",
+    fuel: "DIESEL",
+    engineCc: 2400,
+    drivetrain: "4WD",
+    bodyType: "SUV",
+    exteriorColor: "Deep Bronze Metallic",
+    city: "Phnom Penh",
+    district: "Sen Sok",
+    importOrigin: "THAILAND",
+    locationPort: "PAS Sihanoukville",
+    condition: "USED",
+    accidentDeclared: "NONE_DECLARED",
+    ownershipCount: 1,
+    vinLast6: "009281",
+    plateNo: "2BA-8822",
+    description: "Mitsubishi Pajero Sport GT-Premium 2020. 8-speed automatic with Super Select 4WD-II. Right-hand drive.",
+    descriptionKm: "Mitsubishi Pajero Sport 2020 GT-Premium ចង្កូតស្តាំនាំចូលពីថៃ ប្រអប់លេខ ៨វគ្គ កម្លាំងខ្លាំង។",
+    views: 260,
+    daysAgo: 10,
+    images: IMG.fortuner,
+    docs: [{ type: "IMPORT_DECLARATION", status: "VERIFIED" }],
+  },
+  {
+    id: "veh_prius_2012",
+    sellerId: "usr_priv_vireak",
+    listingCategory: "CAR",
+    make: "Toyota",
+    model: "Prius",
+    variant: "Option 5 Full",
+    year: 2012,
+    priceUsd: 12500,
+    floorPriceUsd: 10500,
+    stockNo: "STK-VR-001",
+    chassisNo: "JTDKN-119284",
+    steering: "LEFT",
+    doors: 5,
+    seats: 5,
+    mileageKm: 145000,
+    transmission: "AUTOMATIC",
+    fuel: "HYBRID",
+    engineCc: 1800,
+    drivetrain: "FWD",
+    bodyType: "HATCHBACK",
+    exteriorColor: "Classic Silver",
+    city: "Phnom Penh",
+    district: "Toul Kork",
+    importOrigin: "USA",
+    condition: "USED",
+    accidentDeclared: "MINOR_DECLARED",
+    ownershipCount: 2,
+    vinLast6: "119284",
+    plateNo: "2V-1190",
+    description: "Toyota Prius 2012 Option 5. Solar sunroof, radar cruise control, leather seats, upgraded ABS pump.",
+    descriptionKm: "Toyota Prius 2012 Option 5 មានដំបូលសូឡា រ៉ាដាចាប់ល្បឿន ម៉ាស៊ីនត្រជាក់និងអាគុយនៅដំណើរការល្អ។",
+    views: 520,
+    daysAgo: 12,
+    images: IMG.civic,
+    docs: [{ type: "REGISTRATION_CARD", status: "VERIFIED" }],
+    // Expired campaign (ended 5 days ago -> automatically reverts to base price $12,500!)
+    promo: {
+      priceTypeId: "pt_hot_price",
+      value: 10800,
+      startDate: daysAgo(30),
+      endDate: daysAgo(5),
+    },
+  },
+  {
+    id: "veh_corolla_2015",
+    sellerId: "usr_priv_vireak",
+    listingCategory: "CAR",
+    make: "Toyota",
+    model: "Corolla",
+    variant: "LE Sedan",
+    year: 2015,
+    priceUsd: 16800,
+    floorPriceUsd: 15000,
+    stockNo: "STK-VR-002",
+    chassisNo: "2T1BUR-991204",
+    steering: "LEFT",
+    doors: 4,
+    seats: 5,
+    mileageKm: 98000,
     transmission: "AUTOMATIC",
     fuel: "PETROL",
     engineCc: 1800,
     drivetrain: "FWD",
     bodyType: "SEDAN",
-    exteriorColor: "white",
+    exteriorColor: "Slate Grey",
     city: "Phnom Penh",
-    district: "Sen Sok",
-    description:
-      "Reliable one-owner Civic 1.8 E, mostly highway kilometers. Serviced on schedule, new brakes. Clean documents ready for ownership transfer.",
-    descriptionKm:
-      "Civic 1.8 E អាចទុកចិត្តបាន ម្ចាស់តែម្នាក់ ប្រើផ្លូវឆ្ងាយជាចម្បង។ ម៉ាស៊ីនបានថែទាំទាន់ពេល ព្រឹលថ្មី។ ឯកសារស្អាត រួចរាល់សម្រាប់ផ្ទេរឈ្មោះ។",
-    views: 980,
-    daysAgo: 42,
-    plateNo: "2DF-6620",
+    district: "Toul Kork",
+    importOrigin: "USA",
+    condition: "USED",
+    accidentDeclared: "NONE_DECLARED",
     ownershipCount: 1,
-    accidentDeclared: "NONE_DECLARED",
-    importOrigin: "THAILAND",
-    docs: [
-      { type: "REGISTRATION_BOOK", status: "PROVIDED" },
-      { type: "IMPORT_DECLARATION", status: "PROVIDED" },
-    ],
+    vinLast6: "991204",
+    plateNo: "2AI-7744",
+    description: "Toyota Corolla 2015 LE. Touchscreen display, rear camera, brand new Yokohama tires, pristine condition.",
+    descriptionKm: "Toyota Corolla 2015 LE ឡានស្អាត ទឹកថ្នាំហ្ស៊ីនច្រើន សំបកកង់ Yokohama ថ្មីទាំង៤គ្រាប់។",
+    views: 290,
+    daysAgo: 14,
+    images: IMG.camry,
+    docs: [{ type: "REGISTRATION_CARD", status: "VERIFIED" }],
   },
   {
-    id: "veh_fortuner_2019",
-    sellerId: "usr_dealer_sokha",
-    slug: "fortuner",
-    imgCount: 4,
-    make: "Toyota",
-    model: "Fortuner",
-    variant: "2.8",
-    year: 2019,
-    priceUsd: 37600,
-    mileageKm: 97000,
-    transmission: "AUTOMATIC",
-    fuel: "DIESEL",
-    engineCc: 2800,
-    drivetrain: "4WD",
-    bodyType: "SUV",
-    exteriorColor: "white",
-    city: "Phnom Penh",
-    district: "Chbar Ampov",
-    description:
-      "Fortuner 2.8 diesel in excellent condition, Dubai import. Mostly city driving with occasional provincial trips. Complete documents ready for transfer.",
-    descriptionKm:
-      "Fortuner 2.8 ស្អាតខ្លាំង នាំចូលពីឌូបាយ។ ប្រើក្នុងក្រុងជាចម្បង មានដំណើរក្រៅក្រុងកម្រ។ ឯកសារពេញលេញ រួចរាល់សម្រាប់ផ្ទេរឈ្មោះ។",
-    views: 1410,
-    daysAgo: 46,
-    vinLast6: "TRN881",
-    plateNo: "1JH-5523",
-    ownershipCount: 2,
-    accidentDeclared: "NONE_DECLARED",
-    importOrigin: "DUBAI",
-    docs: [
-      { type: "REGISTRATION_BOOK", status: "PROVIDED" },
-      { type: "IMPORT_DECLARATION", status: "PROVIDED" },
-      { type: "SERVICE_RECORD", status: "MISSING" },
-    ],
-  },
-  {
-    id: "veh_accent_2018",
+    id: "veh_nx200t_2016",
     sellerId: "usr_priv_sopheak",
-    slug: "accent",
-    imgCount: 3, // SOLD listing keeps 3 photos
-    make: "Hyundai",
-    model: "Accent",
-    variant: "1.4",
-    year: 2018,
-    priceUsd: 13200,
-    mileageKm: 145000,
-    transmission: "AUTOMATIC",
-    fuel: "PETROL",
-    engineCc: 1400,
-    drivetrain: "FWD",
-    bodyType: "SEDAN",
-    exteriorColor: "silver",
-    city: "Kandal",
-    district: "Ta Khmau",
-    description: "This car has been sold. Thank you for your interest!",
-    descriptionKm:
-      "ឡាននេះបានលក់រួចរាល់ហើយ។ សូមអរគុណសម្រាប់ការចាប់អារម្មណ៍!",
-    status: "SOLD",
-    views: 560,
-    daysAgo: 50,
-    plateNo: "3MK-8845",
-    accidentDeclared: "UNKNOWN",
-    docs: [{ type: "REGISTRATION_BOOK", status: "PROVIDED" }],
-  },
-  {
-    id: "veh_cx5_2019",
-    sellerId: "usr_dealer_ppauto",
-    slug: "cx5",
-    imgCount: 4,
-    make: "Mazda",
-    model: "CX-5",
-    variant: "2.0",
-    year: 2019,
-    priceUsd: 24100,
-    mileageKm: 84000,
+    listingCategory: "CAR",
+    make: "Lexus",
+    model: "NX",
+    variant: "200t F-Sport",
+    year: 2016,
+    priceUsd: 34500,
+    floorPriceUsd: 30000,
+    stockNo: "STK-SP-001",
+    chassisNo: "JTJHA-551928",
+    steering: "LEFT",
+    doors: 5,
+    seats: 5,
+    mileageKm: 81000,
     transmission: "AUTOMATIC",
     fuel: "PETROL",
     engineCc: 2000,
-    drivetrain: "FWD",
+    drivetrain: "AWD",
     bodyType: "SUV",
-    exteriorColor: "red",
-    city: "Phnom Penh",
-    district: "Toul Kork",
-    description:
-      "Listing submitted and awaiting review. 2.0 Skyactiv engine, one careful owner, service history available.",
-    descriptionKm:
-      "បញ្ជីលក់កំពុងរង់ចាំការត្រួតពិនិត្យ។ ម៉ាស៊ីន Skyactiv 2.0 ម្ចាស់តែម្នាក់ មានកំណត់ហេតុថែទាំ។",
-    status: "PENDING_REVIEW",
-    views: 260,
-    daysAgo: 54,
+    exteriorColor: "Obsidian Black",
+    city: "Kandal",
+    district: "Ta Khmau",
+    importOrigin: "USA",
+    condition: "USED",
+    accidentDeclared: "NONE_DECLARED",
     ownershipCount: 1,
-    accidentDeclared: "UNKNOWN",
-    docs: [
-      { type: "REGISTRATION_BOOK", status: "PROVIDED" },
-      { type: "IMPORT_DECLARATION", status: "PROVIDED" },
-    ],
+    vinLast6: "551928",
+    plateNo: "2AK-8833",
+    description: "Lexus NX200t F-Sport 2016. Red sport leather, power tailgate, wireless phone charger, eco/sport mode.",
+    descriptionKm: "Lexus NX200t F-Sport 2016 កៅអីក្រហមស្ព័រ ទ្វារក្រោយអូតូ ម៉ាស៊ីន Turbo ស្ទុះខ្លាំង។",
+    views: 380,
+    daysAgo: 6,
+    images: IMG.lexus,
+    docs: [{ type: "REGISTRATION_CARD", status: "VERIFIED" }],
+    promo: {
+      priceTypeId: "pt_discount_price",
+      value: 8, // 8% off -> $31,740
+    },
   },
-  // ---------------------------------------------------------------------------
-  // Motorcycles (Task 21 / Motor & Spare Parts)
-  // ---------------------------------------------------------------------------
+
+  // ================= MOTORCYCLES (8) =================
   {
     id: "veh_honda_dream_2023",
     sellerId: "usr_dealer_sokha",
-    slug: "honda_dream",
-    imgCount: 1,
+    branchId: "branch_sokha_main",
     listingCategory: "MOTOR",
     make: "Honda",
     model: "Dream 125",
-    variant: "NCX Cambodia Gold Limited",
-    year: 2023,
+    variant: "NCX Grand",
+    year: 2024,
     priceUsd: 2650,
-    mileageKm: 3200,
+    floorPriceUsd: 2350,
+    stockNo: "MOT-SK-001",
+    engineCc: 125,
     transmission: "MANUAL",
     fuel: "PETROL",
-    engineCc: 125,
     bodyType: "CUB",
-    exteriorColor: "Black & Gold",
+    motorType: "CUB",
+    hasAbs: false,
+    startType: "BOTH",
+    mileageKm: 3200,
+    exteriorColor: "Glossy Black",
     city: "Phnom Penh",
-    district: "Chamkar Mon",
-    description:
-      "Authentic 2023 Honda Dream 125 NCX Cambodia edition. Black with gold stripes, showroom condition, tax paid with original card.",
-    descriptionKm:
-      "ម៉ូតូ Honda Dream 125 ស៊េរីឆ្នាំ 2023 NCX កម្ពុជា។ ពណ៌ខ្មៅឆ្នូតមាស ស្អាតដូចថ្មី ពន្ធពេញ មានកាតគ្រីហ្ស៊ីន។",
-    status: "PUBLISHED",
-    featured: true,
-    views: 520,
-    daysAgo: 3,
+    district: "Toul Kork",
+    condition: "LIKE_NEW",
+    accidentDeclared: "NONE_DECLARED",
+    ownershipCount: 1,
     plateNo: "1KB-8899",
-    docs: [{ type: "REGISTRATION_BOOK", status: "VERIFIED" }],
+    description: "2024 Honda Dream 125 NCX authentic Cambodia assembly. Gold emblem, crystal headlight, like-new engine.",
+    descriptionKm: "Honda Dream 125 ស៊េរីឆ្នាំ២០២៤ ស្លាកលេខភ្នំពេញ 1KB-8899 តែមមាស ខ្មៅរលោង ម៉ាស៊ីនស្ងាត់ដូចថ្មី។",
+    featured: true,
+    views: 650,
+    daysAgo: 2,
+    images: IMG.honda_dream || IMG.revo,
+    docs: [{ type: "REGISTRATION_CARD", status: "VERIFIED" }],
+    promo: {
+      priceTypeId: "pt_hot_price",
+      value: 2450, // Hot Price $2,450
+    },
   },
   {
-    id: "veh_honda_scoopy_2024",
-    sellerId: "usr_priv_vireak",
-    slug: "honda_scoopy",
-    imgCount: 1,
+    id: "veh_scoopy_2023",
+    sellerId: "usr_dealer_ppauto",
+    branchId: "branch_ppauto_main",
     listingCategory: "MOTOR",
     make: "Honda",
     model: "Scoopy",
     variant: "Prestige Smartkey",
-    year: 2024,
-    priceUsd: 2350,
-    mileageKm: 1500,
+    year: 2023,
+    priceUsd: 2300,
+    floorPriceUsd: 2050,
+    stockNo: "MOT-PP-001",
+    engineCc: 110,
     transmission: "AUTOMATIC",
     fuel: "PETROL",
-    engineCc: 110,
     bodyType: "SCOOTER",
-    exteriorColor: "Pearl White",
+    motorType: "SCOOTER",
+    hasAbs: false,
+    startType: "ELECTRIC",
+    mileageKm: 7800,
+    exteriorColor: "Matte White",
     city: "Phnom Penh",
-    district: "Toul Kork",
-    description:
-      "2024 Honda Scoopy Prestige with smartkey system. Very low mileage, gentle lady driven, excellent condition.",
-    descriptionKm:
-      "ម៉ូតូ Honda Scoopy Prestige ឆ្នាំ 2024 មាន Smartkey។ គីឡូតិច ជិះថែ ម៉ាស៊ីនអេម មិនដែលដួល។",
-    status: "PUBLISHED",
-    featured: false,
-    views: 310,
+    district: "Sen Sok",
+    condition: "USED",
+    accidentDeclared: "NONE_DECLARED",
+    ownershipCount: 1,
+    plateNo: "1KC-4412",
+    description: "Honda Scoopy 2023 Prestige Smart Key. Idling stop system, USB phone charger, very stylish scooter.",
+    descriptionKm: "Honda Scoopy 2023 Smart Key សោវៃឆ្លាត ពណ៌សស្អាត ម៉ាស៊ីនស្ទុះ ជិះស្រួលក្នុងក្រុង។",
+    views: 370,
     daysAgo: 5,
-    plateNo: "1KC-1234",
-    docs: [{ type: "REGISTRATION_BOOK", status: "VERIFIED" }],
+    images: IMG.honda_scoopy || IMG.civic,
+    docs: [{ type: "REGISTRATION_CARD", status: "VERIFIED" }],
   },
   {
-    id: "veh_yamaha_exciter_2022",
+    id: "veh_pcx_2024",
+    sellerId: "usr_dealer_sokha",
+    branchId: "branch_sokha_bkk",
+    listingCategory: "MOTOR",
+    make: "Honda",
+    model: "PCX 160",
+    variant: "e:HEV ABS",
+    year: 2024,
+    priceUsd: 3850,
+    floorPriceUsd: 3400,
+    stockNo: "MOT-SK-002",
+    engineCc: 160,
+    transmission: "AUTOMATIC",
+    fuel: "PETROL",
+    bodyType: "SCOOTER",
+    motorType: "SCOOTER",
+    hasAbs: true,
+    startType: "ELECTRIC",
+    mileageKm: 4100,
+    exteriorColor: "Matte Gunpowder Black",
+    city: "Phnom Penh",
+    district: "Boeung Keng Kang",
+    condition: "LIKE_NEW",
+    accidentDeclared: "NONE_DECLARED",
+    ownershipCount: 1,
+    plateNo: "1KD-2288",
+    description: "Honda PCX 160 ABS 2024. Honda Selectable Torque Control (HSTC), front disc ABS, 30L under-seat storage.",
+    descriptionKm: "Honda PCX 160 ABS 2024 ហ្វ្រាំង ABS ប្រព័ន្ធទប់លំនឹង HSTC ឃ្លុបធំទូលាយ ជិះស្រួលណាស់។",
+    featured: true,
+    views: 490,
+    daysAgo: 3,
+    images: IMG.honda_scoopy || IMG.crv,
+    docs: [{ type: "REGISTRATION_CARD", status: "VERIFIED" }],
+    promo: {
+      priceTypeId: "pt_promote_price",
+      value: 9, // 9% off -> $3,503 (~$3,500)
+    },
+  },
+  {
+    id: "veh_xmax_2023",
     sellerId: "usr_dealer_ppauto",
-    slug: "motorcycle_parts_kit",
-    imgCount: 1,
+    branchId: "branch_ppauto_main",
     listingCategory: "MOTOR",
     make: "Yamaha",
-    model: "Exciter 155",
-    variant: "VVA GP Edition",
+    model: "XMAX",
+    variant: "300 Tech MAX",
+    year: 2023,
+    priceUsd: 6200,
+    floorPriceUsd: 5500,
+    stockNo: "MOT-PP-002",
+    engineCc: 292,
+    transmission: "AUTOMATIC",
+    fuel: "PETROL",
+    bodyType: "SPORT",
+    motorType: "SPORT",
+    hasAbs: true,
+    startType: "ELECTRIC",
+    mileageKm: 6500,
+    exteriorColor: "Dark Petrol",
+    city: "Phnom Penh",
+    district: "Sen Sok",
+    condition: "USED",
+    accidentDeclared: "NONE_DECLARED",
+    ownershipCount: 1,
+    plateNo: "1JZ-9911",
+    description: "Yamaha XMAX 300 Tech MAX 2023. Dual TFT screens with Garmin navigation, traction control, ABS disc brakes.",
+    descriptionKm: "Yamaha XMAX 300 Tech MAX 2023 ម៉ូតូស្ព័រធំ អេក្រង់ភ្លោះ TFT ប្រព័ន្ធហ្វ្រាំង ABS មុខក្រោយ។",
+    views: 580,
+    daysAgo: 4,
+    images: IMG.honda_dream || IMG.cclass,
+    docs: [{ type: "REGISTRATION_CARD", status: "VERIFIED" }],
+    promo: {
+      priceTypeId: "pt_flash_sale",
+      value: 8, // 8% off -> $5,704
+      startDate: daysAgo(1),
+      endDate: daysFromNow(4),
+    },
+  },
+  {
+    id: "veh_adv_2024",
+    sellerId: "usr_dealer_ppauto",
+    branchId: "branch_ppauto_main",
+    listingCategory: "MOTOR",
+    make: "Honda",
+    model: "ADV 160",
+    variant: "ABS Adventure",
+    year: 2024,
+    priceUsd: 4100,
+    floorPriceUsd: 3700,
+    stockNo: "MOT-PP-003",
+    engineCc: 160,
+    transmission: "AUTOMATIC",
+    fuel: "PETROL",
+    bodyType: "SCOOTER",
+    motorType: "SCOOTER",
+    hasAbs: true,
+    startType: "ELECTRIC",
+    mileageKm: 2900,
+    exteriorColor: "Dynamic Red",
+    city: "Phnom Penh",
+    district: "Sen Sok",
+    condition: "LIKE_NEW",
+    accidentDeclared: "NONE_DECLARED",
+    ownershipCount: 1,
+    plateNo: "1KD-7733",
+    description: "Honda ADV 160 ABS 2024 adventure scooter. Showa twin sub-tank rear suspension, tapered handlebar, emergency stop signal.",
+    descriptionKm: "Honda ADV 160 ABS 2024 បូម Showa កំប៉ុងភ្លោះ កង់ធំជិះផ្លូវឆ្ងាយស្រួល ស្ថានភាពថ្មី ៩៩%។",
+    views: 430,
+    daysAgo: 6,
+    images: IMG.honda_scoopy || IMG.tucson,
+    docs: [{ type: "REGISTRATION_CARD", status: "VERIFIED" }],
+  },
+  {
+    id: "veh_vespa_2023",
+    sellerId: "usr_dealer_sokha",
+    branchId: "branch_sokha_bkk",
+    listingCategory: "MOTOR",
+    make: "Vespa",
+    model: "Sprint",
+    variant: "S 150 i-Get ABS",
+    year: 2023,
+    priceUsd: 4600,
+    floorPriceUsd: 4000,
+    stockNo: "MOT-SK-003",
+    engineCc: 150,
+    transmission: "AUTOMATIC",
+    fuel: "PETROL",
+    bodyType: "SCOOTER",
+    motorType: "SCOOTER",
+    hasAbs: true,
+    startType: "ELECTRIC",
+    mileageKm: 5200,
+    exteriorColor: "Audace Orange",
+    city: "Phnom Penh",
+    district: "Boeung Keng Kang",
+    condition: "LIKE_NEW",
+    accidentDeclared: "NONE_DECLARED",
+    ownershipCount: 1,
+    plateNo: "1KC-1100",
+    description: "Vespa Sprint S 150 i-Get ABS 2023 Italian design. Full LED lighting, black details, genuine front rack accessory.",
+    descriptionKm: "Vespa Sprint S 150 ឆ្នាំ២០២៣ ពណ៌ទឹកក្រូចស្អាតទាក់ទាញ ម៉ាស៊ីន i-Get ស៊ីប្រេងតិច មានហ្វ្រាំង ABS។",
+    views: 390,
+    daysAgo: 7,
+    images: IMG.honda_scoopy || IMG.cx5,
+    docs: [{ type: "REGISTRATION_CARD", status: "VERIFIED" }],
+    promo: {
+      priceTypeId: "pt_member",
+      value: 8, // 8% off -> $4,232
+    },
+  },
+  {
+    id: "veh_klx_2022",
+    sellerId: "usr_priv_vireak",
+    listingCategory: "MOTOR",
+    make: "Kawasaki",
+    model: "KLX 150",
+    variant: "KLX 230 S Dual-Sport",
     year: 2022,
-    priceUsd: 2100,
-    mileageKm: 12000,
+    priceUsd: 3900,
+    floorPriceUsd: 3400,
+    stockNo: "MOT-VR-001",
+    engineCc: 233,
     transmission: "MANUAL",
     fuel: "PETROL",
-    engineCc: 155,
-    bodyType: "SPORT",
-    exteriorColor: "Blue & Silver",
+    bodyType: "DIRT",
+    motorType: "DIRT",
+    hasAbs: false,
+    startType: "ELECTRIC",
+    mileageKm: 9800,
+    exteriorColor: "Lime Green",
     city: "Phnom Penh",
-    district: "Boeng Keng Kang",
-    description:
-      "Yamaha Exciter 155 VVA clutch manual. Full service record, powerful engine, original factory paint.",
-    descriptionKm:
-      "Yamaha Exciter 155 VVA អំបូរ GP អូតូកាប់កុងតាក់កម្លាំងខ្លាំង ម៉ាស៊ីនស្ទុះ ថ្នាំហ្ស៊ីនមួយជុំ។",
-    status: "PUBLISHED",
-    featured: false,
-    views: 185,
-    daysAgo: 8,
-    docs: [{ type: "REGISTRATION_BOOK", status: "PROVIDED" }],
+    district: "Toul Kork",
+    condition: "USED",
+    accidentDeclared: "NONE_DECLARED",
+    ownershipCount: 1,
+    plateNo: "1JB-6622",
+    description: "Kawasaki KLX 230 S 2022 off-road dual sport. Long travel suspension, aluminum rims, lightweight trail machine.",
+    descriptionKm: "Kawasaki KLX 230 S ឆ្នាំ២០២២ ម៉ូតូស្ព័រឡើងភ្នំ បូមវែង កង់មុខ២១អ៊ីញ ម៉ាស៊ីនខ្លាំង។",
+    views: 320,
+    daysAgo: 9,
+    images: IMG.honda_dream || IMG.ranger,
+    docs: [{ type: "REGISTRATION_CARD", status: "VERIFIED" }],
   },
-  // ---------------------------------------------------------------------------
-  // Spare Parts (Task 21 / Motor & Spare Parts)
-  // ---------------------------------------------------------------------------
+  {
+    id: "veh_wave_2023",
+    sellerId: "usr_priv_sopheak",
+    listingCategory: "MOTOR",
+    make: "Honda",
+    model: "Wave 110",
+    variant: "110i Cast Wheels",
+    year: 2023,
+    priceUsd: 1650,
+    floorPriceUsd: 1450,
+    stockNo: "MOT-SP-001",
+    engineCc: 110,
+    transmission: "MANUAL",
+    fuel: "PETROL",
+    bodyType: "CUB",
+    motorType: "CUB",
+    hasAbs: false,
+    startType: "BOTH",
+    mileageKm: 8900,
+    exteriorColor: "Red / Black",
+    city: "Kandal",
+    district: "Ta Khmau",
+    condition: "USED",
+    accidentDeclared: "NONE_DECLARED",
+    ownershipCount: 1,
+    plateNo: "1KB-3388",
+    description: "Honda Wave 110i 2023 fuel injection PGM-FI. Extremely fuel efficient (1.8L/100km), very durable and cheap to maintain.",
+    descriptionKm: "Honda Wave 110i ឆ្នាំ២០២៣ ប៊ិចសាំង PGM-FI សន្សំសំចៃខ្ពស់ ម៉ាស៊ីនធន់ ងាយស្រួលថែទាំ។",
+    views: 240,
+    daysAgo: 11,
+    images: IMG.honda_dream || IMG.accent,
+    docs: [{ type: "REGISTRATION_CARD", status: "VERIFIED" }],
+  },
+
+  // ================= SPARE PARTS (8) =================
+  {
+    id: "veh_part_brembo_caliper",
+    sellerId: "usr_dealer_sokha",
+    branchId: "branch_sokha_main",
+    listingCategory: "SPARE_PART",
+    make: "Brembo",
+    model: "Brake Caliper",
+    variant: "GT 4-Piston Caliper Kit",
+    year: 2024,
+    priceUsd: 480,
+    floorPriceUsd: 390,
+    stockNo: "PRT-SK-001",
+    mileageKm: 0,
+    transmission: "AUTOMATIC",
+    fuel: "PETROL",
+    bodyType: "PART",
+    partCategory: "BRAKES_SUSPENSION",
+    partTarget: "CAR",
+    partCondition: "BRAND_NEW",
+    partNumber: "BRM-GT4P-FR",
+    oemBrand: "Brembo",
+    isOem: false,
+    position: "FRONT",
+    compatibleModels: "Toyota Land Cruiser Prado, Hilux Revo, Fortuner",
+    compatibleMake: "Toyota",
+    compatibleModel: "Land Cruiser Prado",
+    city: "Phnom Penh",
+    district: "Toul Kork",
+    description: "Genuine Brembo GT 4-Piston front brake calipers with ceramic high-friction pads and mounting brackets.",
+    descriptionKm: "ដុំកៀបហ្វ្រាំងមុខ Brembo GT ៤ពីស្តុងសុទ្ធ ១០០% សម្រាប់ Prado, Revo, Fortuner ហ្វ្រាំងស៊ីខ្លាំង។",
+    featured: true,
+    views: 520,
+    daysAgo: 3,
+    images: IMG.oem_brake_pads || IMG.prado,
+    docs: [{ type: "PURCHASE_INVOICE", status: "VERIFIED" }],
+    promo: {
+      priceTypeId: "pt_wholesale",
+      value: 15, // 15% wholesale -> $408
+    },
+  },
+  {
+    id: "veh_part_michelin_tires",
+    sellerId: "usr_dealer_ppauto",
+    branchId: "branch_ppauto_main",
+    listingCategory: "SPARE_PART",
+    make: "Michelin",
+    model: "Primacy 4",
+    variant: "265/65R17 SUV 112H",
+    year: 2024,
+    priceUsd: 620,
+    floorPriceUsd: 530,
+    stockNo: "PRT-PP-001",
+    mileageKm: 0,
+    transmission: "AUTOMATIC",
+    fuel: "PETROL",
+    bodyType: "PART",
+    partCategory: "TIRES_WHEELS",
+    partTarget: "CAR",
+    partCondition: "BRAND_NEW",
+    partNumber: "MICH-PR4-265",
+    oemBrand: "Michelin",
+    isOem: false,
+    position: "UNIVERSAL",
+    compatibleModels: "Prado 150, Hilux Revo, Ford Ranger, Pajero Sport",
+    compatibleMake: "Toyota",
+    compatibleModel: "Hilux",
+    city: "Phnom Penh",
+    district: "Sen Sok",
+    description: "Set of 4 Michelin Primacy 4 SUV tires 265/65R17. Manufactured in 2024 in Thailand. Unmatched wet grip and quiet ride.",
+    descriptionKm: "សំបកកង់ Michelin Primacy 4 SUV ១ឈុត ៤គ្រាប់ ទំហំ 265/65R17 ផលិតឆ្នាំ២០២៤ ស្ងាត់ ជាប់ផ្លូវល្អ។",
+    views: 430,
+    daysAgo: 4,
+    images: IMG.motorcycle_parts_kit || IMG.revo,
+    docs: [{ type: "PURCHASE_INVOICE", status: "VERIFIED" }],
+    promo: {
+      priceTypeId: "pt_bundle",
+      value: 550, // Bundle Deal $550
+    },
+  },
   {
     id: "part_toyota_brake_pads",
     sellerId: "usr_dealer_sokha",
-    slug: "oem_brake_pads",
-    imgCount: 1,
+    branchId: "branch_sokha_main",
     listingCategory: "SPARE_PART",
+    make: "Toyota",
+    model: "Brake Pads",
+    variant: "Front Ceramic OEM",
+    year: 2024,
+    priceUsd: 75,
+    floorPriceUsd: 55,
+    stockNo: "PRT-SK-002",
+    mileageKm: 0,
+    transmission: "AUTOMATIC",
+    fuel: "PETROL",
+    bodyType: "PART",
     partCategory: "BRAKES_SUSPENSION",
     partTarget: "CAR",
     partCondition: "BRAND_NEW",
     partNumber: "04465-47060",
-    compatibleModels: "Toyota Prius 2004-2015, Corolla 2008-2019, Lexus CT200h",
-    make: "Toyota Genuine Parts",
-    model: "Front Ceramic Brake Pads",
-    variant: "OEM 04465-47060",
-    year: 2024,
-    priceUsd: 38,
-    mileageKm: 0,
-    transmission: "AUTOMATIC",
-    fuel: "HYBRID",
-    bodyType: "SEDAN",
-    exteriorColor: "Black",
+    oemBrand: "Toyota",
+    isOem: true,
+    position: "FRONT",
+    compatibleModels: "Toyota Prius 2004-2015, Corolla 2009-2019",
+    compatibleMake: "Toyota",
+    compatibleModel: "Prius",
     city: "Phnom Penh",
-    district: "Chamkar Mon",
-    description:
-      "Brand new authentic Toyota genuine ceramic front brake pads. Low noise, high stopping power, zero dust. Includes installation clips.",
-    descriptionKm:
-      "ស្បែកហ្វ្រាំងមុខ Toyota សុទ្ធ (Genuine Parts) គុណភាពខ្ពស់ មិនស៊ីឌីស មិនមានសំឡេង។ សម្រាប់ Prius, Corolla។",
-    status: "PUBLISHED",
-    featured: true,
-    views: 450,
-    daysAgo: 2,
+    district: "Toul Kork",
+    description: "Toyota Genuine OEM Ceramic front brake pad set. Part number 04465-47060 in original sealed box.",
+    descriptionKm: "ស្បែកហ្វ្រាំងមុខ Toyota សុទ្ធ OEM កូដ 04465-47060 ក្នុងប្រអប់ដើម សម្រាប់ Prius និង Corolla។",
+    views: 610,
+    daysAgo: 5,
+    images: IMG.oem_brake_pads || IMG.camry,
     docs: [
       { type: "PURCHASE_INVOICE", status: "VERIFIED" },
       { type: "IMPORT_DECLARATION", status: "VERIFIED" },
     ],
+    promo: {
+      priceTypeId: "pt_wholesale",
+      value: 20, // 20% off -> $60
+    },
   },
   {
-    id: "part_prius_hybrid_battery",
-    sellerId: "usr_dealer_sokha",
-    slug: "oem_brake_pads",
-    imgCount: 1,
+    id: "veh_part_denso_plugs",
+    sellerId: "usr_dealer_ppauto",
+    branchId: "branch_ppauto_main",
     listingCategory: "SPARE_PART",
+    make: "Denso",
+    model: "Spark Plug Iridium",
+    variant: "SK20R11 Set of 4",
+    year: 2024,
+    priceUsd: 48,
+    floorPriceUsd: 38,
+    stockNo: "PRT-PP-002",
+    mileageKm: 0,
+    transmission: "AUTOMATIC",
+    fuel: "PETROL",
+    bodyType: "PART",
     partCategory: "BATTERY_ELECTRICAL",
     partTarget: "CAR",
-    partCondition: "USED_GENUINE",
-    partNumber: "G9510-47031",
-    compatibleModels: "Toyota Prius 2004-2009 (Gen 2), Prius 2010-2015 (Gen 3)",
-    make: "Toyota OEM Panasonic",
-    model: "Prius Hybrid Battery Pack",
-    variant: "28 Modules Rebalanced",
-    year: 2023,
-    priceUsd: 780,
-    mileageKm: 15000,
-    transmission: "AUTOMATIC",
-    fuel: "HYBRID",
-    bodyType: "HATCHBACK",
-    city: "Phnom Penh",
-    district: "Chamkar Mon",
-    description:
-      "Original Toyota Prius Hybrid High-Voltage Battery Pack. Fully tested, balanced capacity >92%, 6 months warranty included.",
-    descriptionKm:
-      "អាគុយ Hybrid Toyota Prius សុទ្ធ 28 សន្លឹក ឆ្លងកាត់ការតេស្តកម្លាំងភ្លើង >92% មានការធានា 6 ខែ។",
-    status: "PUBLISHED",
-    featured: false,
-    views: 620,
-    daysAgo: 4,
-    docs: [
-      { type: "WARRANTY_CARD", status: "VERIFIED" },
-      { type: "INSPECTION_CERT", status: "VERIFIED" },
-    ],
-  },
-  {
-    id: "part_michelin_pilot_street",
-    sellerId: "usr_dealer_sokha",
-    slug: "motorcycle_parts_kit",
-    imgCount: 1,
-    listingCategory: "SPARE_PART",
-    partCategory: "TIRES_WHEELS",
-    partTarget: "MOTOR",
     partCondition: "BRAND_NEW",
-    partNumber: "MICH-PS2-17",
-    compatibleModels: "Honda Dream, Wave, Scoopy, Winner, Yamaha Exciter",
-    make: "Michelin",
-    model: "Pilot Street 2 Tires Pair",
-    variant: "70/90-17 + 80/90-17 Tubeless",
-    year: 2024,
-    priceUsd: 65,
-    mileageKm: 0,
-    transmission: "MANUAL",
-    fuel: "PETROL",
-    bodyType: "CUB",
+    partNumber: "SK20R11",
+    oemBrand: "Denso",
+    isOem: true,
+    position: "UNIVERSAL",
+    compatibleModels: "Camry 2.4L/2.5L, RAV4, Highlander, Lexus RX350",
+    compatibleMake: "Toyota",
+    compatibleModel: "Camry",
     city: "Phnom Penh",
     district: "Sen Sok",
-    description:
-      "Pair of genuine Michelin Pilot Street 2 motorcycle tires. Exceptional wet grip, durable compound, tubeless ready.",
-    descriptionKm:
-      "សំបកកង់ម៉ូតូ Michelin Pilot Street 2 មួយគូ (មុខ-ក្រោយ) ស្អិតជាប់ផ្លូវល្អ មិនរអិលពេលភ្លៀង ប្រើបានយូរ។",
-    status: "PUBLISHED",
-    featured: true,
-    views: 290,
-    daysAgo: 1,
-    docs: [{ type: "PURCHASE_INVOICE", status: "PROVIDED" }],
-  },
-  {
-    id: "part_dream_drive_chain",
-    sellerId: "usr_dealer_sokha",
-    slug: "motorcycle_parts_kit",
-    imgCount: 1,
-    listingCategory: "SPARE_PART",
-    partCategory: "ENGINE_TRANSMISSION",
-    partTarget: "MOTOR",
-    partCondition: "BRAND_NEW",
-    partNumber: "DID-428HD-106",
-    compatibleModels: "Honda Dream 125, Wave 100/110/125, Future 125",
-    make: "D.I.D Japan",
-    model: "Gold Chain & Sprocket Set",
-    variant: "Heavy Duty 428HD 36T/14T",
-    year: 2024,
-    priceUsd: 28,
-    mileageKm: 0,
-    transmission: "MANUAL",
-    fuel: "PETROL",
-    bodyType: "CUB",
-    city: "Phnom Penh",
-    district: "Toul Kork",
-    description:
-      "D.I.D Japan original gold drive chain and heat-treated sprockets for Honda Dream 125. Long-lasting, smooth acceleration.",
-    descriptionKm:
-      "ច្រវ៉ាក់ និងញ៉ុងមាស D.I.D ជប៉ុនសុទ្ធ សម្រាប់ Honda Dream 125។ ស្វិត ធន់ មិនងាយយារ។",
-    status: "PUBLISHED",
-    featured: false,
-    views: 140,
-    daysAgo: 6,
+    description: "Denso Iridium Long Life spark plugs set of 4. High durability 100,000 km replacement interval.",
+    descriptionKm: "ប៊ូស៊ីភ្លើង Denso Iridium សុទ្ធ ១ឈុត ៤គ្រាប់ កូដ SK20R11 ប្រើប្រាស់បានយូររហូតដល់ ១០ម៉ឺនគ.ម។",
+    views: 310,
+    daysAgo: 8,
+    images: IMG.motorcycle_parts_kit || IMG.civic,
     docs: [{ type: "PURCHASE_INVOICE", status: "VERIFIED" }],
   },
   {
-    id: "part_motul_engine_oil",
+    id: "veh_part_prado_headlight",
     sellerId: "usr_dealer_sokha",
-    slug: "motorcycle_parts_kit",
-    imgCount: 1,
+    branchId: "branch_sokha_main",
     listingCategory: "SPARE_PART",
-    partCategory: "OILS_LUBRICANTS",
-    partTarget: "UNIVERSAL",
-    partCondition: "BRAND_NEW",
-    partNumber: "MOTUL-7100-10W40",
-    compatibleModels: "All 4-stroke motorcycles, scooters & cars",
-    make: "Motul",
-    model: "7100 4T 10W-40 Synthetic Oil",
-    variant: "100% Synthetic Ester 1 Liter",
-    year: 2024,
-    priceUsd: 15,
+    make: "Toyota",
+    model: "Land Cruiser Prado",
+    variant: "LED Projector Headlight Pair",
+    year: 2023,
+    priceUsd: 780,
+    floorPriceUsd: 650,
+    stockNo: "PRT-SK-003",
     mileageKm: 0,
-    transmission: "MANUAL",
+    transmission: "AUTOMATIC",
     fuel: "PETROL",
-    bodyType: "OTHER",
+    bodyType: "PART",
+    partCategory: "LIGHTS_BULBS",
+    partTarget: "CAR",
+    partCondition: "BRAND_NEW",
+    partNumber: "81110-60M50",
+    oemBrand: "Toyota",
+    isOem: true,
+    position: "FRONT",
+    compatibleModels: "Land Cruiser Prado 2018-2023 (TRJ150, GDJ150)",
+    compatibleMake: "Toyota",
+    compatibleModel: "Land Cruiser Prado",
     city: "Phnom Penh",
-    district: "Chamkar Mon",
-    description:
-      "100% Synthetic Motul 7100 4T 10W40 engine oil with Ester technology. Smooth gear shifting and maximum engine protection.",
-    descriptionKm:
-      "ប្រេងម៉ាស៊ីន Motul 7100 សំយោគសុទ្ធ 100% Ester បច្ចេកវិទ្យាបារាំង ការពារម៉ាស៊ីន និងប្រអប់លេខយ៉ាងល្អឥតខ្ចោះ។",
-    status: "PUBLISHED",
-    featured: false,
+    district: "Toul Kork",
+    description: "Pair of genuine Toyota LED projector headlight assemblies for 2018-2023 Prado with daytime running lights.",
+    descriptionKm: "ចង្កៀងមុខ LED Projector Toyota Prado 2018–2023 មួយគូឆ្វេងស្តាំ ភ្លឺច្បាស់ខ្លាំង។",
+    views: 480,
+    daysAgo: 6,
+    images: IMG.prado,
+    docs: [{ type: "IMPORT_DECLARATION", status: "VERIFIED" }],
+    promo: {
+      priceTypeId: "pt_clearance",
+      value: 680, // Clearance $680
+    },
+  },
+  {
+    id: "veh_part_revo_suspension",
+    sellerId: "usr_dealer_ppauto",
+    branchId: "branch_ppauto_main",
+    listingCategory: "SPARE_PART",
+    make: "Genuine Parts",
+    model: "Standard / Universal",
+    variant: "Ironman 4x4 Foam Cell Pro 2-Inch Lift",
+    year: 2024,
+    priceUsd: 1450,
+    floorPriceUsd: 1250,
+    stockNo: "PRT-PP-003",
+    mileageKm: 0,
+    transmission: "AUTOMATIC",
+    fuel: "PETROL",
+    bodyType: "PART",
+    partCategory: "BRAKES_SUSPENSION",
+    partTarget: "CAR",
+    partCondition: "BRAND_NEW",
+    partNumber: "TOY065CKP",
+    oemBrand: "Ironman 4x4",
+    isOem: false,
+    position: "UNIVERSAL",
+    compatibleModels: "Toyota Hilux Revo / Rocco 2015-2024",
+    compatibleMake: "Toyota",
+    compatibleModel: "Hilux",
+    city: "Phnom Penh",
+    district: "Sen Sok",
+    description: "Ironman 4x4 Foam Cell Pro 2-inch suspension lift kit complete with front struts, rear shocks, and leaf springs.",
+    descriptionKm: "ឈុតបូមលើកកម្ពស់ Ironman 4x4 Foam Cell Pro ២អ៊ីញ សម្រាប់ Hilux Revo ជិះទន់ស្រួល មិនរលាក់។",
+    views: 390,
+    daysAgo: 7,
+    images: IMG.revo,
+    docs: [{ type: "PURCHASE_INVOICE", status: "VERIFIED" }],
+  },
+  {
+    id: "veh_part_motul_oil",
+    sellerId: "usr_dealer_sokha",
+    branchId: "branch_sokha_bkk",
+    listingCategory: "SPARE_PART",
+    make: "Motul",
+    model: "300V Factory Line",
+    variant: "5W-40 100% Synthetic 4L",
+    year: 2024,
+    priceUsd: 65,
+    floorPriceUsd: 50,
+    stockNo: "PRT-SK-004",
+    mileageKm: 0,
+    transmission: "AUTOMATIC",
+    fuel: "PETROL",
+    bodyType: "PART",
+    partCategory: "OILS_LUBRICANTS",
+    partTarget: "CAR",
+    partCondition: "BRAND_NEW",
+    partNumber: "104242",
+    oemBrand: "Motul",
+    isOem: false,
+    position: "UNIVERSAL",
+    compatibleModels: "Universal Performance Cars, European & Japanese Turbo engines",
+    city: "Phnom Penh",
+    district: "Boeung Keng Kang",
+    description: "Motul 300V Power 5W-40 4L 100% synthetic racing motor oil with Ester Core technology. Maximum power output.",
+    descriptionKm: "ប្រេងម៉ាស៊ីន Motul 300V 5W-40 កាន ៤លីត្រ សំយោគ ១០០% បច្ចេកវិទ្យា Ester Core ការពារម៉ាស៊ីនបានល្អបំផុត។",
+    views: 540,
+    daysAgo: 4,
+    images: IMG.motorcycle_parts_kit || IMG.lexus,
+    docs: [{ type: "PURCHASE_INVOICE", status: "VERIFIED" }],
+    promo: {
+      priceTypeId: "pt_hot_price",
+      value: 55, // Hot Price $55
+    },
+  },
+  {
+    id: "veh_part_alphard_mats",
+    sellerId: "usr_dealer_sokha",
+    branchId: "branch_sokha_bkk",
+    listingCategory: "SPARE_PART",
+    make: "Toyota",
+    model: "Alphard",
+    variant: "VIP Executive Floor Mat 5D Set",
+    year: 2024,
+    priceUsd: 190,
+    floorPriceUsd: 160,
+    stockNo: "PRT-SK-005",
+    mileageKm: 0,
+    transmission: "AUTOMATIC",
+    fuel: "PETROL",
+    bodyType: "PART",
+    partCategory: "ACCESSORIES",
+    partTarget: "CAR",
+    partCondition: "BRAND_NEW",
+    partNumber: "ALP-MAT-5D",
+    oemBrand: "Toyota",
+    isOem: false,
+    position: "UNIVERSAL",
+    compatibleModels: "Toyota Alphard / Vellfire 30 & 40 Series",
+    compatibleMake: "Toyota",
+    compatibleModel: "Alphard",
+    city: "Phnom Penh",
+    district: "Boeung Keng Kang",
+    description: "5D luxury full-coverage floor mat set for Toyota Alphard / Vellfire. Waterproof, odorless, high-density leather.",
+    descriptionKm: "កម្រាលជើង 5D VIP ពេញមួយឡាន Toyota Alphard / Vellfire មិនជ្រាបទឹក គ្មានក្លិន ស្អាតប្រណីត។",
     views: 310,
-    daysAgo: 3,
-    docs: [{ type: "IMPORT_DECLARATION", status: "PROVIDED" }],
+    daysAgo: 5,
+    images: IMG.vellfire || IMG.cclass,
+    docs: [{ type: "PURCHASE_INVOICE", status: "VERIFIED" }],
   },
 ];
 
 async function seedVehicles() {
   for (const v of VEHICLES) {
     const createdAt = daysAgo(v.daysAgo);
-    const title = `${v.year} ${v.make} ${v.model}${v.variant ? " " + v.variant : ""}`;
     await prisma.vehicle.create({
       data: {
         id: v.id,
         sellerId: v.sellerId,
         tenantId: TENANT_BY_SELLER[v.sellerId] ?? null,
-        listingCategory: v.listingCategory ?? "CAR",
-        partCategory: v.partCategory ?? null,
-        partTarget: v.partTarget ?? null,
-        partCondition: v.partCondition ?? null,
-        compatibleModels: v.compatibleModels ?? null,
-        partNumber: v.partNumber ?? null,
+        branchId: v.branchId ?? null,
+        createdById: v.sellerId,
+        listingCategory: v.listingCategory,
         make: v.make,
         model: v.model,
         variant: v.variant ?? null,
         year: v.year,
         priceUsd: v.priceUsd,
+        floorPriceUsd: v.floorPriceUsd ?? null,
+        stockNo: v.stockNo,
+        chassisNo: v.chassisNo ?? null,
+        steering: v.steering ?? "LEFT",
+        doors: v.doors ?? null,
+        seats: v.seats ?? null,
         mileageKm: v.mileageKm,
         transmission: v.transmission,
         fuel: v.fuel,
@@ -1315,22 +1840,36 @@ async function seedVehicles() {
         exteriorColor: v.exteriorColor ?? null,
         city: v.city,
         district: v.district ?? null,
-        description: v.description ?? null,
-        descriptionKm: v.descriptionKm ?? null,
-        status: v.status ?? "PUBLISHED",
-        featured: v.featured ?? false,
-        views: v.views,
+        importOrigin: v.importOrigin ?? null,
+        locationPort: v.locationPort ?? null,
+        condition: v.condition ?? "USED",
+        accidentDeclared: v.accidentDeclared ?? "NONE_DECLARED",
+        ownershipCount: v.ownershipCount ?? 1,
         vinLast6: v.vinLast6 ?? null,
         plateNo: v.plateNo ?? null,
-        ownershipCount: v.ownershipCount ?? null,
-        accidentDeclared: v.accidentDeclared ?? "UNKNOWN",
-        importOrigin: v.importOrigin ?? null,
+        description: v.description,
+        descriptionKm: v.descriptionKm,
+        status: "PUBLISHED",
+        featured: v.featured ?? false,
+        views: v.views,
         createdAt,
+        motorType: v.motorType ?? null,
+        hasAbs: v.hasAbs ?? false,
+        startType: v.startType ?? null,
+        partCategory: v.partCategory ?? null,
+        partCondition: v.partCondition ?? null,
+        partTarget: v.partTarget ?? null,
+        partNumber: v.partNumber ?? null,
+        oemBrand: v.oemBrand ?? null,
+        isOem: v.isOem ?? true,
+        position: v.position ?? null,
+        compatibleModels: v.compatibleModels ?? null,
+        compatibleMake: v.compatibleMake ?? null,
+        compatibleModel: v.compatibleModel ?? null,
         images: {
-          create: IMG[v.slug].slice(0, v.imgCount).map((url, i) => ({
+          create: v.images.map((url, idx) => ({
             url,
-            alt: `${title} — photo ${i + 1}`,
-            sortOrder: i,
+            sortOrder: idx,
           })),
         },
         documents: {
@@ -1338,15 +1877,33 @@ async function seedVehicles() {
             type: d.type,
             status: d.status,
             notes: d.notes ?? null,
+            fileUrl: v.images[0] ?? null,
           })),
         },
       },
     });
+
+    // Attach promotional rule if defined
+    if (v.promo) {
+      const startDate = v.promo.startDate ?? daysAgo(5);
+      const endDate = v.promo.endDate ?? daysFromNow(25);
+      await prisma.itemPrice.create({
+        data: {
+          vehicleId: v.id,
+          priceTypeId: v.promo.priceTypeId,
+          value: v.promo.value,
+          currency: "USD",
+          startDate,
+          endDate,
+          active: true,
+        },
+      });
+    }
   }
 }
 
 // ---------------------------------------------------------------------------
-// Pre-generated AI history reports (exact ReportCheck shape from src/lib/types.ts)
+// 6. Pre-Generated AI History Reports (Linked to Seeded Vehicles)
 // ---------------------------------------------------------------------------
 
 const CHECK_TITLES: Record<string, { title: string; titleKm: string }> = {
@@ -1359,10 +1916,7 @@ const CHECK_TITLES: Record<string, { title: string; titleKm: string }> = {
   photos: { title: "Photos vs description", titleKm: "រូបភាពធៀបការប្រកាស" },
   ownership: { title: "Ownership history", titleKm: "ប្រវត្តិម្ចាស់ភាព" },
   accident: { title: "Accident records", titleKm: "កំណត់ហេតុគ្រោះថ្នាក់" },
-  listing: {
-    title: "Listing quality & safety",
-    titleKm: "គុណភាពបញ្ជី និងសុវត្ថិភាព",
-  },
+  listing: { title: "Listing quality & safety", titleKm: "គុណភាពបញ្ជី និងសុវត្ថិភាព" },
 };
 
 const LIMITATIONS = [
@@ -1373,14 +1927,6 @@ const LIMITATIONS = [
   {
     en: "'No records found' does not mean 'no accidents' or 'no problems'.",
     km: "'រកមិនឃើញទិន្នន័យ' មិនមែនមានន័យថា 'គ្មានគ្រោះថ្នាក់' ឬ 'គ្មានបញ្ហា' ទេ។",
-  },
-  {
-    en: "AI observations are probabilistic and may be wrong. Always inspect the vehicle in person.",
-    km: "ការវិភាគដោយ AI អាចមានកំហុស។ សូមពិនិត្យរថយន្តដោយខ្លួនឯងជានិច្ច។",
-  },
-  {
-    en: "Report results reflect the data available at generation time and may become outdated.",
-    km: "លទ្ធផលរបាយការណ៍ឆ្លុះបញ្ចាំងតែទិន្នន័យនៅពេលបង្កើតប៉ុណ្ណោះ ហើយអាចមិនទាន់សម័យនៅពេលក្រោយ។",
   },
 ];
 
@@ -1398,362 +1944,46 @@ function check(
 const PRADO_CHECKS: ReportCheck[] = [
   check(
     "identity",
-    "NOT_VERIFIED",
-    "Chassis ending T8H229 provided in the listing matches the registration book images, but the vehicle has not been physically inspected by the platform, so identity is not independently confirmed.",
-    "លេខចាប់ចុង T8H229 ក្នុងបញ្ជីលក់ត្រូវគ្នានឹងរូបសៀវភៅចុះបញ្ជី ប៉ុន្តែវេទិកាមិនបានពិនិត្យរថយន្តដោយផ្ទាល់ទេ ដូច្នេះអត្តសញ្ញាណមិនអាចបញ្ជាក់ដោយឯករាជ្យបានទេ។",
-    "Listing data + Registration book (platform-verified)",
-    0.6
+    "VERIFIED",
+    "Chassis TRJ150-554122 matches registration book and Dubai customs documentation.",
+    "លេខតួ TRJ150-554122 ត្រូវគ្នានឹងសៀវភៅចុះបញ្ជី និងលិខិតគយឌូបាយ។",
+    "Registration book + Import declaration",
+    0.95
   ),
   check(
     "registration",
     "VERIFIED",
-    "Registration book reviewed and platform-verified. Plate 1KH-8823 and owner details are internally consistent.",
-    "សៀវភៅចុះបញ្ជីត្រូវបានពិនិត្យនិងផ្ទៀងផ្ទាត់ដោយវេទិកា។ ស្លាកលេខ 1KH-8823 និងព័ត៌មានម្ចាស់ត្រូវគ្នា។",
+    "Registration book reviewed and platform-verified. Plate 1KH-8823 confirmed active.",
+    "សៀវភៅចុះបញ្ជីត្រូវបានពិនិត្យនិងផ្ទៀងផ្ទាត់ដោយវេទិកា។ ស្លាកលេខ 1KH-8823 ត្រឹមត្រូវ។",
     "Registration book (platform-verified)",
     0.95
   ),
   check(
-    "import",
-    "VERIFIED",
-    "Import declaration from Dubai was verified and matches the declared import origin.",
-    "លិខិតប្រកាសនាំចូលពីឌូបាយត្រូវបានផ្ទៀងផ្ទាត់ ដែលត្រូវនឹងប្រភពនាំចូលដែលបានប្រកាស។",
-    "Import declaration (platform-verified)",
-    0.9
-  ),
-  check(
     "mileage",
     "EVIDENCE_FOUND",
-    "Odometer of 89,000 km is plausible for a 2018 vehicle (about 11,100 km/year) and is consistent with service records covering 2019-2024. No independent odometer database check was possible.",
-    "៨៩,០០០ គ.ម មានភាពសមរម្យសម្រាប់ឡានឆ្នាំ២០១៨ (~១១,១០០ គ.ម/ឆ្នាំ) និងត្រូវគ្នានឹងកំណត់ហេតុសេវាកម្ម ២០១៩–២០២៤ ទោះបីគ្មានការពិនិត្យទិន្នន័យ odometer ដោយឯករាជ្យក៏ដោយ។",
+    "Odometer of 89,000 km is consistent with service records covering 2019-2024.",
+    "៨៩,០០០ គ.ម ត្រូវគ្នានឹងកំណត់ហេតុសេវាកម្ម ២០១៩–២០២៤។",
     "Service records + Listing data",
-    0.8
-  ),
-  check(
-    "price",
-    "EVIDENCE_FOUND",
-    "$52,500 sits within the typical range for 2018 Prado TX diesel units in Phnom Penh ($48,000-$57,000 based on current comparable listings).",
-    "៥២,៥០០ ដុល្លាស្ថិតក្នុងជួរតម្លៃទីផ្សារសម្រាប់ Prado TX ស្លាបប្រេងសាឺតឆ្នាំ២០១៨ នៅភ្នំពេញ (៤៨,០០០–៥៧,០០០ ដុល្លាតាមបញ្ជីប្រៀបធៀប)។",
-    "Market comparables",
-    0.8
-  ),
-  check(
-    "service",
-    "EVIDENCE_FOUND",
-    "Authorized workshop service records covering 2019-2024 were provided and show regular maintenance.",
-    "កំណត់ហេតុសេវាកម្មពីរោងចក្រផ្លូវការឆ្នាំ ២០១៩–២០២៤ ត្រូវបានផ្ដល់ជូន ហើយបង្ហាញការថែទាំទាន់ពេល។",
-    "Service records (provided)",
-    0.8
-  ),
-  check(
-    "photos",
-    "EVIDENCE_FOUND",
-    "Listing photos are consistent with the described condition (new tires, clean interior); no visible mismatch with the declared color or trim.",
-    "រូបភាពត្រូវគ្នានឹងការប្រកាស (កង់ថ្មី ខាងក្នុងស្អាត) ហើយគ្មានភាពមិនត្រូវគ្នាជាមួយពណ៌ ឬកម្រិតបរិក្ខារ។",
-    "Listing photo analysis",
-    0.75
-  ),
-  check(
-    "ownership",
-    "EVIDENCE_FOUND",
-    "Registration book shows 2 registered owners, consistent with the seller's declared ownership count.",
-    "សៀវភៅចុះបញ្ជីបង្ហាញម្ចាស់ចំនួន ២ នាក់ ត្រូវនឹងចំនួនដែលអ្នកលក់ប្រកាស។",
-    "Registration book (platform-verified)",
-    0.85
-  ),
-  check(
-    "accident",
-    "NOT_VERIFIED",
-    "Seller declares no accidents. This is a declaration only — it is not independent verification, and no official accident database was checked.",
-    "អ្នកលក់ប្រកាសថាគ្មានគ្រោះថ្នាក់ចរាចរ។ នេះជាការប្រកាសតែប៉ុណ្ណោះ — មិនមែនជាការផ្ទៀងផ្ទាត់ដោយឯករាជ្យ ហើយគ្មានមូលដ្ឋានទិន្នន័យគ្រោះថ្នាក់ផ្លូវការណ៍ណាមួយត្រូវបានពិនិត្យទេ។",
-    "Seller declaration",
-    0.45
-  ),
-  check(
-    "listing",
-    "EVIDENCE_FOUND",
-    "Listing text is detailed and consistent across fields (year, mileage, documents). No scam-pattern language detected.",
-    "អត្ថបទបញ្ជីលក់មានព័ត៌មានលម្អិត និងត្រូវគ្នារវាងវាលនីមួយៗ (ឆ្នាំ គ.ម ឯកសារ)។ រកមិនឃើញលក្ខណៈសញ្ញានៃការបញ្ឆោតទេ។",
-    "Listing text analysis",
     0.85
   ),
 ];
 
-const LEXUS_CHECKS: ReportCheck[] = [
-  check(
-    "identity",
-    "NOT_VERIFIED",
-    "Chassis ending 5T4119 from the listing could not be cross-checked against a physical inspection or an independent VIN database.",
-    "លេខចាប់ចុង 5T4119 ពីបញ្ជីលក់មិនអាចផ្ទៀងផ្ទាត់ជាមួយការពិនិត្យដោយផ្ទាល់ ឬមូលដ្ឋានទិន្នន័យ VIN ឯករាជ្យបានទេ។",
-    "Listing data",
-    0.45
-  ),
-  check(
-    "registration",
-    "EVIDENCE_FOUND",
-    "Registration book was provided and reviewed. Plate 2AB-1194 and the 3-owner history look consistent. Provided documents are reviewed but not platform-verified.",
-    "សៀវភៅចុះបញ្ជីត្រូវបានផ្ដល់ជូននិងបានពិនិត្យ។ ស្លាកលេខ 2AB-1194 និងប្រវត្តិម្ចាស់ ៣ នាក់មើលទៅត្រូវគ្នា។ ឯកសារដែលផ្ដល់ជូនត្រូវបានពិនិត្យ ប៉ុន្តែមិនត្រូវបានផ្ទៀងផ្ទាត់ដោយវេទិកាទេ។",
-    "Registration book (provided)",
-    0.7
-  ),
-  check(
-    "import",
-    "EVIDENCE_FOUND",
-    "US import declaration was provided; the declared USA origin is consistent with a left-hand-drive RX 350.",
-    "លិខិតប្រកាសនាំចូលពីអាមេរិកត្រូវបានផ្ដល់ជូន ហើយប្រភព USA ត្រូវគ្នានឹង RX 350 ចង្កឹះឆ្វេង។",
-    "Import declaration (provided)",
-    0.7
-  ),
-  check(
-    "mileage",
-    "NOT_VERIFIED",
-    "118,000 km over about 9 years (~13,100 km/year) is on the higher side for Phnom Penh but plausible. No odometer history database was available to rule out rollbacks.",
-    "១១៨,០០០ គ.ម ក្នុងរយៈពេល ~៩ ឆ្នាំ (~១៣,១០០ គ.ម/ឆ្នាំ) ខ្ពស់បន្តិចសម្រាប់ភ្នំពេញ ប៉ុន្តែមានភាពអាចកើតមាន។ គ្មានទិន្នន័យ odometer ឯករាជ្យដើម្បីបញ្ជាក់ថាគ្មានការកែចំនួនគ.មទេ។",
-    "Listing data",
-    0.5
-  ),
-  check(
-    "price",
-    "EVIDENCE_FOUND",
-    "$34,900 is within the typical market band for 2015 RX 350 imports in Phnom Penh ($32,000-$38,000).",
-    "៣៤,៩០០ ដុល្លាស្ថិតក្នុងជួរទីផ្សារសម្រាប់ RX 350 ឆ្នាំ២០១៥ នៅភ្នំពេញ (៣២,០០០–៣៨,០០០ ដុល្លា)។",
-    "Market comparables",
-    0.75
-  ),
-  check(
-    "service",
-    "NO_DATA",
-    "No service records were provided, so maintenance history could not be assessed. Missing records are common but reduce transparency.",
-    "គ្មានកំណត់ហេតុសេវាកម្មត្រូវបានផ្ដល់ជូន ដូច្នេះប្រវត្តិថែទាំមិនអាចវាយតម្លៃបានទេ។ ការបាត់បង់កំណត់ហេតុគឺធម្មតា ប៉ុន្តែកាត់បន្ថយភាពច្បាស់លាស់។",
-    "No documents provided",
-    0.3
-  ),
-  check(
-    "photos",
-    "EVIDENCE_FOUND",
-    "Photos show the described leather and navigation in good condition; the rear bumper appears repaired, consistent with the declared minor damage.",
-    "រូបភាពបង្ហាញស្បែក និងប្រព័ន្ធនាវាចរណ៍ក្នុងស្ថានភាពល្អដូចការប្រកាស។ ស្ពានក្រោយដែលបានជួសជុលត្រូវគ្នានឹងការប្រកាស។",
-    "Listing photo analysis",
-    0.65
-  ),
-  check(
-    "ownership",
-    "EVIDENCE_FOUND",
-    "Registration book indicates 3 owners, matching the declared ownership count of 3.",
-    "សៀវភៅចុះបញ្ជីបង្ហាញម្ចាស់ ៣ នាក់ ត្រូវនឹងចំនួនដែលបានប្រកាស។",
-    "Registration book (provided)",
-    0.75
-  ),
-  check(
-    "accident",
-    "EVIDENCE_FOUND",
-    "Seller declares minor rear-bumper damage; ask for repair documentation. Photos are consistent with a repaired bumper, but severity cannot be confirmed from the listing alone.",
-    "អ្នកលក់ប្រកាសថាមានគ្រោះថ្នាក់តូចនៅស្ពានក្រោយ។ សូមសុំឯកសារជួសជុល។ រូបភាពត្រូវគ្នានឹងស្ពានដែលបានជួសជុល ប៉ុន្តែកម្រិតខាតបង់មិនអាចបញ្ជាក់ពីបញ្ជីតែមួយបានទេ។",
-    "Seller declaration + Listing photos",
-    0.6
-  ),
-  check(
-    "listing",
-    "EVIDENCE_FOUND",
-    "Listing is complete and honest about prior damage, a positive trust signal. No scam-pattern language detected.",
-    "បញ្ជីលក់ពេញលេញ និងត្រង់នៃការប្រកាសគ្រោះថ្នាក់ពីមុន ដែលជាសញ្ញាវិជ្ជមាន។ រកមិនឃើញលក្ខណៈសញ្ញាបញ្ឆោតទេ។",
-    "Listing text analysis",
-    0.75
-  ),
-];
-
-const MOTOR_LIMITATIONS = [
-  {
-    en: "This report analyzes motorcycle listing details, registration card, and engine checks. It is not a roadside mechanical inspection.",
-    km: "របាយការណ៍នេះវិភាគលើព័ត៌មានលម្អិតនៃម៉ូតូ កាតគ្រី និងទិន្នន័យម៉ាស៊ីន។ វាមិនមែនជាការតេស្តបើកបរលើផ្លូវទេ។",
-  },
-  {
-    en: "'No records found' does not guarantee absence of hidden frame bending or internal engine wear.",
-    km: "'រកមិនឃើញទិន្នន័យ' មិនធានាថាគ្មានបញ្ហាតួវៀច ឬការសឹកខាងក្នុងម៉ាស៊ីននោះទេ។",
-  },
-  {
-    en: "Always verify the motorcycle frame and engine numbers directly against the physical registration card.",
-    km: "សូមផ្ទៀងផ្ទាត់លេខតួ និងលេខម៉ាស៊ីនម៉ូតូផ្ទាល់ជាមួយកាតគ្រីច្បាប់ដើមជានិច្ច។",
-  },
-];
-
-const PART_LIMITATIONS = [
-  {
-    en: "This report evaluates part OEM numbers, compatibility fitment, and market pricing. It is not a bench test or metallurgical inspection.",
-    km: "របាយការណ៍នេះវាយតម្លៃលេខកូដគ្រឿងបន្លាស់ ម៉ូដែលត្រូវគ្នា និងតម្លៃទីផ្សារ។ វាមិនមែនជាការតេស្តមន្ទីរពិសោធន៍ទេ។",
-  },
-  {
-    en: "'Brand new' condition reflects seller declaration; inspect packaging seals, manufacturer labels, and serial barcodes upon delivery.",
-    km: "ការប្រកាសជា 'ទំនិញថ្មី' ផ្អែកលើការបញ្ជាក់របស់អ្នកលក់។ សូមពិនិត្យតែមប្រអប់ ស្លាករោងចក្រ និងបាកូដពេលទទួល។",
-  },
-  {
-    en: "Always verify exact part number fitment with your professional mechanic before unboxing or installation.",
-    km: "សូមបញ្ជាក់លេខកូដគ្រឿងបន្លាស់ និងភាពត្រូវគ្នាជាមួយជាងជំនាញរបស់អ្នក មុនពេលធ្វើការតម្លើង។",
-  },
-];
-
-const HONDA_DREAM_CHECKS: ReportCheck[] = [
+const RX350_CHECKS: ReportCheck[] = [
   check(
     "identity",
     "VERIFIED",
-    "Plate 1KB-8899 and 125cc engine identifiers match the verified Honda registration card.",
-    "ស្លាកលេខ 1KB-8899 និងកម្លាំងម៉ាស៊ីន 125cc ត្រូវគ្នានឹងកាតគ្រីម៉ូតូដែលបានផ្ទៀងផ្ទាត់។",
-    "Motorcycle registration card (platform-verified)",
+    "Chassis 2T2BZMCA-5819 matches US title export documentation and Phnom Penh port registration.",
+    "លេខតួ 2T2BZMCA-5819 ត្រូវគ្នានឹងឯកសារនាំចេញពីអាមេរិក និងការចុះបញ្ជីនៅភ្នំពេញ។",
+    "US export certificate",
     0.95
   ),
   check(
     "registration",
     "VERIFIED",
-    "Motorcycle registration card (កាតគ្រី) platform-verified. Owner and plate numbers match.",
-    "កាតគ្រីម៉ូតូត្រូវបានផ្ទៀងផ្ទាត់ដោយវេទិកា។ ស្លាកលេខ និងឈ្មោះម្ចាស់ត្រូវគ្នា។",
-    "Motorcycle card (platform-verified)",
-    0.95
-  ),
-  check(
-    "import",
-    "EVIDENCE_FOUND",
-    "Official NCX Cambodia distribution assembly with genuine tax stamp.",
-    "ម៉ូតូដំឡើងនិងចែកចាយផ្លូវការដោយ NCX កម្ពុជា មានតែមពន្ធត្រឹមត្រូវ។",
-    "NCX distribution records",
-    0.85
-  ),
-  check(
-    "mileage",
-    "EVIDENCE_FOUND",
-    "3,200 km over 2 years (~1,600 km/year) is consistent with light local commuter use and pristine condition.",
-    "ចម្ងាយ ៣,២០០ គ.ម ក្នុងរយៈពេល ២ ឆ្នាំ (~១,៦០០ គ.ម/ឆ្នាំ) សមរម្យសម្រាប់ការជិះក្បែរៗផ្ទះ និងត្រូវនឹងសភាពថ្មី។",
-    "Listing data + age analysis",
-    0.75
-  ),
-  check(
-    "price",
-    "EVIDENCE_FOUND",
-    "$2,650 is within typical market range for 2023 Honda Dream 125 NCX in Phnom Penh ($2,500-$2,800).",
-    "២,៦៥០ ដុល្លាស្ថិតក្នុងកម្រិតតម្លៃទីផ្សារធម្មតាសម្រាប់ Honda Dream 125 ឆ្នាំ២០២៣ នៅភ្នំពេញ (២,៥០០–២,៨០០ ដុល្លា)។",
-    "Market comparables",
-    0.8
-  ),
-  check(
-    "service",
-    "EVIDENCE_FOUND",
-    "Initial 1,000 km authorized NCX warranty service recorded.",
-    "មានកំណត់ត្រាថែទាំដំបូង ១,០០០ គ.ម តាមការធានារបស់ NCX។",
-    "Service records",
-    0.75
-  ),
-  check(
-    "photos",
-    "EVIDENCE_FOUND",
-    "Photos show original gold stripes, unscratched fairings, and undamaged exhaust cover.",
-    "រូបភាពបង្ហាញឆ្នូតមាសហ្ស៊ីន គ្មានស្នាមឆ្កូត និងគម្របស៊ីមាំងស្អាតល្អ។",
-    "Listing photo analysis",
-    0.75
-  ),
-  check(
-    "ownership",
-    "EVIDENCE_FOUND",
-    "First-hand registered owner declared, consistent with registration card.",
-    "ម្ចាស់ដើមផ្ទាល់ដៃទី១ ត្រូវនឹងព័ត៌មានលើកាតគ្រី។",
-    "Registration card",
-    0.85
-  ),
-  check(
-    "accident",
-    "NOT_VERIFIED",
-    "Seller declares no fall or collision history. Handlebar and mirrors appear straight in photos.",
-    "ម្ចាស់លក់ប្រកាសថាមិនដែលដួល ឬបុក។ ចង្កូត និងកញ្ចក់មើលក្រោយត្រង់ស្អាតក្នុងរូបភាព។",
-    "Seller declaration",
-    0.5
-  ),
-  check(
-    "listing",
-    "EVIDENCE_FOUND",
-    "Listing text is clear with authentic local details. No scam patterns detected.",
-    "ខ្លឹមសារផ្សព្វផ្សាយច្បាស់លាស់ គ្មានគំរូបញ្ឆោតទេ។",
-    "Listing text scan",
-    0.75
-  ),
-];
-
-const BRAKE_PADS_CHECKS: ReportCheck[] = [
-  check(
-    "identity",
-    "EVIDENCE_FOUND",
-    "OEM Part Number 04465-47060 verified with Toyota Prius and Corolla compatibility catalog.",
-    "លេខកូដ OEM 04465-47060 បានផ្ទៀងផ្ទាត់ជាមួយកាតាឡុកត្រូវគ្នានៃ Toyota Prius និង Corolla។",
-    "OEM manufacturer catalog",
+    "Single owner registration book verified.",
+    "សៀវភៅចុះបញ្ជីម្ចាស់ដើមត្រូវបានផ្ទៀងផ្ទាត់។",
+    "Registration book",
     0.9
-  ),
-  check(
-    "registration",
-    "VERIFIED",
-    "Authorized distributor purchase invoice provided and verified by the platform.",
-    "វិក្កយបត្រទិញពីតំណាងចែកចាយផ្លូវការត្រូវបានផ្ដល់ជូន និងបានផ្ទៀងផ្ទាត់ដោយវេទិកា។",
-    "Purchase invoice (platform-verified)",
-    0.95
-  ),
-  check(
-    "import",
-    "VERIFIED",
-    "Import declaration and customs tax clearance verified from Japan.",
-    "លិខិតប្រកាសនាំចូល និងពន្ធគយពីប្រទេសជប៉ុនត្រូវបានផ្ទៀងផ្ទាត់។",
-    "Customs declaration (platform-verified)",
-    0.9
-  ),
-  check(
-    "mileage",
-    "EVIDENCE_FOUND",
-    "Declared BRAND NEW in original factory box with unbroken seal clips.",
-    "ប្រកាសជាទំនិញថ្មីសុទ្ធ ១០០% ក្នុងប្រអប់ដើម មានតែមបិទជិត។",
-    "Packaging verification",
-    0.85
-  ),
-  check(
-    "price",
-    "EVIDENCE_FOUND",
-    "$38 asking price is within the standard range for authentic Toyota ceramic brake pads ($35-$45).",
-    "តម្លៃ ៣៨ ដុល្លាស្ថិតក្នុងកម្រិតទីផ្សារស្តង់ដារសម្រាប់ស្បែកហ្វ្រាំងសេរ៉ាមិច Toyota សុទ្ធ (៣៥–៤៥ ដុល្លា)។",
-    "Market comparables",
-    0.85
-  ),
-  check(
-    "service",
-    "EVIDENCE_FOUND",
-    "Manufacturer quality test cert and warranty against squeal included.",
-    "មានវិញ្ញាបនបត្រតេស្តគុណភាពរោងចក្រ និងការធានាមិនស៊ីឌីស។",
-    "Warranty documentation",
-    0.8
-  ),
-  check(
-    "photos",
-    "EVIDENCE_FOUND",
-    "Clear photos of Toyota holographic security label and barcode serial number.",
-    "រូបភាពច្បាស់នៃតែមសន្តិសុខ 7 ពណ៌ Toyota និងលេខបាកូដសម្គាល់។",
-    "Listing photo analysis",
-    0.8
-  ),
-  check(
-    "ownership",
-    "EVIDENCE_FOUND",
-    "Sold by verified auto parts dealership (Sokha Chea Auto Parts).",
-    "លក់ដោយហាងគ្រឿងបន្លាស់ដែលបានផ្ទៀងផ្ទាត់ដោយវេទិកា (Sokha Chea Auto Parts)។",
-    "Merchant verification",
-    0.85
-  ),
-  check(
-    "accident",
-    "NOT_VERIFIED",
-    "Seller declares brand-new zero-defect item with intact ceramic friction material.",
-    "ម្ចាស់លក់ប្រកាសជាទំនិញថ្មីគ្មានការខូចខាត ឬប្រេះស្រាំ។",
-    "Seller declaration",
-    0.5
-  ),
-  check(
-    "listing",
-    "EVIDENCE_FOUND",
-    "Authentic OEM specifications declared. No counterfeit or scam phrasing detected.",
-    "លក្ខណៈបច្ចេកទេស OEM សុទ្ធ គ្មានពាក្យសម្គាល់ទំនិញក្លែងក្លាយទេ។",
-    "Listing text scan",
-    0.8
   ),
 ];
 
@@ -1762,67 +1992,33 @@ async function seedReports() {
     data: {
       vehicleId: "veh_prado_2018",
       checksJson: JSON.stringify(PRADO_CHECKS),
-      overallConfidence: 78,
-      summaryEn:
-        "This 2018 Prado TX presents well: the registration book and Dubai import declaration are platform-verified, and service records from 2019-2024 support the 89,000 km odometer. The seller declares no accidents, but that remains an unverified declaration. Overall the listing is consistent and transparent for its class.",
-      summaryKm:
-        "ឡាន Prado TX ឆ្នាំ២០១៨ នេះមានលក្ខណៈល្អ៖ សៀវភៅចុះបញ្ជី និងលិខិតប្រកាសនាំចូលពីឌូបាយ ត្រូវបានផ្ទៀងផ្ទាត់ដោយវេទិកាហើយ ហើយកំណត់ហេតុសេវាកម្មឆ្នាំ២០១៩–២០២៤ គាំទ្រចំនួន ៨៩,០០០ គ.ម។ អ្នកលក់ប្រកាសថាគ្មានគ្រោះថ្នាក់ចរាចរ ប៉ុន្តែការប្រកាសនេះមិនទាន់បានផ្ទៀងផ្ទាត់ដោយឯករាជ្យទេ។ ជារួម បញ្ជីលក់នេះមានភាពទៀងទាត់ និងគួរឱ្យទុកចិត្ត។",
+      overallConfidence: 85,
+      summaryEn: "This 2018 Prado TX presents well: verified documents, confirmed Dubai import, consistent service history.",
+      summaryKm: "ឡាន Prado TX ឆ្នាំ២០១៨ នេះមានលក្ខណៈល្អ៖ ឯកសារបានផ្ទៀងផ្ទាត់ នាំចូលពីឌូបាយ មានកំណត់ហេតុថែទាំទៀងទាត់។",
       limitationsJson: JSON.stringify(LIMITATIONS),
       status: "COMPLETE",
       createdAt: daysAgo(1),
     },
   });
 
-  const lexusReport = await prisma.vehicleHistoryReport.create({
+  const rx350Report = await prisma.vehicleHistoryReport.create({
     data: {
-      vehicleId: "veh_lexus_rx350",
-      checksJson: JSON.stringify(LEXUS_CHECKS),
-      overallConfidence: 62,
-      summaryEn:
-        "This 2015 RX 350 is honestly listed: the seller openly declares minor rear-bumper damage and provides registration and import documents that match the declared 3-owner history. However, the mileage could not be independently verified and no service records exist. A pre-purchase inspection with a trusted mechanic is strongly recommended.",
-      summaryKm:
-        "ឡាន RX 350 ឆ្នាំ២០១៥ នេះត្រូវបានប្រកាសដោយត្រង់៖ អ្នកលក់ប្រកាសចំហថាមានគ្រោះថ្នាក់តូចនៅស្ពានក្រោយ ហើយផ្ដល់ឯកសារចុះបញ្ជី និងនាំចូល ដែលត្រូវគ្នានឹងម្ចាស់ចំនួន ៣ នាក់។ ទោះជាយ៉ាងណា ចំនួនគ.មមិនអាចផ្ទៀងផ្ទាត់ដោយឯករាជ្យបានទេ ហើយគ្មានកំណត់ហេតុសេវាកម្មទេ។ សូមពិនិត្យឡានជាមួយគ្រូបង្គោលមុនពេលទិញ។",
-      limitationsJson: JSON.stringify(LIMITATIONS),
-      status: "COMPLETE",
-      createdAt: daysAgo(1),
-    },
-  });
-
-  const hondaDreamReport = await prisma.vehicleHistoryReport.create({
-    data: {
-      vehicleId: "veh_honda_dream_2023",
-      checksJson: JSON.stringify(HONDA_DREAM_CHECKS),
-      overallConfidence: 84,
-      summaryEn:
-        "This 2023 Honda Dream 125 NCX is in excellent standing: registration card verified, 3,200 km odometer is highly consistent with light city use, and dealer origin is platform-supported. Unverified seller fall declaration, but overall very high confidence.",
-      summaryKm:
-        "ម៉ូតូ Honda Dream 125 ឆ្នាំ២០២៣ នេះស្ថិតក្នុងស្ថានភាពល្អបំផុត៖ កាតគ្រីបានផ្ទៀងផ្ទាត់ ចម្ងាយ ៣,២០០ គ.ម សមរម្យសម្រាប់ការជិះក្នុងក្រុង ហើយមានប្រភពចែកចាយច្បាស់លាស់។ ការប្រកាសមិនដែលដួលជាការប្រកាសរបស់ម្ចាស់លក់ ប៉ុន្តែជារួមមានទំនុកចិត្តខ្ពស់។",
-      limitationsJson: JSON.stringify(MOTOR_LIMITATIONS),
-      status: "COMPLETE",
-      createdAt: daysAgo(1),
-    },
-  });
-
-  const brakePadsReport = await prisma.vehicleHistoryReport.create({
-    data: {
-      vehicleId: "part_toyota_brake_pads",
-      checksJson: JSON.stringify(BRAKE_PADS_CHECKS),
+      vehicleId: "veh_rx350",
+      checksJson: JSON.stringify(RX350_CHECKS),
       overallConfidence: 88,
-      summaryEn:
-        "Authentic Toyota genuine brake pads verified by authorized distributor purchase invoice and Japan customs clearance. OEM part number 04465-47060 matches Prius/Corolla catalogs. Asking price $38 aligns with market median.",
-      summaryKm:
-        "ស្បែកហ្វ្រាំង Toyota សុទ្ធត្រូវបានផ្ទៀងផ្ទាត់ដោយវិក្កយបត្រទិញពីតំណាងចែកចាយ និងឯកសារពន្ធគយពីជប៉ុន។ លេខកូដ OEM 04465-47060 ត្រូវនឹងកាតាឡុក Prius/Corolla។ តម្លៃ ៣៨ ដុល្លាស្ថិតក្នុងកម្រិតទីផ្សារធម្មតា។",
-      limitationsJson: JSON.stringify(PART_LIMITATIONS),
+      summaryEn: "Lexus RX350 F-Sport: genuine US title verified, clean registration and low mileage.",
+      summaryKm: "Lexus RX350 F-Sport: ក្រដាសពន្ធ USA ផ្ទៀងផ្ទាត់រួច គីឡូទាប ស្ថានភាពល្អឥតខ្ចោះ។",
+      limitationsJson: JSON.stringify(LIMITATIONS),
       status: "COMPLETE",
-      createdAt: daysAgo(1),
+      createdAt: daysAgo(2),
     },
   });
 
-  return { pradoReport, lexusReport, hondaDreamReport, brakePadsReport };
+  return { pradoReport, rx350Report };
 }
 
 // ---------------------------------------------------------------------------
-// Engagement: conversation, messages, favorites, audit log
+// 7. Engagement & Dashboard Demo Data
 // ---------------------------------------------------------------------------
 
 async function seedEngagement(pradoReportId: string) {
@@ -1830,15 +2026,11 @@ async function seedEngagement(pradoReportId: string) {
   await prisma.conversation.create({
     data: {
       id: "conv_demo_1",
-      vehicleId: "veh_lexus_rx350",
+      vehicleId: "veh_rx350",
       buyerId: "usr_demo_buyer",
       createdAt: convCreated,
     },
   });
-
-  const sysAt = hoursAgo(47);
-  const buyerAt = hoursAgo(26);
-  const sellerAt = hoursAgo(20);
 
   await prisma.message.createMany({
     data: [
@@ -1846,43 +2038,31 @@ async function seedEngagement(pradoReportId: string) {
         conversationId: "conv_demo_1",
         senderId: null,
         isSystem: true,
-        body: "គន្លឹះសុវត្ថិភាព: កុំបង់ប្រាក់ដុនមុនពេលមើលឡាននិងឯកសារ។ ជួបកន្លែងមានគេច្រើន ហើយនាំគ្រូបង្គោលមកពិនិត្យជាមួយ។ / Safety tip: Never pay a deposit before seeing the car and documents. Meet in a public place and bring a trusted mechanic.",
-        createdAt: sysAt,
+        body: "គន្លឹះសុវត្ថិភាព: កុំបង់ប្រាក់កក់មុនពេលមើលឡាននិងឯកសារផ្ទាល់។ / Safety tip: Never pay a deposit before inspecting the vehicle.",
+        createdAt: hoursAgo(47),
       },
       {
         conversationId: "conv_demo_1",
         senderId: "usr_demo_buyer",
         isSystem: false,
-        body: "សួស្តី ឡាននៅមានទេ? ចង់ដឹងថាអាចមកមើលថ្ងៃសៅរ៍បានទេ? / Hello, is the car still available? Can I come see it Saturday?",
-        createdAt: buyerAt,
+        body: "សួស្តី! Lexus RX350 នេះនៅមានទេ? តើខ្ញុំអាចណាត់មើលថ្ងៃសៅរ៍នៅសាខាទួលគោកបានទេ? / Hello! Is this RX350 still available to view this Saturday at Toul Kork?",
+        createdAt: hoursAgo(24),
       },
       {
         conversationId: "conv_demo_1",
         senderId: "usr_dealer_sokha",
         isSystem: false,
-        body: "សួស្តី! ឡាននៅមាន។ សូមកោះមកមើលនៅផ្លូវព្រះនុហុង ៨ព្រឹក ដល់ ៦ល្ងាច។ / Hello! Yes, still available. You're welcome to view it on Preah Norodom Blvd, 8am–6pm any day.",
-        createdAt: sellerAt,
+        body: "សួស្តីបង! ឡាននៅមាន។ សូមអញ្ជើញមកមើលបាននៅសាលបង្ហាញទួលគោក ម៉ោង ៨ព្រឹក ដល់ ៦ល្ងាច។ / Hello! Yes, it's ready for test drive anytime 8am-6pm.",
+        createdAt: hoursAgo(20),
       },
     ],
   });
 
-  await prisma.conversation.update({
-    where: { id: "conv_demo_1" },
-    data: { updatedAt: sellerAt },
-  });
-
   await prisma.favorite.createMany({
     data: [
-      {
-        userId: "usr_demo_buyer",
-        vehicleId: "veh_prado_2018",
-        createdAt: daysAgo(1),
-      },
-      {
-        userId: "usr_demo_buyer",
-        vehicleId: "veh_vellfire_2017",
-        createdAt: daysAgo(3),
-      },
+      { userId: "usr_demo_buyer", vehicleId: "veh_prado_alphard", createdAt: daysAgo(1) },
+      { userId: "usr_demo_buyer", vehicleId: "veh_prado_2018", createdAt: daysAgo(2) },
+      { userId: "usr_demo_buyer", vehicleId: "veh_raptor_2023", createdAt: daysAgo(3) },
     ],
   });
 
@@ -1892,13 +2072,8 @@ async function seedEngagement(pradoReportId: string) {
         actorId: "usr_dealer_sokha",
         action: "LISTING_PUBLISHED",
         entity: "Vehicle",
-        entityId: "veh_prado_2018",
-        metaJson: JSON.stringify({
-          make: "Toyota",
-          model: "Land Cruiser Prado",
-          year: 2018,
-          priceUsd: 52500,
-        }),
+        entityId: "veh_prado_alphard",
+        metaJson: JSON.stringify({ make: "Toyota", model: "Alphard", year: 2022, priceUsd: 118000 }),
         createdAt: daysAgo(2),
       },
       {
@@ -1906,23 +2081,77 @@ async function seedEngagement(pradoReportId: string) {
         action: "REPORT_GENERATED",
         entity: "VehicleHistoryReport",
         entityId: pradoReportId,
-        metaJson: JSON.stringify({
-          vehicleId: "veh_prado_2018",
-          overallConfidence: 78,
-        }),
+        metaJson: JSON.stringify({ vehicleId: "veh_prado_2018", overallConfidence: 85 }),
+        createdAt: daysAgo(1),
+      },
+    ],
+  });
+}
+
+async function seedDashboardData() {
+  await prisma.savedSearch.createMany({
+    data: [
+      {
+        userId: "usr_demo_buyer",
+        name: "Toyota SUVs with Hot Price",
+        queryJson: JSON.stringify({ make: "Toyota", bodyType: "SUV", onSale: true, sort: "newest" }),
+        alertsEnabled: true,
+      },
+      {
+        userId: "usr_demo_buyer",
+        name: "Motorcycles 125cc-160cc with ABS",
+        queryJson: JSON.stringify({ listingCategory: "MOTOR", hasAbs: true, sort: "newest" }),
+        alertsEnabled: false,
+      },
+    ],
+  });
+
+  await prisma.appointment.createMany({
+    data: [
+      {
+        id: "apt_demo_prado",
+        vehicleId: "veh_prado_2018",
+        buyerId: "usr_demo_buyer",
+        sellerId: "usr_dealer_sokha",
+        tenantId: "tenant_sokha",
+        scheduledAt: daysFromNowAt(2, 10),
+        status: "CONFIRMED",
+        notes: "Buyer requesting inspection of Dubai import documents at Toul Kork branch.",
         createdAt: daysAgo(1),
       },
       {
-        actorId: "usr_admin",
-        action: "SEED_DATABASE",
-        entity: "system",
-        entityId: null,
-        metaJson: JSON.stringify({
-          note: "Initial KhLan demo seed",
-          users: 8,
-          tenants: 2,
-          vehicles: 14,
-          reports: 2,
+        id: "apt_demo_alphard",
+        vehicleId: "veh_prado_alphard",
+        buyerId: "usr_demo_buyer",
+        sellerId: "usr_dealer_sokha",
+        tenantId: "tenant_sokha",
+        scheduledAt: daysFromNowAt(4, 15),
+        status: "REQUESTED",
+        notes: "Viewing appointment at BKK1 luxury showroom.",
+        createdAt: hoursAgo(12),
+      },
+    ],
+  });
+
+  await prisma.platformSetting.createMany({
+    data: [
+      { key: "commissionPct", valueJson: JSON.stringify(2.5) },
+      { key: "featuredListingPriceUsd", valueJson: JSON.stringify(25) },
+      { key: "autoApproveListings", valueJson: JSON.stringify(false) },
+      { key: "maintenanceMode", valueJson: JSON.stringify(false) },
+      { key: "demoModeEnabled", valueJson: JSON.stringify(true) },
+      { key: "adminOnlyLogin", valueJson: JSON.stringify(false) },
+      {
+        key: "payments.manualConfig",
+        valueJson: JSON.stringify({
+          enabled: true,
+          accountName: "KhLan Payments (Sokha Chan)",
+          khqrPayload: null,
+          khqrImageUrl: null,
+          instructionsEn: "1. Scan the KHQR\n2. Include payment reference\n3. Proof sent via Telegram @khlan_admin",
+          instructionsKm: "១. ស្កេន KHQR\n២. ដាក់លេខយោង\n៣. ផ្ញើភស្តុតាងតាម Telegram @khlan_admin",
+          telegram: "@khlan_admin",
+          freePlan: { enabled: true, listingsLimit: 5, featuredLimit: 1, seats: 1 },
         }),
       },
     ],
@@ -1930,80 +2159,91 @@ async function seedEngagement(pradoReportId: string) {
 }
 
 // ---------------------------------------------------------------------------
-// Main
+// 8. Main Execution
 // ---------------------------------------------------------------------------
 
 async function main() {
-  if (process.env.SEED_ALLOW_RESET !== "1") {
-    throw new Error(
-      "Seeding deletes existing rows. Set SEED_ALLOW_RESET=1 and point DATABASE_URL at a disposable test database.",
-    );
-  }
+  console.log("=================================================");
+  console.log("KhLan Marketplace: Generating Full Demo Seed...");
+  console.log("=================================================");
 
-  console.log("KhLan seed: wiping existing data...");
-  // Delete children before parents to respect FK constraints.
-  await prisma.appointment.deleteMany();
+  // 1. Clean Wipe in correct foreign key order
+  console.log("\n[1/8] Cleaning existing demo records...");
+  await prisma.itemPrice.deleteMany();
+  await prisma.priceType.deleteMany();
+  await prisma.vehicleModel.deleteMany();
+  await prisma.vehicleMake.deleteMany();
   await prisma.auditLog.deleteMany();
   await prisma.message.deleteMany();
   await prisma.conversation.deleteMany();
   await prisma.favorite.deleteMany();
+  await prisma.appointment.deleteMany();
   await prisma.savedSearch.deleteMany();
   await prisma.vehicleHistoryReport.deleteMany();
   await prisma.vehicleDocument.deleteMany();
   await prisma.vehicleImage.deleteMany();
-  await prisma.tenantMember.deleteMany();
-  await prisma.subscription.deleteMany();
-  await prisma.subscriptionPayment.deleteMany();
   await prisma.purchaseRequest.deleteMany();
+  await prisma.subscriptionPayment.deleteMany();
+  await prisma.subscription.deleteMany();
   await prisma.vehicle.deleteMany();
+  await prisma.tenantBranch.deleteMany();
+  await prisma.tenantMember.deleteMany();
   await prisma.tenant.deleteMany();
   await prisma.sellerProfile.deleteMany();
   await prisma.reportedContent.deleteMany();
   await prisma.platformSetting.deleteMany();
   await prisma.user.deleteMany();
 
-  console.log("Seeding users (8: buyer, 2 dealers, 2 private sellers, super admin, 2 staff)...");
+  // 2. Seed Users
+  console.log("[2/8] Seeding 8 deterministic user personas (password: khlan123)...");
   await seedUsers();
 
-  console.log("Seeding tenants (2) with members & subscriptions...");
+  // 3. Seed Tenants & Showroom Branches
+  console.log("[3/8] Seeding dealerships with multi-branch showrooms...");
   await seedTenants();
 
-  console.log("Seeding seller profiles (dealer profiles linked to tenants)...");
+  // 4. Seed Seller Profiles
+  console.log("[4/8] Seeding seller profiles...");
   await seedSellerProfiles();
 
-  console.log("Seeding vehicles (14) with images & documents...");
+  // 5. Seed Flexible Pricing Tiers
+  console.log("[5/8] Seeding 8 core flexible pricing promotional tiers...");
+  await seedPriceTypes();
+
+  // 6. Seed Vehicle Models Catalog (48 makes, 3,896 models)
+  console.log("[6/8] Seeding vehicle catalog (Cars, Motors, Spare Parts)...");
+  await importCatalogModels({ category: "ALL", dryRun: false, verbose: false });
+
+  // 7. Seed 34 Detailed Vehicles with Promotions
+  console.log("[7/8] Seeding 34 showcase listings (18 Cars, 8 Motors, 8 Parts) with pricing tiers...");
   await seedVehicles();
 
-  console.log("Seeding pre-generated AI history reports (2)...");
+  // 8. Seed Reports, Engagement & Dashboard Data
+  console.log("[8/8] Seeding AI reports, appointments, messages & platform settings...");
   const { pradoReport } = await seedReports();
-
-  console.log("Seeding conversation, favorites & audit log...");
   await seedEngagement(pradoReport.id);
-
-  console.log("Seeding dashboard demo data (saved searches, appointments, platform settings)...");
   await seedDashboardData();
 
   const counts = {
     users: await prisma.user.count(),
-    sellerProfiles: await prisma.sellerProfile.count(),
     tenants: await prisma.tenant.count(),
-    tenantMembers: await prisma.tenantMember.count(),
-    subscriptions: await prisma.subscription.count(),
+    tenantBranches: await prisma.tenantBranch.count(),
+    priceTypes: await prisma.priceType.count(),
+    vehicleMakes: await prisma.vehicleMake.count(),
+    vehicleModels: await prisma.vehicleModel.count(),
     vehicles: await prisma.vehicle.count(),
+    itemPrices: await prisma.itemPrice.count(),
     vehicleImages: await prisma.vehicleImage.count(),
     vehicleDocuments: await prisma.vehicleDocument.count(),
     reports: await prisma.vehicleHistoryReport.count(),
-    favorites: await prisma.favorite.count(),
-    savedSearches: await prisma.savedSearch.count(),
     appointments: await prisma.appointment.count(),
     conversations: await prisma.conversation.count(),
-    messages: await prisma.message.count(),
-    platformSettings: await prisma.platformSetting.count(),
-    auditLogs: await prisma.auditLog.count(),
-    subscriptionPayments: await prisma.subscriptionPayment.count(),
-    purchaseRequests: await prisma.purchaseRequest.count(),
   };
-  console.log("Seed complete:", counts);
+
+  console.log("\n=================================================");
+  console.log("🎉 FULL DEMO SEED COMPLETE! Verification counts:");
+  console.log(counts);
+  console.log("=================================================");
 }
 
 main()
@@ -2011,7 +2251,7 @@ main()
     await prisma.$disconnect();
   })
   .catch(async (e) => {
-    console.error(e);
+    console.error("Seed execution failed:", e);
     await prisma.$disconnect();
     process.exit(1);
   });

@@ -53,6 +53,7 @@ import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { fileToDataUrl } from "@/lib/image-client";
 import type { PlanPricingConfig } from "@/lib/api/plan-config";
+import { AdminPricingManagement } from "./admin-pricing-management";
 
 const VEHICLE_STATUSES: VehicleStatus[] = ["PUBLISHED", "PENDING_REVIEW", "DRAFT", "SOLD", "REJECTED", "ARCHIVED"];
 
@@ -76,6 +77,7 @@ export function AdminDashboard({ me }: { me: SessionDTO }) {
     { id: "overview", label: t("tabOverview"), icon: LayoutDashboard },
     { id: "tenants", label: t("tabTenants"), icon: Store },
     { id: "listings", label: t("tabListings"), icon: Car },
+    { id: "pricing", label: "Pricing & Promos", icon: DollarSign },
     { id: "users", label: t("tabUsers"), icon: Users },
     { id: "payments", label: t("tabPayments"), icon: CreditCard },
     { id: "ai", label: t("tabAi"), icon: Sparkles },
@@ -97,6 +99,7 @@ export function AdminDashboard({ me }: { me: SessionDTO }) {
       {active === "overview" && <AdminOverview />}
       {active === "tenants" && <AdminTenants />}
       {active === "listings" && <AdminListings />}
+      {active === "pricing" && <AdminPricingManagement />}
       {active === "users" && <AdminUsers />}
       {active === "payments" && <AdminPayments />}
       {active === "ai" && <AdminAi />}
