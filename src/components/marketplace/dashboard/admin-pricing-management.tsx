@@ -89,17 +89,28 @@ export function AdminPricingManagement() {
   } = useFetch<{ priceTypes: PriceType[] }>("/api/pricing/types");
 
   // Vehicles query for item price assignment
+  const [vehicleCategory, setVehicleCategory] = useState<string>("ALL");
   const [vehicleSearch, setVehicleSearch] = useState("");
+  const inventoryQuery = useMemo(() => {
+    const p = new URLSearchParams();
+    if (vehicleCategory !== "ALL") p.set("category", vehicleCategory);
+    if (vehicleSearch.trim()) p.set("q", vehicleSearch.trim());
+    return `/api/seller/pricing/inventory?${p.toString()}`;
+  }, [vehicleCategory, vehicleSearch]);
+
   const {
-    data: vehiclesData,
+    data: inventoryData,
     loading: loadingVehicles,
     refetch: refetchVehicles,
-  } = useFetch<{ items: AdminVehicleItem[] }>(
-    `/api/vehicles?limit=48&status=ALL${vehicleSearch ? `&q=${encodeURIComponent(vehicleSearch)}` : ""}`,
-  );
+  } = useFetch<{ vehicles: any[]; totalCount: number; onSaleCount: number }>(inventoryQuery);
 
   const priceTypes = typesData?.priceTypes ?? [];
-  const vehicles = vehiclesData?.items ?? [];
+  const vehicles = useMemo<AdminVehicleItem[]>(() => {
+    return (inventoryData?.vehicles ?? []).map((v: any) => ({
+      ...v,
+      priceUsd: v.basePriceUsd ?? v.priceUsd,
+    }));
+  }, [inventoryData]);
 
   // Modals state
   const [isNewTypeOpen, setIsNewTypeOpen] = useState(false);
@@ -470,7 +481,29 @@ export function AdminPricingManagement() {
       {activeTab === "items" && (
         <div className="space-y-4">
           <div className="flex flex-wrap items-center justify-between gap-3">
-            <h3 className="text-sm font-bold text-slate-800">Listing Promotional Prices & Schedules</h3>
+            <div className="flex flex-wrap items-center gap-2">
+              <h3 className="text-sm font-bold text-slate-800">Listing Promotional Prices & Schedules</h3>
+              <div className="flex items-center gap-1.5 p-1 bg-slate-100 rounded-xl">
+                {[
+                  { id: "ALL", label: "All" },
+                  { id: "CAR", label: "Cars" },
+                  { id: "MOTOR", label: "Motors" },
+                  { id: "SPARE_PART", label: "Parts" },
+                ].map((c) => (
+                  <button
+                    key={c.id}
+                    type="button"
+                    onClick={() => setVehicleCategory(c.id)}
+                    className={cn(
+                      "px-3 py-1 text-xs font-bold rounded-lg transition-colors cursor-pointer",
+                      vehicleCategory === c.id ? "bg-white text-slate-950 shadow-xs" : "text-slate-600 hover:text-slate-900"
+                    )}
+                  >
+                    {c.label}
+                  </button>
+                ))}
+              </div>
+            </div>
             <div className="relative w-72">
               <Search className="absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" />
               <Input

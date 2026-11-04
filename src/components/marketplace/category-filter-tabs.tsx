@@ -35,7 +35,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
-export type MarketplaceCategory = "CAR" | "MOTOR" | "SPARE_PART";
+export type MarketplaceCategory = "ALL" | "CAR" | "MOTOR" | "SPARE_PART";
 
 export interface FilterState {
   // Category
@@ -87,7 +87,7 @@ export interface FilterState {
 }
 
 export const INITIAL_FILTER_STATE: FilterState = {
-  category: "CAR",
+  category: "ALL",
   q: "",
   priceMin: "",
   priceMax: "",
@@ -159,6 +159,13 @@ interface CategoryFilterTabsProps {
   filters: FilterState;
   onChange: (next: FilterState) => void;
   totalResults?: number;
+  categoryCounts?: {
+    total?: number;
+    car?: number;
+    motor?: number;
+    carPart?: number;
+    motorPart?: number;
+  };
   availablePriceTypes?: Array<{ code: string; label: string; badgeColor: string }>;
   className?: string;
 }
@@ -167,6 +174,7 @@ export function CategoryFilterTabs({
   filters,
   onChange,
   totalResults,
+  categoryCounts,
   availablePriceTypes = [
     { code: "HOT_PRICE", label: "Hot Price", badgeColor: "#EF4444" },
     { code: "PROMOTE_PRICE", label: "Promote Price", badgeColor: "#F59E0B" },
@@ -190,7 +198,8 @@ export function CategoryFilterTabs({
   useEffect(() => {
     let active = true;
     setLoadingMakes(true);
-    fetch(`/api/catalog/makes?category=${filters.category}`)
+    const catParam = filters.category && filters.category !== "ALL" ? `?category=${filters.category}` : "";
+    fetch(`/api/catalog/makes${catParam}`)
       .then((r) => r.json())
       .then((data) => {
         if (active && data.makes) {
@@ -216,7 +225,8 @@ export function CategoryFilterTabs({
 
     let active = true;
     setLoadingModels(true);
-    fetch(`/api/catalog/models?category=${filters.category}&make=${encodeURIComponent(filters.make)}`)
+    const catParam = filters.category && filters.category !== "ALL" ? `&category=${filters.category}` : "";
+    fetch(`/api/catalog/models?make=${encodeURIComponent(filters.make)}${catParam}`)
       .then((r) => r.json())
       .then((data) => {
         if (active && data.models) {
@@ -307,17 +317,52 @@ export function CategoryFilterTabs({
           <button
             type="button"
             role="tab"
+            aria-selected={filters.category === "ALL"}
+            onClick={() => handleCategorySwitch("ALL")}
+            className={cn(
+              "flex items-center gap-1.5 rounded-lg px-3.5 py-1.5 text-xs font-semibold transition-all cursor-pointer",
+              filters.category === "ALL"
+                ? "bg-white text-slate-900 shadow-xs"
+                : "text-slate-600 hover:text-slate-900",
+            )}
+          >
+            <span>{locale === "km" ? "ទាំងអស់" : "All"}</span>
+            {categoryCounts?.total != null && (
+              <span
+                className={cn(
+                  "rounded-full px-1.5 py-0.2 text-[10px] font-bold",
+                  filters.category === "ALL" ? "bg-slate-900 text-white" : "bg-slate-200/80 text-slate-600",
+                )}
+              >
+                {categoryCounts.total}
+              </span>
+            )}
+          </button>
+
+          <button
+            type="button"
+            role="tab"
             aria-selected={filters.category === "CAR"}
             onClick={() => handleCategorySwitch("CAR")}
             className={cn(
-              "flex items-center gap-2 rounded-lg px-3.5 py-1.5 text-xs font-semibold transition-all",
+              "flex items-center gap-1.5 rounded-lg px-3.5 py-1.5 text-xs font-semibold transition-all cursor-pointer",
               filters.category === "CAR"
                 ? "bg-white text-slate-900 shadow-xs"
                 : "text-slate-600 hover:text-slate-900",
             )}
           >
-            <CarFront className="h-4 w-4 text-sky-600" />
+            <CarFront className="h-3.5 w-3.5 text-sky-600" />
             <span>{locale === "km" ? "រថយន្ត" : "Cars"}</span>
+            {categoryCounts?.car != null && (
+              <span
+                className={cn(
+                  "rounded-full px-1.5 py-0.2 text-[10px] font-bold",
+                  filters.category === "CAR" ? "bg-sky-600 text-white" : "bg-slate-200/80 text-slate-600",
+                )}
+              >
+                {categoryCounts.car}
+              </span>
+            )}
           </button>
 
           <button
@@ -326,14 +371,24 @@ export function CategoryFilterTabs({
             aria-selected={filters.category === "MOTOR"}
             onClick={() => handleCategorySwitch("MOTOR")}
             className={cn(
-              "flex items-center gap-2 rounded-lg px-3.5 py-1.5 text-xs font-semibold transition-all",
+              "flex items-center gap-1.5 rounded-lg px-3.5 py-1.5 text-xs font-semibold transition-all cursor-pointer",
               filters.category === "MOTOR"
                 ? "bg-white text-slate-900 shadow-xs"
                 : "text-slate-600 hover:text-slate-900",
             )}
           >
-            <Bike className="h-4 w-4 text-amber-600" />
+            <Bike className="h-3.5 w-3.5 text-amber-600" />
             <span>{locale === "km" ? "ម៉ូតូ" : "Motorcycles"}</span>
+            {categoryCounts?.motor != null && (
+              <span
+                className={cn(
+                  "rounded-full px-1.5 py-0.2 text-[10px] font-bold",
+                  filters.category === "MOTOR" ? "bg-amber-600 text-white" : "bg-slate-200/80 text-slate-600",
+                )}
+              >
+                {categoryCounts.motor}
+              </span>
+            )}
           </button>
 
           <button
@@ -342,14 +397,24 @@ export function CategoryFilterTabs({
             aria-selected={filters.category === "SPARE_PART"}
             onClick={() => handleCategorySwitch("SPARE_PART")}
             className={cn(
-              "flex items-center gap-2 rounded-lg px-3.5 py-1.5 text-xs font-semibold transition-all",
+              "flex items-center gap-1.5 rounded-lg px-3.5 py-1.5 text-xs font-semibold transition-all cursor-pointer",
               filters.category === "SPARE_PART"
                 ? "bg-white text-slate-900 shadow-xs"
                 : "text-slate-600 hover:text-slate-900",
             )}
           >
-            <Wrench className="h-4 w-4 text-emerald-600" />
+            <Wrench className="h-3.5 w-3.5 text-emerald-600" />
             <span>{locale === "km" ? "គ្រឿងបន្លាស់" : "Spare Parts"}</span>
+            {(categoryCounts?.carPart != null || categoryCounts?.motorPart != null) && (
+              <span
+                className={cn(
+                  "rounded-full px-1.5 py-0.2 text-[10px] font-bold",
+                  filters.category === "SPARE_PART" ? "bg-emerald-600 text-white" : "bg-slate-200/80 text-slate-600",
+                )}
+              >
+                {(categoryCounts?.carPart ?? 0) + (categoryCounts?.motorPart ?? 0)}
+              </span>
+            )}
           </button>
         </div>
 
@@ -639,6 +704,13 @@ export function CategoryFilterTabs({
           </div>
 
           {/* TAB-SPECIFIC FILTERS */}
+          {filters.category === "ALL" && (
+            <div className="rounded-lg border border-slate-200 bg-white p-3 text-center text-xs text-slate-500">
+              <span className="font-semibold text-slate-700">Viewing All Categories: </span>
+              Select <span className="font-bold text-sky-600">Cars</span>, <span className="font-bold text-amber-600">Motorcycles</span>, or <span className="font-bold text-emerald-600">Spare Parts</span> above for category-specific attributes (engine CC, ABS, OEM parts, body styles).
+            </div>
+          )}
+
           {filters.category === "CAR" && (
             <div className="space-y-3 border-t border-slate-200/80 pt-3">
               <div className="text-[11px] font-bold uppercase tracking-wider text-slate-500">

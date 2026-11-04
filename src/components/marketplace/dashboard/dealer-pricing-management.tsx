@@ -6,7 +6,7 @@ import { formatUsd, formatKhr } from "@/lib/format";
 import { useT } from "@/hooks/use-t";
 import { useAppStore } from "@/lib/store";
 import {
-  CarFront, Check, ChevronDown, Download, FileSpreadsheet, Filter, Flame,
+  CarFront, Bike, Wrench, Check, ChevronDown, Download, FileSpreadsheet, Filter, Flame,
   Loader2, Pencil, Percent, Plus, RefreshCw, Search, ShieldAlert, ShieldCheck,
   Sparkles, Tag, Trash2, TriangleAlert, Upload, X, Calendar, DollarSign
 } from "lucide-react";
@@ -466,19 +466,28 @@ export function DealerPricingManagement() {
         <div className="flex flex-wrap items-center justify-between gap-3">
           {/* Category Tabs */}
           <div className="flex items-center gap-1.5 p-1 bg-slate-100 rounded-xl">
-            {["ALL", "CAR", "MOTOR", "SPARE_PART"].map((c) => (
-              <button
-                key={c}
-                type="button"
-                onClick={() => setCategory(c)}
-                className={cn(
-                  "px-3 py-1.5 text-xs font-bold rounded-lg transition-colors cursor-pointer",
-                  category === c ? "bg-white text-slate-950 shadow-xs" : "text-slate-600 hover:text-slate-900"
-                )}
-              >
-                {c === "ALL" ? "All" : c === "CAR" ? "Cars" : c === "MOTOR" ? "Motors" : "Parts"}
-              </button>
-            ))}
+            {[
+              { id: "ALL", label: "All", icon: null },
+              { id: "CAR", label: "Cars", icon: CarFront },
+              { id: "MOTOR", label: "Motors", icon: Bike },
+              { id: "SPARE_PART", label: "Parts", icon: Wrench },
+            ].map((c) => {
+              const Icon = c.icon;
+              return (
+                <button
+                  key={c.id}
+                  type="button"
+                  onClick={() => setCategory(c.id)}
+                  className={cn(
+                    "flex items-center gap-1 px-3 py-1.5 text-xs font-bold rounded-lg transition-colors cursor-pointer",
+                    category === c.id ? "bg-white text-slate-950 shadow-xs" : "text-slate-600 hover:text-slate-900"
+                  )}
+                >
+                  {Icon && <Icon className="h-3 w-3" />}
+                  <span>{c.label}</span>
+                </button>
+              );
+            })}
           </div>
 
           {/* Action buttons */}

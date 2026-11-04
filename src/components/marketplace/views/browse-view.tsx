@@ -878,11 +878,11 @@ export function BrowseView({
         </div>
       </div>
 
-      {/* Upgraded 3-Category Tabbed Filter Toolbar with Dependent Dropdowns & Price Types */}
+      {/* Upgraded Multi-Category Tabbed Filter Toolbar with Dependent Dropdowns & Price Types */}
       <div className="mt-4">
         <CategoryFilterTabs
           filters={{
-            category: applied.category === "SPARE_PART" ? "SPARE_PART" : applied.category === "MOTOR" ? "MOTOR" : "CAR",
+            category: applied.category || "ALL",
             q: applied.q || "",
             make: applied.make || "ALL",
             model: applied.model || "ALL",
@@ -970,68 +970,8 @@ export function BrowseView({
             });
           }}
           totalResults={data?.total}
+          categoryCounts={meta?.categoryCounts}
         />
-      </div>
-      <div className="mt-4 flex items-center gap-2 overflow-x-auto pb-1 no-scrollbar" role="tablist">
-        {[
-          { id: "ALL", label: t("categoryAll"), icon: null, count: meta?.categoryCounts?.total },
-          { id: "CAR", label: t("categoryCars"), icon: CarFront, count: meta?.categoryCounts?.car },
-          { id: "MOTOR", label: t("categoryMotors"), icon: Bike, count: meta?.categoryCounts?.motor },
-          { id: "CAR_PART", label: t("categoryCarParts"), icon: Wrench, count: meta?.categoryCounts?.carPart },
-          { id: "MOTOR_PART", label: t("categoryMotorParts"), icon: Wrench, count: meta?.categoryCounts?.motorPart },
-        ].map((cat) => {
-          const Icon = cat.icon;
-          const active =
-            cat.id === "ALL"
-              ? !applied.category || applied.category === "ALL"
-              : cat.id === "CAR"
-              ? applied.category === "CAR"
-              : cat.id === "MOTOR"
-              ? applied.category === "MOTOR"
-              : cat.id === "CAR_PART"
-              ? applied.category === "SPARE_PART" && (applied.partTarget === "CAR" || !applied.partTarget)
-              : applied.category === "SPARE_PART" && applied.partTarget === "MOTOR";
-
-          return (
-            <button
-              key={cat.id}
-              role="tab"
-              aria-selected={active}
-              onClick={() => {
-                if (cat.id === "ALL") {
-                  applyFilters({ ...applied, category: "ALL", partCategory: "", partTarget: "" });
-                } else if (cat.id === "CAR") {
-                  applyFilters({ ...applied, category: "CAR", partCategory: "", partTarget: "" });
-                } else if (cat.id === "MOTOR") {
-                  applyFilters({ ...applied, category: "MOTOR", partCategory: "", partTarget: "" });
-                } else if (cat.id === "CAR_PART") {
-                  applyFilters({ ...applied, category: "SPARE_PART", partTarget: "CAR" });
-                } else if (cat.id === "MOTOR_PART") {
-                  applyFilters({ ...applied, category: "SPARE_PART", partTarget: "MOTOR" });
-                }
-              }}
-              className={cn(
-                "inline-flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold transition-all shadow-xs cursor-pointer whitespace-nowrap",
-                active
-                  ? "bg-slate-900 text-white shadow-md shadow-slate-900/10"
-                  : "bg-white border border-slate-200 text-slate-600 hover:border-slate-300 hover:text-slate-900",
-              )}
-            >
-              {Icon && <Icon className={cn("h-4 w-4", active ? "text-amber-400" : "text-slate-500")} />}
-              <span>{cat.label}</span>
-              {cat.count != null && (
-                <span
-                  className={cn(
-                    "ml-1 rounded-full px-2 py-0.5 text-[11px] font-bold",
-                    active ? "bg-amber-500 text-slate-950" : "bg-slate-100 text-slate-600",
-                  )}
-                >
-                  {cat.count}
-                </span>
-              )}
-            </button>
-          );
-        })}
       </div>
 
       {/* Active filter chips */}

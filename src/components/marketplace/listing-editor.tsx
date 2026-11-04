@@ -23,8 +23,9 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Progress } from "@/components/ui/progress";
 import { Switch } from "@/components/ui/switch";
 import {
-  CarFront, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, FileText, FileUp, GripVertical, Image as ImageIcon, ImagePlus, Link2, Loader2, PhoneCall, Plus, Sparkles, Star, Trash2, TriangleAlert, UploadCloud, X,
+  CarFront, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, FileText, FileUp, GripVertical, Image as ImageIcon, ImagePlus, Link2, Loader2, PhoneCall, Plus, Sparkles, Star, Trash2, TriangleAlert, UploadCloud, X, ShieldCheck, AlertCircle,
 } from "lucide-react";
+import { formatUsd, formatKhr } from "@/lib/format";
 import {
   bodyTypeLabels,
   fuelLabels,
@@ -1289,13 +1290,72 @@ export function ListingEditorDialog({
                   label="Floor Price Protection ($)"
                   hint="Promotions will never discount below this floor"
                 >
-                  <Input
-                    type="number"
-                    min={0}
-                    value={form.floorPriceUsd}
-                    onChange={(e) => set({ floorPriceUsd: e.target.value })}
-                    placeholder="e.g. 16500"
-                  />
+                  <div className="space-y-1.5">
+                    <Input
+                      type="number"
+                      min={0}
+                      value={form.floorPriceUsd}
+                      onChange={(e) => set({ floorPriceUsd: e.target.value })}
+                      placeholder="e.g. 16500"
+                    />
+
+                    {Number(form.priceUsd) > 0 && (
+                      <div className="flex flex-wrap items-center gap-1.5 pt-0.5">
+                        <span className="text-[10px] font-semibold text-slate-400">Quick Protect:</span>
+                        {[
+                          { label: "90%", ratio: 0.90 },
+                          { label: "85%", ratio: 0.85 },
+                          { label: "80%", ratio: 0.80 },
+                        ].map((preset) => {
+                          const calculated = Math.round(Number(form.priceUsd) * preset.ratio);
+                          const isSelected = Number(form.floorPriceUsd) === calculated;
+                          return (
+                            <button
+                              key={preset.label}
+                              type="button"
+                              onClick={() => set({ floorPriceUsd: String(calculated) })}
+                              className={cn(
+                                "rounded-md border px-2 py-0.5 text-[10px] font-semibold transition-all cursor-pointer",
+                                isSelected
+                                  ? "border-emerald-500 bg-emerald-50 text-emerald-800"
+                                  : "border-slate-200 bg-white text-slate-600 hover:border-slate-300 hover:bg-slate-50"
+                              )}
+                            >
+                              {preset.label} ({formatUsd(calculated)})
+                            </button>
+                          );
+                        })}
+                        {form.floorPriceUsd && (
+                          <button
+                            type="button"
+                            onClick={() => set({ floorPriceUsd: "" })}
+                            className="text-[10px] text-slate-400 hover:text-slate-600 underline ml-1 cursor-pointer"
+                          >
+                            Clear
+                          </button>
+                        )}
+                      </div>
+                    )}
+
+                    {Number(form.floorPriceUsd) > 0 && Number(form.priceUsd) > 0 && (
+                      Number(form.floorPriceUsd) > Number(form.priceUsd) ? (
+                        <div className="flex items-center gap-1.5 text-[11px] font-medium text-rose-600">
+                          <AlertCircle className="h-3 w-3 shrink-0" />
+                          <span>Floor price exceeds base price ({formatUsd(Number(form.priceUsd))})</span>
+                        </div>
+                      ) : Number(form.floorPriceUsd) === Number(form.priceUsd) ? (
+                        <div className="flex items-center gap-1.5 text-[11px] font-medium text-amber-600">
+                          <TriangleAlert className="h-3 w-3 shrink-0" />
+                          <span>Floor equals base price. No promotional discounts will apply below base.</span>
+                        </div>
+                      ) : (
+                        <div className="flex items-center gap-1.5 text-[11px] font-medium text-emerald-700">
+                          <ShieldCheck className="h-3 w-3 shrink-0 text-emerald-600" />
+                          <span>Protected floor: minimum sale guaranteed at {formatUsd(Number(form.floorPriceUsd))} (≈ {formatKhr(Number(form.floorPriceUsd))})</span>
+                        </div>
+                      )
+                    )}
+                  </div>
                 </EditField>
                 <EditField label={t("formCity")}>
                   <Input value={form.city} onChange={(e) => set({ city: e.target.value })} />

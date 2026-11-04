@@ -24,34 +24,36 @@ export async function GET(req: NextRequest) {
 
     const isPlatformAdmin = user.role === "SUPER_ADMIN" || user.role === "ADMIN";
 
-    const whereAuth = isPlatformAdmin
-      ? {}
-      : {
-          OR: [
-            { sellerId: user.id },
-            { createdById: user.id },
-            ...(writeTenantIds.length > 0 ? [{ tenantId: { in: writeTenantIds } }] : []),
-          ],
-        };
+    const conditions: any[] = [];
 
-    const where: any = {
-      ...whereAuth,
-    };
+    if (!isPlatformAdmin) {
+      conditions.push({
+        OR: [
+          { sellerId: user.id },
+          { createdById: user.id },
+          ...(writeTenantIds.length > 0 ? [{ tenantId: { in: writeTenantIds } }] : []),
+        ],
+      });
+    }
 
     if (category && category !== "ALL") {
-      where.listingCategory = category;
+      conditions.push({ listingCategory: category });
     }
     if (branchId && branchId !== "ALL") {
-      where.branchId = branchId;
+      conditions.push({ branchId: branchId });
     }
     if (q && q.trim()) {
       const term = q.trim();
-      where.OR = [
-        { make: { contains: term, mode: "insensitive" } },
-        { model: { contains: term, mode: "insensitive" } },
-        { stockNo: { contains: term, mode: "insensitive" } },
-      ];
+      conditions.push({
+        OR: [
+          { make: { contains: term, mode: "insensitive" } },
+          { model: { contains: term, mode: "insensitive" } },
+          { stockNo: { contains: term, mode: "insensitive" } },
+        ],
+      });
     }
+
+    const where = conditions.length > 0 ? { AND: conditions } : {};
 
     const vehicles = await db.vehicle.findMany({
       where,

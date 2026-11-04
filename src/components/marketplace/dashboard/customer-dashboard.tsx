@@ -114,7 +114,7 @@ export function CustomerDashboard({ me }: { me: SessionDTO }) {
         )
       )}
       {active === "pricing" && isSellerish && (
-        !me.subscription || me.subscription.status !== "ACTIVE" ? (
+        !me.demoModeEnabled && !me.demoPersona && (!me.subscription || me.subscription.status !== "ACTIVE") ? (
           <div className="rounded-xl border border-amber-300 bg-amber-50 p-4 text-xs text-amber-900">
             <p className="font-bold">Promotions & Pricing Locked</p>
             <p className="mt-1">Please complete your subscription payment to configure promotional tiers and floor pricing.</p>

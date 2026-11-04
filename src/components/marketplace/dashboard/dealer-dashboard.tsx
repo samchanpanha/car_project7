@@ -131,7 +131,7 @@ export function DealerDashboard({ me }: { me: SessionDTO }) {
         )
       )}
       {active === "pricing" && (
-        !me.subscription || me.subscription.status !== "ACTIVE" ? (
+        !me.demoModeEnabled && !me.demoPersona && (!me.subscription || me.subscription.status !== "ACTIVE") ? (
           <div className="rounded-xl border border-amber-300 bg-amber-50 p-4 text-xs text-amber-900">
             <p className="font-bold">Dealership Pricing & Promotions Locked</p>
             <p className="mt-1">Please complete your subscription payment above to access pricing tools and promotional campaigns.</p>

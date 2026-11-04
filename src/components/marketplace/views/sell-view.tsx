@@ -1000,7 +1000,7 @@ export function SellView() {
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <Field
                   label={form.priceMasked ? `${t("formPrice")} (${t("flowOptional")})` : `${t("formPrice")} (USD $)`}
-                  hint={form.priceMasked ? t("flowMaskedPriceHint") : (Number(form.priceUsd) > 0 ? `≈ ${formatKhr((Number(form.priceUsd) || 0) * 4100)}` : "Standard asking price")}
+                  hint={form.priceMasked ? t("flowMaskedPriceHint") : (Number(form.priceUsd) > 0 ? `≈ ${formatKhr(Number(form.priceUsd) || 0)}` : "Standard asking price")}
                 >
                   <div className="relative">
                     <span className="absolute left-3 top-2.5 text-sm font-semibold text-slate-400">$</span>
@@ -1019,16 +1019,77 @@ export function SellView() {
                   label="Floor Price Protection (USD $)"
                   hint="Minimum acceptable sale price. Promotional campaigns cannot discount below this."
                 >
-                  <div className="relative">
-                    <span className="absolute left-3 top-2.5 text-sm font-semibold text-slate-400">$</span>
-                    <Input
-                      type="number"
-                      min={0}
-                      value={form.floorPriceUsd}
-                      onChange={(e) => set({ floorPriceUsd: e.target.value })}
-                      placeholder="e.g. 16500"
-                      className="pl-7"
-                    />
+                  <div className="space-y-1.5">
+                    <div className="relative">
+                      <span className="absolute left-3 top-2.5 text-sm font-semibold text-slate-400">$</span>
+                      <Input
+                        type="number"
+                        min={0}
+                        value={form.floorPriceUsd}
+                        onChange={(e) => set({ floorPriceUsd: e.target.value })}
+                        placeholder="e.g. 16500"
+                        className="pl-7"
+                      />
+                    </div>
+
+                    {/* Quick Floor Presets */}
+                    {Number(form.priceUsd) > 0 && (
+                      <div className="flex flex-wrap items-center gap-1.5 pt-0.5">
+                        <span className="text-[10px] font-semibold text-slate-400">Quick Protect:</span>
+                        {[
+                          { label: "90%", ratio: 0.90 },
+                          { label: "85%", ratio: 0.85 },
+                          { label: "80%", ratio: 0.80 },
+                        ].map((preset) => {
+                          const calculated = Math.round(Number(form.priceUsd) * preset.ratio);
+                          const isSelected = Number(form.floorPriceUsd) === calculated;
+                          return (
+                            <button
+                              key={preset.label}
+                              type="button"
+                              onClick={() => set({ floorPriceUsd: String(calculated) })}
+                              className={cn(
+                                "rounded-md border px-2 py-0.5 text-[10px] font-semibold transition-all cursor-pointer",
+                                isSelected
+                                  ? "border-emerald-500 bg-emerald-50 text-emerald-800"
+                                  : "border-slate-200 bg-white text-slate-600 hover:border-slate-300 hover:bg-slate-50"
+                              )}
+                            >
+                              {preset.label} ({formatUsd(calculated)})
+                            </button>
+                          );
+                        })}
+                        {form.floorPriceUsd && (
+                          <button
+                            type="button"
+                            onClick={() => set({ floorPriceUsd: "" })}
+                            className="text-[10px] text-slate-400 hover:text-slate-600 underline ml-1 cursor-pointer"
+                          >
+                            Clear
+                          </button>
+                        )}
+                      </div>
+                    )}
+
+                    {/* Inline Validation / Feedback */}
+                    {Number(form.floorPriceUsd) > 0 && Number(form.priceUsd) > 0 && (
+                      Number(form.floorPriceUsd) > Number(form.priceUsd) ? (
+                        <div className="flex items-center gap-1.5 text-[11px] font-medium text-rose-600">
+                          <AlertCircle className="h-3 w-3 shrink-0" />
+                          <span>Floor price exceeds base price ({formatUsd(Number(form.priceUsd))})</span>
+                        </div>
+                      ) : Number(form.floorPriceUsd) === Number(form.priceUsd) ? (
+                        <div className="flex items-center gap-1.5 text-[11px] font-medium text-amber-600">
+                          <TriangleAlert className="h-3 w-3 shrink-0" />
+                          <span>Floor equals base price. No promotional discounts will take effect.</span>
+                        </div>
+                      ) : (
+                        <div className="flex items-center gap-1.5 text-[11px] font-medium text-emerald-700">
+                          <ShieldCheck className="h-3 w-3 shrink-0 text-emerald-600" />
+                          <span>Protected floor: minimum sale guaranteed at {formatUsd(Number(form.floorPriceUsd))} (≈ {formatKhr(Number(form.floorPriceUsd))})</span>
+                        </div>
+                      )
+                    )}
                   </div>
                 </Field>
               </div>
@@ -1080,21 +1141,44 @@ export function SellView() {
                         label={selectedPromoType?.mode === "PERCENT" ? "Discount Percentage (%)" : "Promotional Price (USD $)"}
                         hint={selectedPromoType?.mode === "PERCENT" ? "e.g. 10 for 10% off" : "Target discounted sale price"}
                       >
-                        <div className="relative">
-                          {selectedPromoType?.mode !== "PERCENT" && (
-                            <span className="absolute left-3 top-2.5 text-xs font-semibold text-slate-400">$</span>
-                          )}
-                          <Input
-                            type="number"
-                            min={1}
-                            max={selectedPromoType?.mode === "PERCENT" ? 99 : undefined}
-                            value={form.promoValue}
-                            onChange={(e) => set({ promoValue: e.target.value })}
-                            placeholder={selectedPromoType?.mode === "PERCENT" ? "10" : "17500"}
-                            className={selectedPromoType?.mode !== "PERCENT" ? "pl-7" : ""}
-                          />
+                        <div className="space-y-1.5">
+                          <div className="relative">
+                            {selectedPromoType?.mode !== "PERCENT" && (
+                              <span className="absolute left-3 top-2.5 text-xs font-semibold text-slate-400">$</span>
+                            )}
+                            <Input
+                              type="number"
+                              min={1}
+                              max={selectedPromoType?.mode === "PERCENT" ? 99 : undefined}
+                              value={form.promoValue}
+                              onChange={(e) => set({ promoValue: e.target.value })}
+                              placeholder={selectedPromoType?.mode === "PERCENT" ? "10" : "17500"}
+                              className={selectedPromoType?.mode !== "PERCENT" ? "pl-7" : "pr-7"}
+                            />
+                            {selectedPromoType?.mode === "PERCENT" && (
+                              <span className="absolute right-3 top-2.5 text-xs font-semibold text-slate-400">%</span>
+                            )}
+                          </div>
+
                           {selectedPromoType?.mode === "PERCENT" && (
-                            <span className="absolute right-3 top-2.5 text-xs font-semibold text-slate-400">%</span>
+                            <div className="flex flex-wrap items-center gap-1 pt-0.5">
+                              <span className="text-[10px] font-semibold text-slate-400">Presets:</span>
+                              {["5", "10", "15", "20", "25"].map((pct) => (
+                                <button
+                                  key={pct}
+                                  type="button"
+                                  onClick={() => set({ promoValue: pct })}
+                                  className={cn(
+                                    "rounded px-2 py-0.5 text-[10px] font-bold transition-all cursor-pointer",
+                                    form.promoValue === pct
+                                      ? "bg-amber-500 text-slate-950 shadow-xs"
+                                      : "bg-amber-100/70 text-amber-900 hover:bg-amber-200"
+                                  )}
+                                >
+                                  {pct}%
+                                </button>
+                              ))}
+                            </div>
                           )}
                         </div>
                       </Field>
@@ -1145,7 +1229,7 @@ export function SellView() {
                       {formatUsd(pricingPreview.effective)}
                     </span>
                     <span className="text-xs text-slate-500">
-                      ≈ {formatKhr(pricingPreview.effective * 4100)}
+                      ≈ {formatKhr(pricingPreview.effective)}
                     </span>
 
                     {pricingPreview.isOnSale && selectedPromoType && (
