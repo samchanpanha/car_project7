@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, memo } from "react";
 import {
   Flame,
   Zap,
@@ -39,7 +39,7 @@ export interface PromotionalPricingBannerProps {
   className?: string;
 }
 
-interface TimeRemaining {
+export interface TimeRemaining {
   days: number;
   hours: number;
   minutes: number;
@@ -48,7 +48,7 @@ interface TimeRemaining {
   isExpired: boolean;
 }
 
-function calculateTimeRemaining(targetDateStr: string | null | undefined): TimeRemaining | null {
+export function calculateTimeRemaining(targetDateStr: string | null | undefined): TimeRemaining | null {
   if (!targetDateStr) return null;
   const target = new Date(targetDateStr).getTime();
   if (Number.isNaN(target)) return null;
@@ -68,6 +68,102 @@ function calculateTimeRemaining(targetDateStr: string | null | undefined): TimeR
   return { days, hours, minutes, seconds, totalMs, isExpired: false };
 }
 
+export interface PromoCountdownTimerProps {
+  endDate?: string | null;
+  onExpire?: () => void;
+  className?: string;
+}
+
+/**
+ * Isolated Segmented Digital Pill Countdown Timer.
+ * Wrapped in React.memo with internal interval state so that 1-second ticks
+ * strictly re-render this badge alone — never parent components or listings.
+ * Zero layout shift via monospace tabular-nums in dedicated segmented boxes.
+ */
+export const PromoCountdownTimer = memo(function PromoCountdownTimer({
+  endDate,
+  onExpire,
+  className,
+}: PromoCountdownTimerProps) {
+  const [timeLeft, setTimeLeft] = useState<TimeRemaining | null>(() =>
+    calculateTimeRemaining(endDate)
+  );
+
+  useEffect(() => {
+    if (!endDate) {
+      setTimeLeft(null);
+      return;
+    }
+
+    const initial = calculateTimeRemaining(endDate);
+    setTimeLeft(initial);
+    if (initial?.isExpired) {
+      onExpire?.();
+      return;
+    }
+
+    const interval = setInterval(() => {
+      const remaining = calculateTimeRemaining(endDate);
+      setTimeLeft(remaining);
+      if (remaining?.isExpired) {
+        clearInterval(interval);
+        onExpire?.();
+      }
+    }, 1000);
+
+    return () => clearInterval(interval);
+  }, [endDate, onExpire]);
+
+  if (!timeLeft) return null;
+
+  if (timeLeft.isExpired) {
+    return (
+      <div
+        className={cn(
+          "inline-flex items-center gap-1.5 text-xs font-semibold text-slate-500 bg-slate-100 border border-slate-200 rounded-lg px-2.5 py-1 select-none",
+          className
+        )}
+      >
+        <Clock className="h-3.5 w-3.5 text-slate-400 shrink-0" />
+        <span className="uppercase tracking-wide text-[11px]">Promotion Ended</span>
+      </div>
+    );
+  }
+
+  return (
+    <div
+      className={cn(
+        "inline-flex items-center gap-1.5 text-xs font-semibold text-slate-700 bg-slate-50/90 border border-slate-200/80 rounded-lg px-2.5 py-1 shadow-2xs select-none",
+        className
+      )}
+    >
+      {/* Steady static clock icon (no animate-spin to prevent perpetual loading illusion) */}
+      <Clock className="h-3.5 w-3.5 text-amber-600 shrink-0" />
+      <span className="text-slate-500 text-[11px] uppercase tracking-wide mr-0.5">Ends in:</span>
+
+      {/* Segmented tabular digit boxes with zero layout jitter */}
+      <div className="flex items-center gap-1 font-mono text-xs tabular-nums font-bold text-slate-900">
+        {timeLeft.days > 0 && (
+          <span className="inline-flex items-center justify-center min-w-[28px] px-1 py-0.5 rounded bg-white border border-slate-200/90 shadow-2xs">
+            {timeLeft.days}d
+          </span>
+        )}
+        <span className="inline-flex items-center justify-center min-w-[28px] px-1 py-0.5 rounded bg-white border border-slate-200/90 shadow-2xs">
+          {String(timeLeft.hours).padStart(2, "0")}h
+        </span>
+        <span className="font-mono text-xs font-bold text-slate-400 select-none">:</span>
+        <span className="inline-flex items-center justify-center min-w-[28px] px-1 py-0.5 rounded bg-white border border-slate-200/90 shadow-2xs">
+          {String(timeLeft.minutes).padStart(2, "0")}m
+        </span>
+        <span className="font-mono text-xs font-bold text-slate-400 select-none">:</span>
+        <span className="inline-flex items-center justify-center min-w-[28px] px-1 py-0.5 rounded bg-white border border-slate-200/90 shadow-2xs">
+          {String(timeLeft.seconds).padStart(2, "0")}s
+        </span>
+      </div>
+    </div>
+  );
+});
+
 export function PromotionalPricingBanner({
   basePriceUsd,
   effectivePriceUsd,
@@ -81,27 +177,6 @@ export function PromotionalPricingBanner({
   floorEnforced = false,
   className,
 }: PromotionalPricingBannerProps) {
-  const [timeLeft, setTimeLeft] = useState<TimeRemaining | null>(() =>
-    calculateTimeRemaining(activeItemPrice?.endDate)
-  );
-
-  useEffect(() => {
-    if (!activeItemPrice?.endDate) return;
-
-    // Immediate initial computation
-    setTimeLeft(calculateTimeRemaining(activeItemPrice.endDate));
-
-    const interval = setInterval(() => {
-      const remaining = calculateTimeRemaining(activeItemPrice.endDate);
-      setTimeLeft(remaining);
-      if (remaining?.isExpired) {
-        clearInterval(interval);
-      }
-    }, 1000);
-
-    return () => clearInterval(interval);
-  }, [activeItemPrice?.endDate]);
-
   // Determine promo tier icon & theme
   const { TierIcon, glowClass, borderClass, bgGradientClass } = useMemo(() => {
     const code = activePriceType?.code?.toUpperCase() || "";
@@ -137,7 +212,10 @@ export function PromotionalPricingBanner({
     };
   }, [activePriceType?.code]);
 
-  const hasActiveSale = isOnSale && (!timeLeft || !timeLeft.isExpired);
+  const isEndDatePassed = activeItemPrice?.endDate
+    ? new Date(activeItemPrice.endDate).getTime() <= Date.now()
+    : false;
+  const hasActiveSale = isOnSale && !isEndDatePassed;
   const actualDiscountUsd = discountUsd > 0 ? discountUsd : Math.max(0, basePriceUsd - effectivePriceUsd);
   const actualDiscountPct = discountPercent > 0 ? discountPercent : Math.round((actualDiscountUsd / Math.max(1, basePriceUsd)) * 100);
 
@@ -160,7 +238,7 @@ export function PromotionalPricingBanner({
   return (
     <div
       className={cn(
-        "relative mt-3.5 overflow-hidden rounded-2xl border p-4 sm:p-5 transition-all duration-300 shadow-lg",
+        "relative mt-3.5 overflow-hidden rounded-2xl border p-4 sm:p-5 transition-colors duration-200 shadow-lg",
         borderClass,
         glowClass,
         "bg-white/95 backdrop-blur-xs",
@@ -175,14 +253,15 @@ export function PromotionalPricingBanner({
         )}
       />
 
-      {/* Top Header: Badge + Countdown Urgency Banner */}
+      {/* Top Header: Badge + Isolated Countdown Urgency Banner */}
       <div className="relative flex flex-wrap items-center justify-between gap-2.5 pb-3 border-b border-slate-100">
         <div className="flex items-center gap-2">
+          {/* Steady tier badge icon (no animate-pulse to avoid skeleton loading illusion) */}
           <span
             className="flex h-7 px-2.5 items-center gap-1.5 rounded-lg text-xs font-bold uppercase tracking-wider text-white shadow-xs"
             style={{ backgroundColor: badgeColor }}
           >
-            <TierIcon className="h-3.5 w-3.5 animate-pulse" />
+            <TierIcon className="h-3.5 w-3.5 shrink-0" />
             {activePriceType?.label || "Special Promotion"}
           </span>
 
@@ -194,18 +273,9 @@ export function PromotionalPricingBanner({
           )}
         </div>
 
-        {/* Live Countdown Timer */}
-        {timeLeft && !timeLeft.isExpired && (
-          <div className="flex items-center gap-1.5 text-xs font-semibold text-slate-700 bg-slate-50/90 border border-slate-200/70 rounded-lg px-2.5 py-1">
-            <Clock className="h-3.5 w-3.5 text-amber-600 animate-spin" style={{ animationDuration: "12s" }} />
-            <span className="text-slate-500 text-[11px] uppercase tracking-wide mr-0.5">Ends in:</span>
-            <span className="font-mono tabular-nums text-slate-900 font-bold">
-              {timeLeft.days > 0 && `${timeLeft.days}d `}
-              {String(timeLeft.hours).padStart(2, "0")}h :{" "}
-              {String(timeLeft.minutes).padStart(2, "0")}m :{" "}
-              {String(timeLeft.seconds).padStart(2, "0")}s
-            </span>
-          </div>
+        {/* Isolated Live Countdown Timer */}
+        {activeItemPrice?.endDate && (
+          <PromoCountdownTimer endDate={activeItemPrice.endDate} />
         )}
       </div>
 

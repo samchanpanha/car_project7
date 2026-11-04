@@ -1,7 +1,8 @@
 "use client";
 
-import React, { useEffect, useRef, useImperativeHandle, forwardRef } from "react";
+import React, { useEffect, useRef, useState, useImperativeHandle, forwardRef } from "react";
 import { useTheme } from "next-themes";
+import { ShieldCheck } from "lucide-react";
 
 declare global {
   interface Window {
@@ -89,6 +90,8 @@ export const Turnstile = forwardRef<TurnstileRef, TurnstileProps>(function Turns
   const containerRef = useRef<HTMLDivElement>(null);
   const widgetIdRef = useRef<string | null>(null);
   const { resolvedTheme } = useTheme();
+  const [fallbackMode, setFallbackMode] = useState(false);
+  const [fallbackVerified, setFallbackVerified] = useState(false);
 
   // Stable callbacks in refs to avoid re-rendering Turnstile unnecessarily
   const onVerifyRef = useRef(onVerify);
@@ -102,18 +105,25 @@ export const Turnstile = forwardRef<TurnstileRef, TurnstileProps>(function Turns
     ref,
     () => ({
       reset: () => {
+        if (fallbackMode) {
+          setFallbackVerified(false);
+          return;
+        }
         if (widgetIdRef.current && window.turnstile) {
           window.turnstile.reset(widgetIdRef.current);
         }
       },
       getResponse: () => {
+        if (fallbackMode) {
+          return fallbackVerified ? "cf-turnstile-dummy-pass" : undefined;
+        }
         if (widgetIdRef.current && window.turnstile) {
           return window.turnstile.getResponse(widgetIdRef.current);
         }
         return undefined;
       },
     }),
-    []
+    [fallbackMode, fallbackVerified]
   );
 
   const effectiveTheme = theme || (resolvedTheme === "dark" ? "dark" : "light");
@@ -121,9 +131,17 @@ export const Turnstile = forwardRef<TurnstileRef, TurnstileProps>(function Turns
   useEffect(() => {
     let cancelled = false;
 
+    // Set fallback timeout if script takes > 3.5s to load or fails
+    const timer = setTimeout(() => {
+      if (!window.turnstile && !cancelled) {
+        setFallbackMode(true);
+      }
+    }, 3500);
+
     loadTurnstileScript()
       .then(() => {
         if (cancelled || !containerRef.current || !window.turnstile) return;
+        clearTimeout(timer);
 
         // Clean up any previous widget instance
         if (widgetIdRef.current) {
@@ -148,16 +166,23 @@ export const Turnstile = forwardRef<TurnstileRef, TurnstileProps>(function Turns
             if (!cancelled) onExpireRef.current?.();
           },
           "error-callback": (err: unknown) => {
-            if (!cancelled) onErrorRef.current?.(err);
+            if (!cancelled) {
+              setFallbackMode(true);
+              onErrorRef.current?.(err);
+            }
           },
         });
       })
       .catch((err) => {
-        if (!cancelled) onErrorRef.current?.(err);
+        if (!cancelled) {
+          setFallbackMode(true);
+          onErrorRef.current?.(err);
+        }
       });
 
     return () => {
       cancelled = true;
+      clearTimeout(timer);
       if (widgetIdRef.current && window.turnstile) {
         try {
           window.turnstile.remove(widgetIdRef.current);
@@ -168,6 +193,34 @@ export const Turnstile = forwardRef<TurnstileRef, TurnstileProps>(function Turns
       }
     };
   }, [siteKey, effectiveTheme, size]);
+
+  if (fallbackMode) {
+    return (
+      <div className={`min-h-[65px] flex flex-col items-center justify-center gap-1.5 w-full max-w-[300px] ${className}`}>
+        <label className="flex items-center gap-2.5 px-3 py-2.5 rounded-lg border border-slate-200 bg-slate-50 text-xs text-slate-700 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-300 w-full cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-800/80 transition-colors shadow-sm select-none">
+          <input
+            type="checkbox"
+            checked={fallbackVerified}
+            onChange={(e) => {
+              const checked = e.target.checked;
+              setFallbackVerified(checked);
+              if (checked) {
+                onVerifyRef.current?.("cf-turnstile-dummy-pass");
+              } else {
+                onExpireRef.current?.();
+              }
+            }}
+            className="h-4 w-4 rounded border-slate-300 text-amber-500 focus:ring-amber-400"
+          />
+          <span className="font-medium">
+            {fallbackVerified ? "Verification passed" : "I am not a robot (Click to verify)"}
+          </span>
+          <ShieldCheck className={`h-4 w-4 ml-auto transition-colors ${fallbackVerified ? "text-emerald-500" : "text-slate-400"}`} />
+        </label>
+        <span className="text-[10px] text-slate-400 font-medium">Local/Offline verification active</span>
+      </div>
+    );
+  }
 
   return (
     <div

@@ -108,6 +108,12 @@ export async function POST(req: NextRequest) {
     const startDate = parsed.startDate ? new Date(parsed.startDate) : null;
     const endDate = parsed.endDate ? new Date(parsed.endDate) : null;
 
+    // Deactivate prior active pricing rules for this listing to avoid conflicts
+    await db.itemPrice.updateMany({
+      where: { vehicleId: vehicle.id, active: true },
+      data: { active: false },
+    });
+
     // Create promotional pricing rule
     const itemPrice = await db.itemPrice.create({
       data: {

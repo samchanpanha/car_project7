@@ -103,6 +103,8 @@ services:
       - "8080:8080"
     environment:
       APP_DEMO_MODE: "true"
+      AUTH_SECRET: ${AUTH_SECRET:-khlan-dev-secret-change-me}
+      JWT_SECRET: ${JWT_SECRET:-khlan-dev-secret-change-me}
       SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/khlandb
       SPRING_DATASOURCE_USERNAME: khlan
       SPRING_DATASOURCE_PASSWORD: khlan_secret_2026
@@ -168,6 +170,8 @@ services:
       NODE_ENV: production
       PORT: 3000
       HOSTNAME: 0.0.0.0
+      AUTH_SECRET: ${AUTH_SECRET:-khlan-dev-secret-change-me}
+      JWT_SECRET: ${JWT_SECRET:-khlan-dev-secret-change-me}
       DATABASE_URL: ${DATABASE_URL:-postgresql://khlan:khlan_secret_2026@postgres:5432/khlandb}
       BACKEND_URL: http://backend:8080
       # Canonical site origin (read at request time by dynamic routes).

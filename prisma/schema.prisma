@@ -422,6 +422,7 @@ model Vehicle {
   steering        String? @default("LEFT") // LEFT | RIGHT
   chassisNo       String? @map("chassis_no")
   stockNo         String? @map("stock_no")
+  stockQuantity   Int     @default(1) @map("stock_quantity")
   locationPort    String? @map("location_port")
   floorPriceUsd   Float? @map("floor_price_usd")
   features        String? // JSON string array of vehicle features

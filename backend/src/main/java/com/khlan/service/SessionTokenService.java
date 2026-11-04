@@ -21,8 +21,13 @@ public class SessionTokenService {
     private static final long SESSION_TTL_MS = 30L * 24 * 60 * 60 * 1000; // 30 days
 
     public SessionTokenService(@Value("${jwt.secret:khlan-dev-secret-change-me}") String authSecret) {
-        // Fallback to Next.js default secret if standard jwt.secret is present or check AUTH_SECRET env
         String envSecret = System.getenv("AUTH_SECRET");
+        if (envSecret == null || envSecret.isBlank()) {
+            envSecret = System.getProperty("AUTH_SECRET");
+        }
+        if (envSecret == null || envSecret.isBlank()) {
+            envSecret = System.getenv("JWT_SECRET");
+        }
         this.authSecret = (envSecret != null && !envSecret.isBlank()) ? envSecret : authSecret;
     }
 

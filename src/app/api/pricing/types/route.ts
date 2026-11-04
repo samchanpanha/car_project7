@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { requireAdmin, toErrorResponse } from "@/lib/api/guards";
+import { HttpError, toErrorResponse } from "@/lib/api/guards";
+import { getCurrentUser } from "@/lib/session";
 import { z } from "zod";
 
 const createPriceTypeSchema = z.object({
@@ -18,7 +19,7 @@ export async function GET() {
     const priceTypes = await db.priceType.findMany({
       orderBy: { priority: "desc" },
     });
-    return NextResponse.json({ priceTypes });
+    return NextResponse.json({ priceTypes, types: priceTypes });
   } catch (err) {
     return toErrorResponse(err, "GET /api/pricing/types", "Failed to fetch price types");
   }
@@ -26,7 +27,15 @@ export async function GET() {
 
 export async function POST(req: NextRequest) {
   try {
-    await requireAdmin();
+    const user = await getCurrentUser();
+    const isAllowed =
+      user.role === "SUPER_ADMIN" ||
+      user.role === "ADMIN" ||
+      user.role === "DEALER" ||
+      user.role === "SELLER";
+    if (!isAllowed) {
+      throw new HttpError(403, "Forbidden: Only dealers, sellers, or administrators can manage pricing tiers");
+    }
     const body = await req.json();
     const parsed = createPriceTypeSchema.parse(body);
 

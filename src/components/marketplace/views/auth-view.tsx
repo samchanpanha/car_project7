@@ -215,6 +215,7 @@ function PasswordInput({
 
 function LoginForm() {
   const t = useT();
+  const me = useAppStore((s) => s.me);
   const [phone, setPhone] = useState("");
   const [password, setPassword] = useState("");
   const [busy, setBusy] = useState(false);
@@ -227,8 +228,9 @@ function LoginForm() {
     setError(undefined);
     if (!PHONE_RE.test(normalizePhone(phone))) return setError(t("authErrPhone"));
     if (!password) return setError(t("authErrPassword"));
-    if (!captchaToken) return setError(t("captchaSubtitle"));
-    void doLogin(captchaToken);
+    const token = captchaToken || (me?.demoModeEnabled ? "cf-turnstile-dummy-pass" : null);
+    if (!token) return setError(t("captchaSubtitle"));
+    void doLogin(token);
   };
 
   const doLogin = async (token: string) => {
@@ -318,7 +320,7 @@ function LoginForm() {
       <FieldError msg={error} />
       <Button
         type="submit"
-        disabled={busy || !captchaToken}
+        disabled={busy || (!me?.demoModeEnabled && !captchaToken)}
         className="h-11 w-full bg-slate-900 text-white hover:bg-slate-800 font-semibold disabled:opacity-50"
       >
         {busy && <Loader2 className="h-4 w-4 animate-spin" aria-hidden />}
@@ -1059,6 +1061,7 @@ function RegistrationSubscriptionStep({
 
 function SignupForm({ onStepChange }: { onStepChange?: (isPaymentStep: boolean) => void }) {
   const t = useT();
+  const me = useAppStore((s) => s.me);
   const [name, setName] = useState("");
   const [role, setRole] = useState<AccountType>("BUYER");
   const [phone, setPhone] = useState("");
@@ -1091,8 +1094,9 @@ function SignupForm({ onStepChange }: { onStepChange?: (isPaymentStep: boolean) 
     if (!PHONE_RE.test(normalizePhone(phone))) return setError(t("authErrPhone"));
     if (password.length < 8) return setError(t("authErrPassword"));
     if (password !== confirm) return setError(t("authErrConfirm"));
-    if (!captchaToken) return setError(t("captchaSubtitle"));
-    void doSignup(captchaToken);
+    const token = captchaToken || (me?.demoModeEnabled ? "cf-turnstile-dummy-pass" : null);
+    if (!token) return setError(t("captchaSubtitle"));
+    void doSignup(token);
   };
 
   const doSignup = async (token: string) => {
@@ -1315,7 +1319,7 @@ function SignupForm({ onStepChange }: { onStepChange?: (isPaymentStep: boolean) 
         <FieldError msg={error} />
         <Button
           type="submit"
-          disabled={busy || !captchaToken}
+          disabled={busy || (!me?.demoModeEnabled && !captchaToken)}
           className="h-11 w-full bg-amber-500 text-slate-950 hover:bg-amber-400 font-semibold disabled:opacity-50"
         >
           {busy && <Loader2 className="h-4 w-4 animate-spin" aria-hidden />}

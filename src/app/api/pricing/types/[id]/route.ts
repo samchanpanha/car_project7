@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { requireAdmin, toErrorResponse } from "@/lib/api/guards";
+import { HttpError, toErrorResponse } from "@/lib/api/guards";
+import { getCurrentUser } from "@/lib/session";
 import { z } from "zod";
 
 const updatePriceTypeSchema = z.object({
@@ -17,7 +18,15 @@ export async function PATCH(
   context: { params: Promise<{ id: string }> },
 ) {
   try {
-    await requireAdmin();
+    const user = await getCurrentUser();
+    const isAllowed =
+      user.role === "SUPER_ADMIN" ||
+      user.role === "ADMIN" ||
+      user.role === "DEALER" ||
+      user.role === "SELLER";
+    if (!isAllowed) {
+      throw new HttpError(403, "Forbidden");
+    }
     const { id } = await context.params;
     const body = await req.json();
     const parsed = updatePriceTypeSchema.parse(body);
@@ -38,7 +47,15 @@ export async function DELETE(
   context: { params: Promise<{ id: string }> },
 ) {
   try {
-    await requireAdmin();
+    const user = await getCurrentUser();
+    const isAllowed =
+      user.role === "SUPER_ADMIN" ||
+      user.role === "ADMIN" ||
+      user.role === "DEALER" ||
+      user.role === "SELLER";
+    if (!isAllowed) {
+      throw new HttpError(403, "Forbidden");
+    }
     const { id } = await context.params;
 
     // Soft disable or delete if no references

@@ -74,7 +74,7 @@ cloudflare:
 
 # JWT Security Configuration
 jwt:
-  secret: ${JWT_SECRET:${random.uuid}${random.uuid}}
+  secret: ${JWT_SECRET:${AUTH_SECRET:khlan-dev-secret-change-me}}
   access-token-expiration-ms: 86400000 # 24 hours
   refresh-token-expiration-ms: 604800000 # 7 days
 

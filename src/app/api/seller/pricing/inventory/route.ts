@@ -13,6 +13,11 @@ export async function GET(req: NextRequest) {
     const branchId = searchParams.get("branchId");
     const q = searchParams.get("q");
     const onSaleOnly = searchParams.get("onSaleOnly") === "true";
+    const page = Math.max(1, parseInt(searchParams.get("page") || "1", 10) || 1);
+    const pageSize = Math.min(
+      100,
+      Math.max(1, parseInt(searchParams.get("pageSize") || searchParams.get("limit") || "10", 10) || 10)
+    );
 
     const userTenants = await db.tenantMember.findMany({
       where: { userId: user.id, status: "ACTIVE" },
@@ -49,6 +54,7 @@ export async function GET(req: NextRequest) {
           { make: { contains: term, mode: "insensitive" } },
           { model: { contains: term, mode: "insensitive" } },
           { stockNo: { contains: term, mode: "insensitive" } },
+          { chassisNo: { contains: term, mode: "insensitive" } },
         ],
       });
     }
@@ -84,6 +90,7 @@ export async function GET(req: NextRequest) {
         variant: v.variant,
         year: v.year,
         stockNo: v.stockNo,
+        stockQuantity: (v as any).stockQuantity ?? 1,
         chassisNo: v.chassisNo,
         basePriceUsd: pricing.basePriceUsd,
         effectivePriceUsd: pricing.effectivePriceUsd,
@@ -114,14 +121,19 @@ export async function GET(req: NextRequest) {
     });
 
     const filtered = onSaleOnly ? rows.filter((r) => r.isOnSale) : rows;
+    const totalCount = filtered.length;
+    const totalPages = Math.max(1, Math.ceil(totalCount / pageSize));
+    const paginatedVehicles = filtered.slice((page - 1) * pageSize, page * pageSize);
 
     return NextResponse.json({
-      vehicles: filtered,
-      totalCount: rows.length,
+      vehicles: paginatedVehicles,
+      totalCount,
       onSaleCount: rows.filter((r) => r.isOnSale).length,
+      page,
+      pageSize,
+      totalPages,
     });
   } catch (err) {
     return toErrorResponse(err, "GET /api/seller/pricing/inventory", "Failed to get dealer pricing inventory");
   }
 }
-
