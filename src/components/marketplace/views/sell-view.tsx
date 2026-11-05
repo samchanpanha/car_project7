@@ -1167,10 +1167,10 @@ export function SellView() {
                     <Flame className="h-4 w-4 text-amber-600 animate-pulse" />
                     <div>
                       <Label htmlFor="sell-launch-promo" className="text-xs font-bold text-slate-900 cursor-pointer">
-                        Launch Promotional Offer
+                        {t("sellLaunchPromo")}
                       </Label>
                       <p className="text-[11px] text-amber-900">
-                        Highlight your listing with Hot Price, Discount, or Clearance badge
+                        {t("sellLaunchPromoDesc")}
                       </p>
                     </div>
                   </div>
@@ -1312,7 +1312,7 @@ export function SellView() {
                     <div className="flex items-start gap-2 rounded-lg border border-amber-300 bg-amber-50 p-2 text-xs text-amber-800">
                       <ShieldCheck className="h-4 w-4 shrink-0 text-amber-600 mt-0.5" />
                       <div>
-                        <span className="font-bold">Floor Price Enforced: </span>
+                        <span className="font-bold">{t("sellFloorEnforced")} </span>
                         Promotional rule calculated to {formatUsd(pricingPreview.candidate)}, but is clamped to your minimum floor price of {formatUsd(pricingPreview.floor || 0)}.
                       </div>
                     </div>

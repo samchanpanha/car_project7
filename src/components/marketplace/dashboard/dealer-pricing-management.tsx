@@ -6,6 +6,14 @@ import { formatUsd, formatKhr } from "@/lib/format";
 import { useT } from "@/hooks/use-t";
 import { useAppStore } from "@/lib/store";
 import {
+  getPromoTierLabel,
+  bodyTypeLabels,
+  transmissionLabels,
+  fuelLabels,
+  motorBodyTypeLabels,
+  partCategoryLabels,
+} from "@/lib/i18n/labels";
+import {
   CarFront, Bike, Wrench, Check, ChevronDown, ChevronLeft, ChevronRight, Download, FileSpreadsheet, Filter, Flame,
   Loader2, Pencil, Percent, Plus, RefreshCw, Search, ShieldAlert, ShieldCheck,
   Sparkles, Tag, Trash2, TriangleAlert, Upload, X, Calendar, DollarSign,
@@ -100,6 +108,7 @@ function formatForDateTimeLocal(isoString?: string | null): string {
 
 export function DealerPricingManagement() {
   const t = useT();
+  const locale = useAppStore((s) => s.locale);
   const [category, setCategory] = useState<string>("ALL");
   const [branchId, setBranchId] = useState<string>("ALL");
   const [search, setSearch] = useState("");
@@ -458,13 +467,13 @@ export function DealerPricingManagement() {
     if (!singleVehicle) return;
     const val = Number(singleValue);
     if (!val || val <= 0) {
-      toast.warning("Please enter a valid promotional discount value");
+      toast.warning(t("dealerPricingEnterDiscountToast"));
       return;
     }
 
     const priceTypeIdToSave = singlePriceTypeId || singleSelectedTier?.id || priceTypes[0]?.id;
     if (!priceTypeIdToSave) {
-      toast.warning("Please select a valid promotional tier");
+      toast.warning(t("dealerPricingSelectValidTierToast"));
       return;
     }
 
@@ -478,11 +487,11 @@ export function DealerPricingManagement() {
         startDate: singleStartDate ? new Date(singleStartDate).toISOString() : null,
         endDate: singleEndDate ? new Date(singleEndDate).toISOString() : null,
       });
-      toast.success("Promotional tier applied successfully!");
+      toast.success(t("dealerPricingPromoAppliedToast"));
       setSingleVehicle(null);
       refetch();
     } catch (err: any) {
-      toast.error(err.message || "Failed to update vehicle pricing");
+      toast.error(err.message || t("dealerPricingUpdatePricingFailedToast"));
     } finally {
       setSubmitting(false);
     }
@@ -493,11 +502,11 @@ export function DealerPricingManagement() {
     setSubmitting(true);
     try {
       await apiSend(`/api/seller/pricing/item?vehicleId=${vehicleId}`, "DELETE");
-      toast.success("Promotion removed. Listing restored to base price.");
+      toast.success(t("dealerPricingPromoRemovedToast"));
       setSingleVehicle(null);
       refetch();
     } catch (err: any) {
-      toast.error(err.message || "Failed to remove promotion");
+      toast.error(err.message || t("dealerPricingRemovePromoFailedToast"));
     } finally {
       setSubmitting(false);
     }
@@ -508,10 +517,10 @@ export function DealerPricingManagement() {
     setStatusBusyId(vehicleId);
     try {
       await apiSend(`/api/vehicles/${vehicleId}`, "PATCH", { status: newStatus });
-      toast.success(`Listing status updated to ${newStatus}`);
+      toast.success(t("dealerPricingStatusUpdatedToast", { status: newStatus }));
       refetch();
     } catch (err: any) {
-      toast.error(err.message || "Failed to update listing status");
+      toast.error(err.message || t("dealerPricingStatusUpdateFailedToast"));
     } finally {
       setStatusBusyId(null);
     }
@@ -522,11 +531,11 @@ export function DealerPricingManagement() {
     setStatusBusyId(vehicleId);
     try {
       await apiSend(`/api/vehicles/${vehicleId}`, "DELETE");
-      toast.success("Listing archived successfully");
+      toast.success(t("dealerPricingListingArchivedToast"));
       setDeletingVehicle(null);
       refetch();
     } catch (err: any) {
-      toast.error(err.message || "Failed to delete listing");
+      toast.error(err.message || t("dealerPricingDeleteFailedToast"));
     } finally {
       setStatusBusyId(null);
     }
@@ -557,7 +566,7 @@ export function DealerPricingManagement() {
 
   const handleSaveTier = async () => {
     if (!tierLabel.trim()) {
-      toast.warning("Please enter a tier label");
+      toast.warning(t("dealerPricingEnterTierLabelToast"));
       return;
     }
     const code = tierCode.trim() || tierLabel.trim().toUpperCase().replace(/[^A-Z0-9_]/g, "_");
@@ -571,7 +580,7 @@ export function DealerPricingManagement() {
           priority: Number(tierPriority) || 0,
           active: tierActive,
         });
-        toast.success(`Promotional tier "${tierLabel}" updated successfully`);
+        toast.success(t("dealerPricingTierUpdatedToast", { tier: tierLabel }));
       } else {
         await apiSend("/api/pricing/types", "POST", {
           code,
@@ -581,14 +590,14 @@ export function DealerPricingManagement() {
           priority: Number(tierPriority) || 0,
           active: tierActive,
         });
-        toast.success(`Promotional tier "${tierLabel}" created successfully`);
+        toast.success(t("dealerPricingTierCreatedToast", { tier: tierLabel }));
       }
       setTierFormOpen(false);
       setEditingTier(null);
       refetchTypes();
       refetch();
     } catch (err: any) {
-      toast.error(err.message || "Failed to save promotional tier");
+      toast.error(err.message || t("dealerPricingSaveTierFailedToast"));
     } finally {
       setTierSubmitting(false);
     }
@@ -598,11 +607,11 @@ export function DealerPricingManagement() {
     setTierSubmitting(true);
     try {
       await apiSend(`/api/pricing/types/${tierId}`, "DELETE");
-      toast.success(`Promotional tier "${label}" removed/deactivated`);
+      toast.success(t("dealerPricingTierRemovedToast", { tier: label }));
       refetchTypes();
       refetch();
     } catch (err: any) {
-      toast.error(err.message || "Failed to remove promotional tier");
+      toast.error(err.message || t("dealerPricingRemoveTierFailedToast"));
     } finally {
       setTierSubmitting(false);
     }
@@ -613,7 +622,7 @@ export function DealerPricingManagement() {
     if (selectedIds.length === 0) return;
     const val = Number(bulkValue);
     if (!val || val <= 0) {
-      toast.warning("Please enter a valid promotion discount value");
+      toast.warning(t("dealerPricingEnterDiscountToast"));
       return;
     }
 
@@ -632,13 +641,16 @@ export function DealerPricingManagement() {
       });
 
       toast.success(
-        `Applied promo to ${res.updatedCount} listings.${res.floorEnforcedCount > 0 ? ` (${res.floorEnforcedCount} clamped by floor protection)` : ""}`
+        t("dealerPricingBulkAppliedToast", {
+          count: res.updatedCount,
+          clamped: res.floorEnforcedCount > 0 ? t("dealerPricingFloorClampedSuffix", { count: res.floorEnforcedCount }) : "",
+        })
       );
       setBulkModalOpen(false);
       setSelectedIds([]);
       refetch();
     } catch (err: any) {
-      toast.error(err.message || "Failed to apply bulk pricing");
+      toast.error(err.message || t("dealerPricingBulkApplyFailedToast"));
     } finally {
       setSubmitting(false);
     }
@@ -656,11 +668,11 @@ export function DealerPricingManagement() {
       const res = await apiSend<{ success: boolean; vehicleCount: number }>("/api/seller/pricing/bulk", "DELETE", {
         vehicleIds: selectedIds,
       });
-      toast.success(`Removed promotions from ${res.vehicleCount} listings.`);
+      toast.success(t("dealerPricingClearedPromosToast", { count: res.vehicleCount }));
       setSelectedIds([]);
       refetch();
     } catch (err: any) {
-      toast.error(err.message || "Failed to clear promotions");
+      toast.error(err.message || t("dealerPricingClearPromosFailedToast"));
     } finally {
       setSubmitting(false);
     }
@@ -669,7 +681,7 @@ export function DealerPricingManagement() {
   // Export current inventory pricing to CSV
   const handleExportCsv = () => {
     if (vehicles.length === 0) {
-      toast.warning("No listings to export");
+      toast.warning(t("dealerPricingNoListingsExportToast"));
       return;
     }
 
@@ -716,7 +728,7 @@ export function DealerPricingManagement() {
     a.download = `dealership_pricing_${new Date().toISOString().slice(0, 10)}.csv`;
     a.click();
     URL.revokeObjectURL(url);
-    toast.success("Pricing CSV downloaded");
+    toast.success(t("dealerPricingCsvDownloadedToast"));
   };
 
   // Handle CSV file selection
@@ -767,13 +779,13 @@ export function DealerPricingManagement() {
     a.download = filename;
     a.click();
     URL.revokeObjectURL(url);
-    toast.success(`Template ${filename} downloaded`);
+    toast.success(t("dealerPricingTemplateDownloadedToast", { filename }));
   };
 
   // Submit CSV import
   const handleImportCsv = async () => {
     if (!csvText.trim()) {
-      toast.warning("Please select or paste CSV data");
+      toast.warning(t("dealerPricingSelectPasteCsvToast"));
       return;
     }
 
@@ -796,12 +808,12 @@ export function DealerPricingManagement() {
       });
 
       setCsvResult(res);
-      toast.success(res.message || `Processed ${res.importedCount} rows successfully!`);
+      toast.success(res.message || t("dealerPricingProcessedRowsToast", { count: res.importedCount }));
       if (res.importedCount > 0) {
         refetch();
       }
     } catch (err: any) {
-      toast.error(err.message || "Failed to import CSV");
+      toast.error(err.message || t("dealerPricingImportCsvFailedToast"));
     } finally {
       setSubmitting(false);
     }
@@ -811,21 +823,21 @@ export function DealerPricingManagement() {
   const handleQuickAddSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!addForm.make.trim()) {
-      toast.warning("Please enter Make / Manufacturer");
+      toast.warning(t("dealerPricingEnterMakeToast"));
       return;
     }
     if (!addForm.model.trim()) {
-      toast.warning("Please enter Model / Name");
+      toast.warning(t("dealerPricingEnterModelToast"));
       return;
     }
     const price = Number(addForm.priceUsd);
     if (!price || price <= 0) {
-      toast.warning("Please enter a valid Base Price (USD)");
+      toast.warning(t("dealerPricingEnterBasePriceToast"));
       return;
     }
     const floor = addForm.floorPriceUsd ? Number(addForm.floorPriceUsd) : undefined;
     if (floor != null && floor > price) {
-      toast.error(`Floor price ($${floor}) cannot exceed base price ($${price})`);
+      toast.error(t("dealerPricingFloorExceedsBaseToast", { floor: String(floor), base: String(price) }));
       return;
     }
 
@@ -876,9 +888,9 @@ export function DealerPricingManagement() {
       });
 
       if (res?.action === "INCREMENTED") {
-        toast.success(`Inventory matched! Incremented stock to ${res.newStock} units (+${res.incrementedBy}) and updated pricing.`);
+        toast.success(t("dealerPricingStockIncrementedToast", { stock: res.newStock, added: res.incrementedBy }));
       } else {
-        toast.success(`${addCategory} listing "${addForm.make} ${addForm.model}" added successfully with ${res?.newStock || 1} units.`);
+        toast.success(t("dealerPricingListingAddedToast", { category: addCategory, title: `${addForm.make} ${addForm.model}`, units: res?.newStock || 1 }));
       }
       setQuickAddOpen(false);
       setDetectedDuplicate(null);
@@ -924,7 +936,7 @@ export function DealerPricingManagement() {
       });
       refetch();
     } catch (err: any) {
-      toast.error(err.message || "Failed to add listing");
+      toast.error(err.message || t("dealerPricingAddListingFailedToast"));
     } finally {
       setSubmitting(false);
     }
@@ -933,12 +945,12 @@ export function DealerPricingManagement() {
   // Handle 'Include from Inventory' bulk promo apply
   const handleIncludeInventorySubmit = async () => {
     if (includeSelectedIds.length === 0) {
-      toast.warning("Please select at least one inventory item");
+      toast.warning(t("dealerPricingSelectAtLeastOneToast"));
       return;
     }
     const val = Number(includePromoValue);
     if (!val || val <= 0) {
-      toast.warning("Please enter a valid promotional discount value");
+      toast.warning(t("dealerPricingEnterDiscountToast"));
       return;
     }
 
@@ -949,12 +961,12 @@ export function DealerPricingManagement() {
         priceTypeId: includePromoTypeId || priceTypes[0]?.id,
         value: val,
       });
-      toast.success(`Promotional pricing applied to ${includeSelectedIds.length} inventory listings!`);
+      toast.success(t("dealerPricingInventoryPromoAppliedToast", { count: includeSelectedIds.length }));
       setIncludeInventoryOpen(false);
       setIncludeSelectedIds([]);
       refetch();
     } catch (err: any) {
-      toast.error(err.message || "Failed to apply promotional pricing");
+      toast.error(err.message || t("dealerPricingUpdatePricingFailedToast"));
     } finally {
       setSubmitting(false);
     }
@@ -965,37 +977,37 @@ export function DealerPricingManagement() {
       {/* KPI Stats Cards */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-xs">
-          <p className="text-xs font-semibold text-slate-500">Total Listings</p>
+          <p className="text-xs font-semibold text-slate-500">{t("dealerPricingTotalListings")}</p>
           <p className="mt-1 text-2xl font-black text-slate-900">{totalCount}</p>
-          <p className="mt-0.5 text-[11px] text-slate-400">Dealership inventory</p>
+          <p className="mt-0.5 text-[11px] text-slate-400">{t("dealerPricingDealershipInventory")}</p>
         </div>
 
         <div className="rounded-2xl border border-amber-200 bg-gradient-to-br from-amber-50 to-orange-50/40 p-4 shadow-xs">
           <div className="flex items-center justify-between">
-            <p className="text-xs font-semibold text-amber-900">Active Campaigns</p>
+            <p className="text-xs font-semibold text-amber-900">{t("dealerPricingActiveCampaigns")}</p>
             <Flame className="h-4 w-4 text-amber-600 animate-pulse" />
           </div>
           <p className="mt-1 text-2xl font-black text-amber-950">{onSaleCount}</p>
           <p className="mt-0.5 text-[11px] text-amber-800">
-            {totalCount > 0 ? `${Math.round((onSaleCount / totalCount) * 100)}% of stock on sale` : "No vehicles"}
+            {totalCount > 0 ? t("dealerPricingStockOnSale", { percent: Math.round((onSaleCount / totalCount) * 100) }) : t("dealerPricingNoVehicles")}
           </p>
         </div>
 
         <div className="rounded-2xl border border-emerald-200 bg-emerald-50/40 p-4 shadow-xs">
           <div className="flex items-center justify-between">
-            <p className="text-xs font-semibold text-emerald-900">Floor Protection</p>
+            <p className="text-xs font-semibold text-emerald-900">{t("dealerPricingFloorProtection")}</p>
             <ShieldCheck className="h-4 w-4 text-emerald-600" />
           </div>
           <p className="mt-1 text-2xl font-black text-emerald-950">
             {vehicles.filter((v) => v.floorPriceUsd != null && v.floorPriceUsd > 0).length}
           </p>
-          <p className="mt-0.5 text-[11px] text-emerald-800">Protected against undercutting</p>
+          <p className="mt-0.5 text-[11px] text-emerald-800">{t("dealerPricingProtectedUndercut")}</p>
         </div>
 
         <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-xs">
-          <p className="text-xs font-semibold text-slate-500">Available Tiers</p>
+          <p className="text-xs font-semibold text-slate-500">{t("dealerPricingAvailableTiers")}</p>
           <p className="mt-1 text-2xl font-black text-slate-900">{priceTypes.length}</p>
-          <p className="mt-0.5 text-[11px] text-slate-400">Hot Price, Discount, Flash</p>
+          <p className="mt-0.5 text-[11px] text-slate-400">{t("dealerPricingTiersSummary")}</p>
         </div>
       </div>
 
@@ -1005,10 +1017,10 @@ export function DealerPricingManagement() {
           {/* Category Tabs */}
           <div className="flex items-center gap-1.5 p-1 bg-slate-100 rounded-xl">
             {[
-              { id: "ALL", label: "All", icon: null },
-              { id: "CAR", label: "Cars", icon: CarFront },
-              { id: "MOTOR", label: "Motors", icon: Bike },
-              { id: "SPARE_PART", label: "Parts", icon: Wrench },
+              { id: "ALL", label: t("pricingCatAll"), icon: null },
+              { id: "CAR", label: t("pricingCatCars"), icon: CarFront },
+              { id: "MOTOR", label: t("pricingCatMotors"), icon: Bike },
+              { id: "SPARE_PART", label: t("pricingCatParts"), icon: Wrench },
             ].map((c) => {
               const Icon = c.icon;
               return (
@@ -1039,7 +1051,7 @@ export function DealerPricingManagement() {
               className="bg-slate-900 text-white hover:bg-slate-800 font-bold text-xs h-9 cursor-pointer gap-1.5 shadow-xs"
             >
               <Plus className="h-3.5 w-3.5" />
-              Add Listing
+              {t("dealerPricingAddListing")}
             </Button>
 
             <Button
@@ -1049,7 +1061,7 @@ export function DealerPricingManagement() {
               className="text-xs h-9 cursor-pointer border-slate-200 hover:border-amber-300 hover:bg-amber-50 hover:text-amber-950 font-semibold gap-1.5"
             >
               <Boxes className="h-3.5 w-3.5 text-amber-600" />
-              Include from Inventory
+              {t("dealerPricingIncludeInventory")}
             </Button>
 
             <Button
@@ -1059,7 +1071,7 @@ export function DealerPricingManagement() {
               className="text-xs h-9 cursor-pointer border-slate-200 hover:border-amber-300 hover:bg-amber-50 hover:text-amber-950 font-semibold"
             >
               <Tag className="h-3.5 w-3.5 mr-1.5 text-amber-600" />
-              Manage Promo Tiers
+              {t("dealerPricingManageTiers")}
             </Button>
 
             <Button
@@ -1069,7 +1081,7 @@ export function DealerPricingManagement() {
               className="text-xs h-9 cursor-pointer"
             >
               <Download className="h-3.5 w-3.5 mr-1.5 text-slate-500" />
-              Export CSV
+              {t("dealerPricingExportCsv")}
             </Button>
 
             <Button
@@ -1082,14 +1094,14 @@ export function DealerPricingManagement() {
               className="text-xs h-9 cursor-pointer"
             >
               <FileSpreadsheet className="h-3.5 w-3.5 mr-1.5 text-slate-500" />
-              Import CSV
+              {t("dealerPricingImportCsv")}
             </Button>
 
             <Button
               size="sm"
               onClick={() => {
                 if (selectedIds.length === 0) {
-                  toast.info("Please select one or more listings below to apply a promotion");
+                  toast.info(t("dealerPricingSelectOneOrMoreToast"));
                   return;
                 }
                 setBulkModalOpen(true);
@@ -1098,7 +1110,7 @@ export function DealerPricingManagement() {
               className="bg-amber-500 text-slate-950 hover:bg-amber-400 font-bold text-xs h-9 cursor-pointer"
             >
               <Flame className="h-3.5 w-3.5 mr-1.5" />
-              Apply Promo ({selectedIds.length})
+              {t("dealerPricingApplyPromo")} ({selectedIds.length})
             </Button>
 
             {selectedIds.length > 0 && (
@@ -1109,7 +1121,7 @@ export function DealerPricingManagement() {
                 className="text-xs h-9 text-rose-600 hover:text-rose-700 hover:bg-rose-50 border-rose-200 cursor-pointer"
               >
                 <Trash2 className="h-3.5 w-3.5 mr-1.5" />
-                Clear Promo ({selectedIds.length})
+                {t("dealerPricingClearPromo")} ({selectedIds.length})
               </Button>
             )}
           </div>
@@ -1125,7 +1137,7 @@ export function DealerPricingManagement() {
                 setSearch(e.target.value);
                 setPage(1);
               }}
-              placeholder="Search by make, model, stock no..."
+              placeholder={t("dealerPricingSearchPlaceholder")}
               className="pl-9 h-9 text-xs"
             />
           </div>
@@ -1140,10 +1152,10 @@ export function DealerPricingManagement() {
                 }}
               >
                 <SelectTrigger className="h-9 text-xs">
-                  <SelectValue placeholder="All Branches" />
+                  <SelectValue placeholder={t("dealerPricingAllBranches")} />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="ALL">All Showrooms</SelectItem>
+                  <SelectItem value="ALL">{t("dealerPricingAllShowrooms")}</SelectItem>
                   {branches.map((b) => (
                     <SelectItem key={b.id} value={b.id}>
                       {b.name} ({b.city})
@@ -1156,7 +1168,7 @@ export function DealerPricingManagement() {
 
           <div className="sm:col-span-3 flex items-center justify-end gap-2 px-1">
             <Label htmlFor="dealer-on-sale" className="text-xs font-semibold text-slate-600 cursor-pointer">
-              On-Sale Only
+              {t("dealerPricingOnSaleOnly")}
             </Label>
             <Switch
               id="dealer-on-sale"
@@ -1175,13 +1187,13 @@ export function DealerPricingManagement() {
         {loading && vehicles.length === 0 ? (
           <div className="p-8 text-center text-slate-400">
             <Loader2 className="h-6 w-6 animate-spin mx-auto text-amber-500 mb-2" />
-            <p className="text-xs">Loading promotional inventory...</p>
+            <p className="text-xs">{t("dealerPricingLoading")}</p>
           </div>
         ) : vehicles.length === 0 ? (
           <div className="p-12 text-center text-slate-400">
             <CarFront className="h-8 w-8 mx-auto text-slate-300 mb-2" />
-            <p className="text-sm font-semibold text-slate-700">No listings found</p>
-            <p className="text-xs text-slate-400 mt-1">Try adjusting your filters or search terms.</p>
+            <p className="text-sm font-semibold text-slate-700">{t("dealerPricingNoListingsFound")}</p>
+            <p className="text-xs text-slate-400 mt-1">{t("dealerPricingAdjustFilters")}</p>
           </div>
         ) : (
           <div className="overflow-x-auto">
@@ -1197,13 +1209,13 @@ export function DealerPricingManagement() {
                       aria-label="Select all"
                     />
                   </th>
-                  <th className="py-3 px-4">Vehicle Listing</th>
-                  <th className="py-3 px-4">Showroom</th>
-                  <th className="py-3 px-4">Base Price</th>
-                  <th className="py-3 px-4">Floor Price</th>
-                  <th className="py-3 px-4">Effective Price</th>
-                  <th className="py-3 px-4">Active Promo</th>
-                  <th className="py-3 px-4 text-right">Actions</th>
+                  <th className="py-3 px-4">{t("dealerPricingColVehicle")}</th>
+                  <th className="py-3 px-4">{t("dealerPricingColShowroom")}</th>
+                  <th className="py-3 px-4">{t("dealerPricingColBasePrice")}</th>
+                  <th className="py-3 px-4">{t("dealerPricingColFloorPrice")}</th>
+                  <th className="py-3 px-4">{t("dealerPricingColEffectivePrice")}</th>
+                  <th className="py-3 px-4">{t("dealerPricingColActivePromo")}</th>
+                  <th className="py-3 px-4 text-right">{t("dealerPricingColActions")}</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
@@ -1248,7 +1260,7 @@ export function DealerPricingManagement() {
                               ) : null}
                               <span className="inline-flex items-center gap-1 text-[10px] font-mono font-bold bg-slate-100 text-slate-700 px-1.5 py-0.5 rounded">
                                 <Boxes className="h-2.5 w-2.5 text-slate-500" />
-                                {v.stockQuantity || 1} in stock
+                                {t("dealerPricingInStock", { count: v.stockQuantity || 1 })}
                               </span>
                               <Badge variant="outline" className="text-[9px] py-0 px-1 font-mono uppercase">
                                 {v.listingCategory}
@@ -1260,7 +1272,7 @@ export function DealerPricingManagement() {
 
                       <td className="py-3 px-4">
                         <span className="text-slate-600">
-                          {v.branch ? v.branch.name : "Main Showroom"}
+                          {v.branch ? v.branch.name : t("dealerPricingMainShowroom")}
                         </span>
                       </td>
 
@@ -1291,7 +1303,7 @@ export function DealerPricingManagement() {
                           )}
                           {v.floorEnforced && (
                             <span className="text-[10px] font-bold text-amber-700 flex items-center gap-0.5 mt-0.5">
-                              <ShieldAlert className="h-2.5 w-2.5" /> Clamped to floor
+                              <ShieldAlert className="h-2.5 w-2.5" /> {t("dealerPricingClampedToFloor")}
                             </span>
                           )}
                         </div>
@@ -1304,10 +1316,10 @@ export function DealerPricingManagement() {
                             style={{ backgroundColor: v.activePriceType.badgeColor || "#ef4444" }}
                           >
                             <Flame className="h-2.5 w-2.5" />
-                            {v.activePriceType.label}
+                            {getPromoTierLabel(v.activePriceType, locale)}
                           </span>
                         ) : (
-                          <span className="text-slate-400">Regular</span>
+                          <span className="text-slate-400">{t("pricingRegularBadge")}</span>
                         )}
                       </td>
 
@@ -1320,7 +1332,7 @@ export function DealerPricingManagement() {
                             className="h-7 text-xs px-2.5 font-medium cursor-pointer bg-white hover:bg-amber-50 hover:text-amber-900 hover:border-amber-300"
                           >
                             <Pencil className="h-3 w-3 mr-1 text-amber-600" />
-                            Pricing
+                            {t("dealerPricingPricingBtn")}
                           </Button>
 
                           <DropdownMenu>
@@ -1341,50 +1353,50 @@ export function DealerPricingManagement() {
                             </DropdownMenuTrigger>
                             <DropdownMenuContent align="end" className="w-52 text-xs">
                               <DropdownMenuLabel className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">
-                                Listing Actions
+                                {t("dealerPricingListingActions")}
                               </DropdownMenuLabel>
                               <DropdownMenuItem onClick={() => openSinglePromo(v)} className="cursor-pointer gap-2">
                                 <Tag className="h-3.5 w-3.5 text-amber-600" />
-                                <span>Configure Pricing</span>
+                                <span>{t("dealerPricingConfigurePricing")}</span>
                               </DropdownMenuItem>
                               <DropdownMenuItem onClick={() => setEditorVehicleId(v.id)} className="cursor-pointer gap-2">
                                 <Pencil className="h-3.5 w-3.5 text-blue-600" />
-                                <span>Edit Listing</span>
+                                <span>{t("dealerPricingEditListing")}</span>
                               </DropdownMenuItem>
                               <DropdownMenuItem
                                 onClick={() => window.open(`/vehicles/${v.id}`, "_blank")}
                                 className="cursor-pointer gap-2"
                               >
                                 <ExternalLink className="h-3.5 w-3.5 text-slate-500" />
-                                <span>View on Marketplace</span>
+                                <span>{t("dealerPricingViewMarketplace")}</span>
                               </DropdownMenuItem>
                               <DropdownMenuSeparator />
                               <DropdownMenuLabel className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">
-                                Quick Status
+                                {t("dealerPricingQuickStatus")}
                               </DropdownMenuLabel>
                               {v.status !== "PUBLISHED" && (
                                 <DropdownMenuItem onClick={() => handlePatchStatus(v.id, "PUBLISHED")} className="cursor-pointer gap-2">
                                   <Eye className="h-3.5 w-3.5 text-emerald-600" />
-                                  <span>Publish Listing</span>
+                                  <span>{t("dealerPricingPublishListing")}</span>
                                 </DropdownMenuItem>
                               )}
                               {v.status === "PUBLISHED" && (
                                 <DropdownMenuItem onClick={() => handlePatchStatus(v.id, "DRAFT")} className="cursor-pointer gap-2">
                                   <EyeOff className="h-3.5 w-3.5 text-amber-600" />
-                                  <span>Unpublish (Draft)</span>
+                                  <span>{t("dealerPricingUnpublishDraft")}</span>
                                 </DropdownMenuItem>
                               )}
                               {v.status !== "SOLD" && (
                                 <DropdownMenuItem onClick={() => handlePatchStatus(v.id, "SOLD")} className="cursor-pointer gap-2">
                                   <CheckCircle2 className="h-3.5 w-3.5 text-indigo-600" />
-                                  <span>Mark as Sold</span>
+                                  <span>{t("dealerPricingMarkSold")}</span>
                                 </DropdownMenuItem>
                               )}
                               <DropdownMenuSeparator />
                               {v.isOnSale && (
                                 <DropdownMenuItem onClick={() => handleClearSinglePromo(v.id)} className="cursor-pointer gap-2 text-amber-700">
                                   <Flame className="h-3.5 w-3.5 text-amber-600" />
-                                  <span>Clear Promotion</span>
+                                  <span>{t("dealerPricingClearPromoBtn")}</span>
                                 </DropdownMenuItem>
                               )}
                               <DropdownMenuItem
@@ -1392,7 +1404,7 @@ export function DealerPricingManagement() {
                                 className="cursor-pointer gap-2 text-rose-600 hover:text-rose-700 hover:bg-rose-50"
                               >
                                 <Trash2 className="h-3.5 w-3.5 text-rose-600" />
-                                <span>Delete Listing</span>
+                                <span>{t("dealerPricingDeleteListing")}</span>
                               </DropdownMenuItem>
                             </DropdownMenuContent>
                           </DropdownMenu>
@@ -1412,12 +1424,14 @@ export function DealerPricingManagement() {
             {/* Left: Showing range + Page Size Selector */}
             <div className="flex items-center gap-3">
               <span>
-                Showing <strong className="font-bold text-slate-800">{Math.min(totalCount, (page - 1) * pageSize + 1)}</strong> to{" "}
-                <strong className="font-bold text-slate-800">{Math.min(totalCount, page * pageSize)}</strong> of{" "}
-                <strong className="font-bold text-slate-800">{totalCount}</strong> listings
+                {t("dealerPricingShowingRange", {
+                  start: Math.min(totalCount, (page - 1) * pageSize + 1),
+                  end: Math.min(totalCount, page * pageSize),
+                  total: totalCount,
+                })}
               </span>
               <div className="flex items-center gap-1.5 pl-3 border-l border-slate-200">
-                <span className="text-slate-400">Rows:</span>
+                <span className="text-slate-400">{t("dealerPricingRowsPerPage")}</span>
                 <Select
                   value={String(pageSize)}
                   onValueChange={(val) => {
@@ -1447,7 +1461,7 @@ export function DealerPricingManagement() {
                 className="h-7 px-2 text-xs gap-1 cursor-pointer"
               >
                 <ChevronLeft className="h-3.5 w-3.5" />
-                <span>Prev</span>
+                <span>{t("dealerPricingPrev")}</span>
               </Button>
 
               <div className="flex items-center gap-1">
@@ -1483,7 +1497,7 @@ export function DealerPricingManagement() {
                 disabled={page >= totalPages}
                 className="h-7 px-2 text-xs gap-1 cursor-pointer"
               >
-                <span>Next</span>
+                <span>{t("dealerPricingNext")}</span>
                 <ChevronRight className="h-3.5 w-3.5" />
               </Button>
             </div>
@@ -1497,14 +1511,14 @@ export function DealerPricingManagement() {
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2 text-base">
               <Flame className="h-5 w-5 text-amber-600" />
-              Apply Bulk Promotion ({selectedIds.length} Vehicles)
+              {t("dealerPricingBulkTitle", { count: selectedIds.length })}
             </DialogTitle>
           </DialogHeader>
 
           <div className="space-y-4 py-2">
             <div>
               <div className="flex items-center justify-between">
-                <Label className="text-xs font-semibold text-slate-600">Promotional Tier</Label>
+                <Label className="text-xs font-semibold text-slate-600">{t("promoTierLabel")}</Label>
                 <Button
                   type="button"
                   variant="ghost"
@@ -1513,7 +1527,7 @@ export function DealerPricingManagement() {
                   className="h-6 px-1.5 text-[11px] text-amber-700 hover:text-amber-800 hover:bg-amber-50 gap-1 font-semibold cursor-pointer"
                 >
                   <Plus className="h-3 w-3" />
-                  New Tier
+                  {t("dealerPricingNewTierBtn")}
                 </Button>
               </div>
               <div className="mt-1.5">
@@ -1522,16 +1536,16 @@ export function DealerPricingManagement() {
                   onValueChange={setBulkPriceTypeId}
                 >
                   <SelectTrigger className="h-10 text-xs w-full">
-                    <SelectValue placeholder="Select Promotional Tier">
+                    <SelectValue placeholder={t("dealerPricingSelectTierPlaceholder")}>
                       {bulkSelectedTier ? (
                         <span className="flex items-center gap-2">
                           <span
                             className="h-2.5 w-2.5 rounded-full shrink-0"
                             style={{ backgroundColor: bulkSelectedTier.badgeColor || "#ef4444" }}
                           />
-                          <span className="font-semibold text-slate-900">{bulkSelectedTier.label}</span>
+                          <span className="font-semibold text-slate-900">{getPromoTierLabel(bulkSelectedTier, locale)}</span>
                           <span className="text-slate-400 text-[11px]">
-                            ({bulkSelectedTier.mode === "PERCENT" ? "% off" : "Fixed USD $"})
+                            ({bulkSelectedTier.mode === "PERCENT" ? t("dealerPricingPercentOff") : t("dealerPricingFixedUsd")})
                           </span>
                         </span>
                       ) : undefined}
@@ -1545,9 +1559,9 @@ export function DealerPricingManagement() {
                             className="h-2.5 w-2.5 rounded-full shrink-0"
                             style={{ backgroundColor: pt.badgeColor || "#ef4444" }}
                           />
-                          <span className="font-semibold text-slate-900">{pt.label}</span>
+                          <span className="font-semibold text-slate-900">{getPromoTierLabel(pt, locale)}</span>
                           <span className="text-slate-400 text-[11px]">
-                            ({pt.mode === "PERCENT" ? "% off" : "Fixed USD $"})
+                            ({pt.mode === "PERCENT" ? t("dealerPricingPercentOff") : t("dealerPricingFixedUsd")})
                           </span>
                         </div>
                       </SelectItem>
@@ -1559,7 +1573,7 @@ export function DealerPricingManagement() {
 
             <div>
               <Label className="text-xs font-semibold text-slate-600">
-                {selectedBulkType?.mode === "PERCENT" ? "Discount Percentage (%)" : "Reduction Amount (USD $)"}
+                {selectedBulkType?.mode === "PERCENT" ? t("dealerPricingDiscountPercentLabel") : t("dealerPricingReductionAmountLabel")}
               </Label>
               <div className="relative mt-1.5">
                 <Input
@@ -1579,7 +1593,7 @@ export function DealerPricingManagement() {
 
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <Label className="text-xs font-semibold text-slate-600">Start Date</Label>
+                <Label className="text-xs font-semibold text-slate-600">{t("pricingStartDate")}</Label>
                 <Input
                   type="datetime-local"
                   value={bulkStartDate}
@@ -1588,7 +1602,7 @@ export function DealerPricingManagement() {
                 />
               </div>
               <div>
-                <Label className="text-xs font-semibold text-slate-600">End Date</Label>
+                <Label className="text-xs font-semibold text-slate-600">{t("pricingEndDate")}</Label>
                 <Input
                   type="datetime-local"
                   value={bulkEndDate}
@@ -1600,27 +1614,27 @@ export function DealerPricingManagement() {
 
             {/* Impact Calculation Summary */}
             <div className="rounded-xl border border-slate-200 bg-slate-50 p-3.5 space-y-1.5 text-xs">
-              <p className="font-bold text-slate-900">Pre-Flight Promotion Summary</p>
+              <p className="font-bold text-slate-900">{t("dealerPricingPreflightTitle")}</p>
               <p className="text-slate-600">
-                Target listings: <span className="font-bold text-slate-900">{bulkPreviewStats.totalSelected}</span>
+                {t("dealerPricingTargetListings")} <span className="font-bold text-slate-900">{bulkPreviewStats.totalSelected}</span>
               </p>
               <p className="text-slate-600">
-                Average discount: <span className="font-bold text-slate-900">{formatUsd(bulkPreviewStats.avgDiscount)}</span>
+                {t("dealerPricingAverageDiscount")} <span className="font-bold text-slate-900">{formatUsd(bulkPreviewStats.avgDiscount)}</span>
               </p>
               {bulkPreviewStats.clampedCount > 0 && (
                 <div className="flex items-start gap-1.5 pt-1 text-amber-800 font-medium">
                   <ShieldCheck className="h-4 w-4 shrink-0 text-amber-600 mt-0.5" />
                   <span>
-                    Floor Price Protection active: <span className="font-bold">{bulkPreviewStats.clampedCount} listings</span> will clamp to their minimum floor price.
+                    {t("dealerPricingFloorActiveNotice", { count: bulkPreviewStats.clampedCount })}
                   </span>
                 </div>
               )}
             </div>
           </div>
 
-            <DialogFooter className="gap-2 sm:gap-0">
+          <DialogFooter className="gap-2 sm:gap-0">
             <Button variant="outline" onClick={() => setBulkModalOpen(false)}>
-              Cancel
+              {t("pricingCancelBtn")}
             </Button>
             <Button
               onClick={handleApplyBulk}
@@ -1628,7 +1642,7 @@ export function DealerPricingManagement() {
               className="bg-amber-500 text-slate-950 hover:bg-amber-400 font-bold"
             >
               {submitting ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <Flame className="h-4 w-4 mr-1" />}
-              Apply to {selectedIds.length} Listings
+              {t("dealerPricingApplyToCount", { count: selectedIds.length })}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -1641,7 +1655,7 @@ export function DealerPricingManagement() {
             <DialogHeader>
               <DialogTitle className="flex items-center gap-2 text-base">
                 <Tag className="h-5 w-5 text-amber-600" />
-                Configure Pricing & Promotions
+                {t("dealerPricingSingleTitle")}
               </DialogTitle>
             </DialogHeader>
 
@@ -1657,7 +1671,7 @@ export function DealerPricingManagement() {
                     {singleVehicle.make} {singleVehicle.model} {singleVehicle.variant || ""} {singleVehicle.year}
                   </p>
                   <p className="text-xs text-slate-500">
-                    Base: <span className="font-semibold text-slate-800">{formatUsd(singleVehicle.basePriceUsd)}</span>
+                    {t("pricingBasePriceLabel")} <span className="font-semibold text-slate-800">{formatUsd(singleVehicle.basePriceUsd)}</span>
                     {singleVehicle.stockNo ? ` · Stock: ${singleVehicle.stockNo}` : ""}
                   </p>
                 </div>
@@ -1665,7 +1679,7 @@ export function DealerPricingManagement() {
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <Label className="text-xs font-semibold text-slate-600">Base Price (USD $)</Label>
+                  <Label className="text-xs font-semibold text-slate-600">{t("dealerPricingSingleBasePrice")}</Label>
                   <Input
                     disabled
                     value={singleVehicle.basePriceUsd}
@@ -1674,7 +1688,7 @@ export function DealerPricingManagement() {
                 </div>
 
                 <div>
-                  <Label className="text-xs font-semibold text-slate-600">Floor Price Protection ($)</Label>
+                  <Label className="text-xs font-semibold text-slate-600">{t("dealerPricingFloorProtectionLabel")}</Label>
                   <Input
                     type="number"
                     min={0}
@@ -1688,7 +1702,7 @@ export function DealerPricingManagement() {
 
               <div>
                 <div className="flex items-center justify-between">
-                  <Label className="text-xs font-semibold text-slate-600">Promotional Tier</Label>
+                  <Label className="text-xs font-semibold text-slate-600">{t("promoTierLabel")}</Label>
                   <Button
                     type="button"
                     variant="ghost"
@@ -1697,7 +1711,7 @@ export function DealerPricingManagement() {
                     className="h-6 px-1.5 text-[11px] text-amber-700 hover:text-amber-800 hover:bg-amber-50 gap-1 font-semibold cursor-pointer"
                   >
                     <Plus className="h-3 w-3" />
-                    New Tier
+                    {t("dealerPricingNewTierBtn")}
                   </Button>
                 </div>
                 <div className="mt-1.5">
@@ -1706,16 +1720,16 @@ export function DealerPricingManagement() {
                     onValueChange={setSinglePriceTypeId}
                   >
                     <SelectTrigger className="h-10 text-xs w-full">
-                      <SelectValue placeholder="Select Promotional Tier">
+                      <SelectValue placeholder={t("dealerPricingSelectTierPlaceholder")}>
                         {singleSelectedTier ? (
                           <span className="flex items-center gap-2">
                             <span
                               className="h-2.5 w-2.5 rounded-full shrink-0"
                               style={{ backgroundColor: singleSelectedTier.badgeColor || "#ef4444" }}
                             />
-                            <span className="font-semibold text-slate-900">{singleSelectedTier.label}</span>
+                            <span className="font-semibold text-slate-900">{getPromoTierLabel(singleSelectedTier, locale)}</span>
                             <span className="text-slate-400 text-[11px]">
-                              ({singleSelectedTier.mode === "PERCENT" ? "% off" : "Fixed USD $"})
+                              ({singleSelectedTier.mode === "PERCENT" ? t("dealerPricingPercentOff") : t("dealerPricingFixedUsd")})
                             </span>
                           </span>
                         ) : undefined}
@@ -1729,9 +1743,9 @@ export function DealerPricingManagement() {
                               className="h-2.5 w-2.5 rounded-full shrink-0"
                               style={{ backgroundColor: pt.badgeColor || "#ef4444" }}
                             />
-                            <span className="font-semibold text-slate-900">{pt.label}</span>
+                            <span className="font-semibold text-slate-900">{getPromoTierLabel(pt, locale)}</span>
                             <span className="text-slate-400 text-[11px]">
-                              ({pt.mode === "PERCENT" ? "% off" : "Fixed USD $"})
+                              ({pt.mode === "PERCENT" ? t("dealerPricingPercentOff") : t("dealerPricingFixedUsd")})
                             </span>
                           </div>
                         </SelectItem>
@@ -1743,7 +1757,7 @@ export function DealerPricingManagement() {
 
               <div>
                 <Label className="text-xs font-semibold text-slate-600">
-                  {singlePreview?.selectedType?.mode === "PERCENT" ? "Discount Percentage (%)" : "Promotional Target Price (USD $)"}
+                  {singlePreview?.selectedType?.mode === "PERCENT" ? t("dealerPricingDiscountPercentLabel") : t("dealerPricingTargetPriceLabel")}
                 </Label>
                 <div className="relative mt-1.5">
                   <Input
@@ -1763,14 +1777,14 @@ export function DealerPricingManagement() {
                 </div>
                 <p className="mt-1 text-[11px] text-slate-500">
                   {singlePreview?.selectedType?.mode === "PERCENT"
-                    ? `Enter % discount to apply on base price of ${formatUsd(singleVehicle.basePriceUsd)}`
-                    : `Enter target promotional sales price below base price of ${formatUsd(singleVehicle.basePriceUsd)}`}
+                    ? t("dealerPricingEnterPercentHint", { base: formatUsd(singleVehicle.basePriceUsd) })
+                    : t("dealerPricingEnterFixedHint", { base: formatUsd(singleVehicle.basePriceUsd) })}
                 </p>
               </div>
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <Label className="text-xs font-semibold text-slate-600">Start Date (Optional)</Label>
+                  <Label className="text-xs font-semibold text-slate-600">{t("pricingStartDateOpt")}</Label>
                   <Input
                     type="datetime-local"
                     value={singleStartDate}
@@ -1779,7 +1793,7 @@ export function DealerPricingManagement() {
                   />
                 </div>
                 <div>
-                  <Label className="text-xs font-semibold text-slate-600">End Date (Optional)</Label>
+                  <Label className="text-xs font-semibold text-slate-600">{t("pricingEndDateOpt")}</Label>
                   <Input
                     type="datetime-local"
                     value={singleEndDate}
@@ -1795,11 +1809,11 @@ export function DealerPricingManagement() {
                   <div className="flex items-center justify-between text-xs font-bold text-slate-700">
                     <span className="flex items-center gap-1.5">
                       <Sparkles className="h-3.5 w-3.5 text-amber-500" />
-                      Pricing Resolution Preview
+                      {t("dealerPricingResolutionPreview")}
                     </span>
                     {singlePreview.discountUsd > 0 && (
                       <span className="text-emerald-700 bg-emerald-100 px-2 py-0.5 rounded-full text-[10px] font-bold">
-                        Save {formatUsd(singlePreview.discountUsd)} ({singlePreview.discountPercent}% OFF)
+                        {t("dealerPricingSaveAmount", { amount: formatUsd(singlePreview.discountUsd), percent: singlePreview.discountPercent })}
                       </span>
                     )}
                   </div>
@@ -1818,7 +1832,7 @@ export function DealerPricingManagement() {
                         className="rounded-md px-2 py-0.5 text-[10px] font-black uppercase text-white shadow-xs"
                         style={{ backgroundColor: singlePreview.selectedType.badgeColor || "#ef4444" }}
                       >
-                        {singlePreview.selectedType.label}
+                        {getPromoTierLabel(singlePreview.selectedType, locale)}
                       </span>
                     )}
                   </div>
@@ -1827,9 +1841,10 @@ export function DealerPricingManagement() {
                     <div className="flex items-start gap-1.5 text-xs text-amber-800 bg-amber-50 p-2.5 rounded-lg border border-amber-200 font-medium">
                       <ShieldCheck className="h-4 w-4 shrink-0 text-amber-600 mt-0.5" />
                       <span>
-                        <strong>Floor Price Enforced:</strong> Calculated promotional price of{" "}
-                        <span className="line-through">{formatUsd(singlePreview.candidate)}</span> was automatically protected and clamped to your floor minimum of{" "}
-                        <strong>{formatUsd(singlePreview.floor || 0)}</strong>.
+                        {t("dealerPricingFloorEnforcedDetail", {
+                          candidate: formatUsd(singlePreview.candidate),
+                          floor: formatUsd(singlePreview.floor || 0),
+                        })}
                       </span>
                     </div>
                   )}
@@ -1845,13 +1860,13 @@ export function DealerPricingManagement() {
                   disabled={submitting}
                   className="text-rose-600 hover:text-rose-700 border-rose-200"
                 >
-                  Clear Promo
+                  {t("dealerPricingClearPromoBtn")}
                 </Button>
               ) : <div />}
 
               <div className="flex items-center gap-2">
                 <Button variant="outline" onClick={() => setSingleVehicle(null)}>
-                  Cancel
+                  {t("pricingCancelBtn")}
                 </Button>
                 <Button
                   onClick={handleSaveSinglePromo}
@@ -1859,7 +1874,7 @@ export function DealerPricingManagement() {
                   className="bg-amber-500 text-slate-950 hover:bg-amber-400 font-bold"
                 >
                   {submitting ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : null}
-                  Save Pricing
+                  {t("dealerPricingSavePricingBtn")}
                 </Button>
               </div>
             </DialogFooter>
@@ -1873,7 +1888,7 @@ export function DealerPricingManagement() {
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2 text-base">
               <FileSpreadsheet className="h-5 w-5 text-emerald-600" />
-              Batch CSV Inventory & Pricing Importer
+              {t("dealerPricingCsvTitle")}
             </DialogTitle>
           </DialogHeader>
 
@@ -1890,7 +1905,7 @@ export function DealerPricingManagement() {
                     : "text-slate-600 hover:text-slate-900"
                 )}
               >
-                Import New Listings (Cars / Motors / Parts)
+                {t("dealerPricingCsvImportListings")}
               </button>
               <button
                 type="button"
@@ -1902,14 +1917,14 @@ export function DealerPricingManagement() {
                     : "text-slate-600 hover:text-slate-900"
                 )}
               >
-                Update Existing Stock Pricing
+                {t("dealerPricingCsvUpdatePricing")}
               </button>
             </div>
 
             {/* Template Download Pills */}
             <div className="rounded-xl border border-slate-200 bg-slate-50/70 p-3 space-y-2">
               <p className="text-[11px] font-bold text-slate-700 uppercase tracking-wide">
-                Download Sample CSV Templates
+                {t("dealerPricingSampleTemplates")}
               </p>
               <div className="flex flex-wrap items-center gap-1.5">
                 <Button
@@ -1920,7 +1935,7 @@ export function DealerPricingManagement() {
                   className="h-7 text-xs bg-white border-slate-200 hover:bg-slate-100 gap-1"
                 >
                   <CarFront className="h-3 w-3 text-sky-600" />
-                  Cars CSV
+                  {t("dealerPricingCarsCsv")}
                 </Button>
                 <Button
                   type="button"
@@ -1930,7 +1945,7 @@ export function DealerPricingManagement() {
                   className="h-7 text-xs bg-white border-slate-200 hover:bg-slate-100 gap-1"
                 >
                   <Bike className="h-3 w-3 text-amber-600" />
-                  Motors CSV
+                  {t("dealerPricingMotorsCsv")}
                 </Button>
                 <Button
                   type="button"
@@ -1940,7 +1955,7 @@ export function DealerPricingManagement() {
                   className="h-7 text-xs bg-white border-slate-200 hover:bg-slate-100 gap-1"
                 >
                   <Wrench className="h-3 w-3 text-indigo-600" />
-                  Spare Parts CSV
+                  {t("dealerPricingPartsCsv")}
                 </Button>
                 <Button
                   type="button"
@@ -1950,7 +1965,7 @@ export function DealerPricingManagement() {
                   className="h-7 text-xs bg-white border-slate-200 hover:bg-slate-100 gap-1"
                 >
                   <Tag className="h-3 w-3 text-emerald-600" />
-                  Pricing Updates CSV
+                  {t("dealerPricingPricingUpdatesCsv")}
                 </Button>
               </div>
             </div>
@@ -1982,13 +1997,13 @@ export function DealerPricingManagement() {
                 onClick={() => fileInputRef.current?.click()}
                 className="text-xs"
               >
-                Choose CSV File
+                {t("dealerPricingChooseCsvFile")}
               </Button>
-              <p className="text-[11px] text-slate-400 mt-2">or paste CSV text directly below</p>
+              <p className="text-[11px] text-slate-400 mt-2">{t("dealerPricingOrPasteCsv")}</p>
             </div>
 
             <div>
-              <Label className="text-xs font-semibold text-slate-600">CSV Raw Content</Label>
+              <Label className="text-xs font-semibold text-slate-600">{t("dealerPricingCsvRawContent")}</Label>
               <textarea
                 rows={5}
                 value={csvText}
@@ -2014,13 +2029,13 @@ export function DealerPricingManagement() {
                 </p>
                 {csvResult.errors && csvResult.errors.length > 0 && (
                   <div className="pt-1.5 space-y-1 text-slate-600">
-                    <p className="font-semibold text-slate-700">Skipped Rows:</p>
+                    <p className="font-semibold text-slate-700">{t("dealerPricingSkippedRows")}</p>
                     <ul className="list-disc list-inside space-y-0.5 text-[11px]">
                       {csvResult.errors.slice(0, 5).map((err, i) => (
                         <li key={i}>Row {err.row} ({err.identifier}): {err.error}</li>
                       ))}
                       {csvResult.errors.length > 5 && (
-                        <li>...and {csvResult.errors.length - 5} more</li>
+                        <li>{t("dealerPricingAndMore", { count: csvResult.errors.length - 5 })}</li>
                       )}
                     </ul>
                   </div>
@@ -2031,7 +2046,7 @@ export function DealerPricingManagement() {
 
           <DialogFooter className="gap-2 sm:gap-0">
             <Button variant="outline" onClick={() => setCsvModalOpen(false)}>
-              Close
+              {t("pricingCancelBtn")}
             </Button>
             <Button
               onClick={handleImportCsv}
@@ -2039,7 +2054,7 @@ export function DealerPricingManagement() {
               className="bg-emerald-600 text-white hover:bg-emerald-500 font-bold text-xs"
             >
               {submitting ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <Upload className="h-4 w-4 mr-1" />}
-              {csvMode === "CREATE_LISTINGS" ? "Import Listings" : "Apply Pricing"}
+              {csvMode === "CREATE_LISTINGS" ? t("dealerPricingImportListingsBtn") : t("dealerPricingApplyPricingBtn")}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -2051,7 +2066,7 @@ export function DealerPricingManagement() {
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2 text-base">
               <Plus className="h-5 w-5 text-slate-900" />
-              Add Inventory Listing with Pricing & Safeguards
+              {t("dealerPricingQuickAddTitle")}
             </DialogTitle>
           </DialogHeader>
 
@@ -2059,9 +2074,9 @@ export function DealerPricingManagement() {
             {/* Category Tab Selector */}
             <div className="flex items-center gap-2 p-1 bg-slate-100 rounded-xl">
               {[
-                { id: "CAR", label: "Car Listing", icon: CarFront },
-                { id: "MOTOR", label: "Motorcycle", icon: Bike },
-                { id: "SPARE_PART", label: "Spare Part", icon: Wrench },
+                { id: "CAR", label: t("dealerPricingCarListing"), icon: CarFront },
+                { id: "MOTOR", label: t("dealerPricingMotorListing"), icon: Bike },
+                { id: "SPARE_PART", label: t("dealerPricingPartListing"), icon: Wrench },
               ].map((c) => {
                 const Icon = c.icon;
                 return (
@@ -2089,7 +2104,7 @@ export function DealerPricingManagement() {
                 <Sparkles className="h-4 w-4 shrink-0 text-amber-600 mt-0.5" />
                 <div className="space-y-0.5">
                   <p className="font-bold text-amber-900 flex items-center gap-1.5 flex-wrap">
-                    <span>Existing Inventory Found:</span>
+                    <span>{t("dealerPricingExistingInventoryFound")}</span>
                     <span className="font-mono text-[11px] bg-amber-200/90 text-amber-950 px-1.5 py-0.2 rounded font-black">
                       {detectedDuplicate.make} {detectedDuplicate.model} {detectedDuplicate.variant || ""} ({detectedDuplicate.year})
                     </span>
@@ -2098,11 +2113,11 @@ export function DealerPricingManagement() {
                     )}
                   </p>
                   <p className="text-[11px] text-amber-800 leading-relaxed">
-                    Current recorded stock is <span className="font-black text-slate-900">{detectedDuplicate.stockQuantity} units</span>. Submitting this form will automatically increment your inventory to{" "}
-                    <span className="font-black text-amber-950 underline decoration-amber-400">
-                      {detectedDuplicate.stockQuantity + (Math.max(1, Number(addForm.quantity) || 1))} units
-                    </span>{" "}
-                    (+{Math.max(1, Number(addForm.quantity) || 1)}) and update pricing.
+                    {t("dealerPricingExistingStockNotice", {
+                      current: detectedDuplicate.stockQuantity,
+                      total: detectedDuplicate.stockQuantity + (Math.max(1, Number(addForm.quantity) || 1)),
+                      added: Math.max(1, Number(addForm.quantity) || 1),
+                    })}
                   </p>
                 </div>
               </div>
@@ -2112,7 +2127,7 @@ export function DealerPricingManagement() {
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
               <div className="sm:col-span-2">
                 <Label className="text-xs font-semibold text-slate-700">
-                  {addCategory === "SPARE_PART" ? "Brand / Manufacturer *" : "Make *"}
+                  {addCategory === "SPARE_PART" ? t("dealerPricingBrandManufacturer") : t("dealerPricingMake")}
                 </Label>
                 <Input
                   required
@@ -2125,7 +2140,7 @@ export function DealerPricingManagement() {
 
               <div className="sm:col-span-2">
                 <Label className="text-xs font-semibold text-slate-700">
-                  {addCategory === "SPARE_PART" ? "Part Name / Item *" : "Model *"}
+                  {addCategory === "SPARE_PART" ? t("dealerPricingPartName") : t("dealerPricingModel")}
                 </Label>
                 <Input
                   required
@@ -2137,7 +2152,7 @@ export function DealerPricingManagement() {
               </div>
 
               <div>
-                <Label className="text-xs font-semibold text-slate-700">Year</Label>
+                <Label className="text-xs font-semibold text-slate-700">{t("dealerPricingYear")}</Label>
                 <Input
                   type="number"
                   min={1980}
@@ -2149,7 +2164,7 @@ export function DealerPricingManagement() {
               </div>
 
               <div>
-                <Label className="text-xs font-semibold text-slate-700">Variant / Grade</Label>
+                <Label className="text-xs font-semibold text-slate-700">{t("dealerPricingVariantGrade")}</Label>
                 <Input
                   placeholder="e.g. XSE, Club12, GT"
                   value={addForm.variant}
@@ -2159,7 +2174,7 @@ export function DealerPricingManagement() {
               </div>
 
               <div>
-                <Label className="text-xs font-semibold text-slate-700">Condition</Label>
+                <Label className="text-xs font-semibold text-slate-700">{t("dealerPricingCondition")}</Label>
                 <Select
                   value={addForm.condition}
                   onValueChange={(val) => setAddForm({ ...addForm, condition: val })}
@@ -2168,17 +2183,17 @@ export function DealerPricingManagement() {
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="USED">Used</SelectItem>
-                    <SelectItem value="LIKE_NEW">Like New</SelectItem>
-                    <SelectItem value="BRAND_NEW">Brand New</SelectItem>
+                    <SelectItem value="USED">{t("dealerPricingCondUsed")}</SelectItem>
+                    <SelectItem value="LIKE_NEW">{t("dealerPricingCondLikeNew")}</SelectItem>
+                    <SelectItem value="BRAND_NEW">{t("dealerPricingCondBrandNew")}</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
 
               <div>
-                <Label className="text-xs font-semibold text-slate-700">Stock No (Optional)</Label>
+                <Label className="text-xs font-semibold text-slate-700">{t("dealerPricingStockNoOpt")}</Label>
                 <Input
-                  placeholder="Auto-generated if empty"
+                  placeholder={t("dealerPricingStockAutoGenerated")}
                   value={addForm.stockNo}
                   onChange={(e) => setAddForm({ ...addForm, stockNo: e.target.value })}
                   className="mt-1 h-9 text-xs font-mono"
@@ -2190,7 +2205,7 @@ export function DealerPricingManagement() {
             {addCategory === "CAR" && (
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 p-3 rounded-xl bg-slate-50 border border-slate-200">
                 <div>
-                  <Label className="text-xs font-semibold text-slate-700">Body Type</Label>
+                  <Label className="text-xs font-semibold text-slate-700">{t("dealerPricingBodyType")}</Label>
                   <Select
                     value={addForm.bodyType}
                     onValueChange={(val) => setAddForm({ ...addForm, bodyType: val })}
@@ -2199,18 +2214,18 @@ export function DealerPricingManagement() {
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="SUV">SUV</SelectItem>
-                      <SelectItem value="SEDAN">Sedan</SelectItem>
-                      <SelectItem value="PICKUP">Pickup</SelectItem>
-                      <SelectItem value="VAN">Van / MPV</SelectItem>
-                      <SelectItem value="HATCHBACK">Hatchback</SelectItem>
-                      <SelectItem value="COUPE">Coupe</SelectItem>
+                      <SelectItem value="SUV">{bodyTypeLabels.SUV?.[locale] ?? "SUV"}</SelectItem>
+                      <SelectItem value="SEDAN">{bodyTypeLabels.SEDAN?.[locale] ?? "Sedan"}</SelectItem>
+                      <SelectItem value="PICKUP">{bodyTypeLabels.PICKUP?.[locale] ?? "Pickup"}</SelectItem>
+                      <SelectItem value="VAN">{bodyTypeLabels.VAN?.[locale] ?? "Van / MPV"}</SelectItem>
+                      <SelectItem value="HATCHBACK">{bodyTypeLabels.HATCHBACK?.[locale] ?? "Hatchback"}</SelectItem>
+                      <SelectItem value="COUPE">{bodyTypeLabels.COUPE?.[locale] ?? "Coupe"}</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
 
                 <div>
-                  <Label className="text-xs font-semibold text-slate-700">Transmission</Label>
+                  <Label className="text-xs font-semibold text-slate-700">{t("dealerPricingTransmission")}</Label>
                   <Select
                     value={addForm.transmission}
                     onValueChange={(val) => setAddForm({ ...addForm, transmission: val })}
@@ -2219,14 +2234,14 @@ export function DealerPricingManagement() {
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="AUTOMATIC">Automatic</SelectItem>
-                      <SelectItem value="MANUAL">Manual</SelectItem>
+                      <SelectItem value="AUTOMATIC">{transmissionLabels.AUTOMATIC?.[locale] ?? "Automatic"}</SelectItem>
+                      <SelectItem value="MANUAL">{transmissionLabels.MANUAL?.[locale] ?? "Manual"}</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
 
                 <div>
-                  <Label className="text-xs font-semibold text-slate-700">Fuel Type</Label>
+                  <Label className="text-xs font-semibold text-slate-700">{t("dealerPricingFuelType")}</Label>
                   <Select
                     value={addForm.fuel}
                     onValueChange={(val) => setAddForm({ ...addForm, fuel: val })}
@@ -2235,16 +2250,16 @@ export function DealerPricingManagement() {
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="PETROL">Petrol</SelectItem>
-                      <SelectItem value="DIESEL">Diesel</SelectItem>
-                      <SelectItem value="HYBRID">Hybrid</SelectItem>
-                      <SelectItem value="ELECTRIC">Electric (EV)</SelectItem>
+                      <SelectItem value="PETROL">{fuelLabels.PETROL?.[locale] ?? "Petrol"}</SelectItem>
+                      <SelectItem value="DIESEL">{fuelLabels.DIESEL?.[locale] ?? "Diesel"}</SelectItem>
+                      <SelectItem value="HYBRID">{fuelLabels.HYBRID?.[locale] ?? "Hybrid"}</SelectItem>
+                      <SelectItem value="ELECTRIC">{fuelLabels.ELECTRIC?.[locale] ?? "Electric (EV)"}</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
 
                 <div>
-                  <Label className="text-xs font-semibold text-slate-700">Mileage (km)</Label>
+                  <Label className="text-xs font-semibold text-slate-700">{t("dealerPricingMileage")}</Label>
                   <Input
                     type="number"
                     min={0}
@@ -2259,7 +2274,7 @@ export function DealerPricingManagement() {
             {addCategory === "MOTOR" && (
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 p-3 rounded-xl bg-slate-50 border border-slate-200">
                 <div>
-                  <Label className="text-xs font-semibold text-slate-700">Motor Type</Label>
+                  <Label className="text-xs font-semibold text-slate-700">{t("dealerPricingMotorType")}</Label>
                   <Select
                     value={addForm.motorType}
                     onValueChange={(val) => setAddForm({ ...addForm, motorType: val })}
@@ -2268,19 +2283,19 @@ export function DealerPricingManagement() {
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="SCOOTER">Scooter</SelectItem>
-                      <SelectItem value="CUB">Cub / Underbone</SelectItem>
-                      <SelectItem value="SPORT">Sport Bike</SelectItem>
-                      <SelectItem value="NAKED">Naked</SelectItem>
-                      <SelectItem value="CRUISER">Cruiser</SelectItem>
-                      <SelectItem value="DIRT">Dirt / Enduro</SelectItem>
-                      <SelectItem value="ELECTRIC">Electric Motor</SelectItem>
+                      <SelectItem value="SCOOTER">{motorBodyTypeLabels.SCOOTER?.[locale] ?? "Scooter"}</SelectItem>
+                      <SelectItem value="CUB">{motorBodyTypeLabels.CUB?.[locale] ?? "Cub / Underbone"}</SelectItem>
+                      <SelectItem value="SPORT">{motorBodyTypeLabels.SPORT?.[locale] ?? "Sport Bike"}</SelectItem>
+                      <SelectItem value="NAKED">{motorBodyTypeLabels.NAKED?.[locale] ?? "Naked"}</SelectItem>
+                      <SelectItem value="CRUISER">{motorBodyTypeLabels.CRUISER?.[locale] ?? "Cruiser"}</SelectItem>
+                      <SelectItem value="DIRT">{motorBodyTypeLabels.DIRT?.[locale] ?? "Dirt / Enduro"}</SelectItem>
+                      <SelectItem value="ELECTRIC">{motorBodyTypeLabels.ELECTRIC?.[locale] ?? "Electric Motor"}</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
 
                 <div>
-                  <Label className="text-xs font-semibold text-slate-700">Engine Displacement</Label>
+                  <Label className="text-xs font-semibold text-slate-700">{t("dealerPricingEngineDisplacement")}</Label>
                   <Input
                     type="number"
                     placeholder="e.g. 125, 155, 300"
@@ -2291,7 +2306,7 @@ export function DealerPricingManagement() {
                 </div>
 
                 <div>
-                  <Label className="text-xs font-semibold text-slate-700">Start Type</Label>
+                  <Label className="text-xs font-semibold text-slate-700">{t("dealerPricingStartType")}</Label>
                   <Select
                     value={addForm.startType}
                     onValueChange={(val) => setAddForm({ ...addForm, startType: val })}
@@ -2300,16 +2315,16 @@ export function DealerPricingManagement() {
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="ELECTRIC">Electric Start</SelectItem>
-                      <SelectItem value="KICK">Kick Start</SelectItem>
-                      <SelectItem value="BOTH">Electric + Kick</SelectItem>
+                      <SelectItem value="ELECTRIC">{t("filterMotorStartElectric")}</SelectItem>
+                      <SelectItem value="KICK">{t("filterMotorStartKick")}</SelectItem>
+                      <SelectItem value="BOTH">{t("filterMotorStartBoth")}</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
 
                 <div className="flex items-center justify-between p-2 rounded-lg bg-white border border-slate-200 mt-5">
                   <Label htmlFor="add-abs" className="text-xs font-semibold text-slate-700 cursor-pointer">
-                    ABS Braking
+                    {t("dealerPricingAbsBraking")}
                   </Label>
                   <Switch
                     id="add-abs"
@@ -2324,7 +2339,7 @@ export function DealerPricingManagement() {
               <div className="space-y-3 p-3 rounded-xl bg-slate-50 border border-slate-200">
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                   <div>
-                    <Label className="text-xs font-semibold text-slate-700">Part Category</Label>
+                    <Label className="text-xs font-semibold text-slate-700">{t("dealerPricingPartCategory")}</Label>
                     <Select
                       value={addForm.partCategory}
                       onValueChange={(val) => setAddForm({ ...addForm, partCategory: val })}
@@ -2333,19 +2348,19 @@ export function DealerPricingManagement() {
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="ENGINE_TRANSMISSION">Engine & Transmission</SelectItem>
-                        <SelectItem value="BRAKES_SUSPENSION">Brakes & Suspension</SelectItem>
-                        <SelectItem value="TIRES_WHEELS">Tires & Wheels</SelectItem>
-                        <SelectItem value="BATTERY_ELECTRICAL">Electrical & Battery</SelectItem>
-                        <SelectItem value="LIGHTS_BULBS">Lights & Bulbs</SelectItem>
-                        <SelectItem value="BODY_MIRRORS">Body & Mirrors</SelectItem>
-                        <SelectItem value="ACCESSORIES">Accessories</SelectItem>
+                        <SelectItem value="ENGINE_TRANSMISSION">{partCategoryLabels.ENGINE_TRANSMISSION?.[locale] ?? "Engine & Transmission"}</SelectItem>
+                        <SelectItem value="BRAKES_SUSPENSION">{partCategoryLabels.BRAKES_SUSPENSION?.[locale] ?? "Brakes & Suspension"}</SelectItem>
+                        <SelectItem value="TIRES_WHEELS">{partCategoryLabels.TIRES_WHEELS?.[locale] ?? "Tires & Wheels"}</SelectItem>
+                        <SelectItem value="BATTERY_ELECTRICAL">{partCategoryLabels.BATTERY_ELECTRICAL?.[locale] ?? "Electrical & Battery"}</SelectItem>
+                        <SelectItem value="LIGHTS_BULBS">{partCategoryLabels.LIGHTS_BULBS?.[locale] ?? "Lights & Bulbs"}</SelectItem>
+                        <SelectItem value="BODY_MIRRORS">{partCategoryLabels.BODY_MIRRORS?.[locale] ?? "Body & Mirrors"}</SelectItem>
+                        <SelectItem value="ACCESSORIES">{partCategoryLabels.ACCESSORIES?.[locale] ?? "Accessories"}</SelectItem>
                       </SelectContent>
                     </Select>
                   </div>
 
                   <div>
-                    <Label className="text-xs font-semibold text-slate-700">Part Number / OEM #</Label>
+                    <Label className="text-xs font-semibold text-slate-700">{t("dealerPricingPartNumber")}</Label>
                     <Input
                       placeholder="e.g. 04465-33450"
                       value={addForm.partNumber}
@@ -2355,7 +2370,7 @@ export function DealerPricingManagement() {
                   </div>
 
                   <div>
-                    <Label className="text-xs font-semibold text-slate-700">Position</Label>
+                    <Label className="text-xs font-semibold text-slate-700">{t("dealerPricingPosition")}</Label>
                     <Select
                       value={addForm.position}
                       onValueChange={(val) => setAddForm({ ...addForm, position: val })}
@@ -2364,18 +2379,18 @@ export function DealerPricingManagement() {
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="FRONT">Front</SelectItem>
-                        <SelectItem value="REAR">Rear</SelectItem>
-                        <SelectItem value="LEFT">Left</SelectItem>
-                        <SelectItem value="RIGHT">Right</SelectItem>
-                        <SelectItem value="UNIVERSAL">Universal</SelectItem>
+                        <SelectItem value="FRONT">{t("filterPosFront")}</SelectItem>
+                        <SelectItem value="REAR">{t("filterPosRear")}</SelectItem>
+                        <SelectItem value="LEFT">{t("filterPosLeft")}</SelectItem>
+                        <SelectItem value="RIGHT">{t("filterPosRight")}</SelectItem>
+                        <SelectItem value="UNIVERSAL">{t("filterPosUniversal")}</SelectItem>
                       </SelectContent>
                     </Select>
                   </div>
 
                   <div className="flex items-center justify-between p-2 rounded-lg bg-white border border-slate-200 mt-5">
                     <Label htmlFor="add-oem" className="text-xs font-semibold text-slate-700 cursor-pointer">
-                      OEM Genuine
+                      {t("dealerPricingOemGenuine")}
                     </Label>
                     <Switch
                       id="add-oem"
@@ -2387,7 +2402,7 @@ export function DealerPricingManagement() {
 
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                   <div>
-                    <Label className="text-xs font-semibold text-slate-700">Compatible Make</Label>
+                    <Label className="text-xs font-semibold text-slate-700">{t("dealerPricingCompatibleMake")}</Label>
                     <Input
                       placeholder="e.g. Toyota, Honda"
                       value={addForm.compatibleMake}
@@ -2397,7 +2412,7 @@ export function DealerPricingManagement() {
                   </div>
 
                   <div>
-                    <Label className="text-xs font-semibold text-slate-700">Compatible Model</Label>
+                    <Label className="text-xs font-semibold text-slate-700">{t("dealerPricingCompatibleModel")}</Label>
                     <Input
                       placeholder="e.g. Prius, Camry"
                       value={addForm.compatibleModel}
@@ -2407,7 +2422,7 @@ export function DealerPricingManagement() {
                   </div>
 
                   <div>
-                    <Label className="text-xs font-semibold text-slate-700">Min Year</Label>
+                    <Label className="text-xs font-semibold text-slate-700">{t("dealerPricingMinYear")}</Label>
                     <Input
                       type="number"
                       placeholder="e.g. 2010"
@@ -2418,7 +2433,7 @@ export function DealerPricingManagement() {
                   </div>
 
                   <div>
-                    <Label className="text-xs font-semibold text-slate-700">Max Year</Label>
+                    <Label className="text-xs font-semibold text-slate-700">{t("dealerPricingMaxYear")}</Label>
                     <Input
                       type="number"
                       placeholder="e.g. 2024"
@@ -2435,12 +2450,12 @@ export function DealerPricingManagement() {
             <div className="rounded-xl border border-slate-200 bg-amber-50/30 p-3.5 space-y-3">
               <p className="text-xs font-bold text-slate-900 flex items-center gap-1.5">
                 <DollarSign className="h-4 w-4 text-amber-600" />
-                Pricing & Floor Price Safeguards
+                {t("dealerPricingPricingSafeguards")}
               </p>
 
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                 <div>
-                  <Label className="text-xs font-semibold text-slate-700">Base Price (USD $) *</Label>
+                  <Label className="text-xs font-semibold text-slate-700">{t("dealerPricingBasePriceRequired")}</Label>
                   <Input
                     required
                     type="number"
@@ -2453,7 +2468,7 @@ export function DealerPricingManagement() {
                 </div>
 
                 <div>
-                  <Label className="text-xs font-semibold text-slate-700">Floor Price Protection ($)</Label>
+                  <Label className="text-xs font-semibold text-slate-700">{t("dealerPricingFloorProtectionLabel")}</Label>
                   <Input
                     type="number"
                     min={0}
@@ -2465,7 +2480,7 @@ export function DealerPricingManagement() {
                 </div>
 
                 <div>
-                  <Label className="text-xs font-semibold text-slate-700">Stock Quantity (Units) *</Label>
+                  <Label className="text-xs font-semibold text-slate-700">{t("dealerPricingStockQuantityRequired")}</Label>
                   <Input
                     required
                     type="number"
@@ -2484,7 +2499,7 @@ export function DealerPricingManagement() {
                   <div className="flex items-center gap-1.5">
                     <Flame className="h-4 w-4 text-amber-600" />
                     <Label htmlFor="attach-promo" className="text-xs font-semibold text-slate-800 cursor-pointer">
-                      Launch with Promotional Discount
+                      {t("dealerPricingLaunchPromotional")}
                     </Label>
                   </div>
                   <Switch
@@ -2497,20 +2512,20 @@ export function DealerPricingManagement() {
                 {addForm.attachPromo && (
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
                     <div>
-                      <Label className="text-xs font-semibold text-slate-700">Promotional Tier</Label>
+                      <Label className="text-xs font-semibold text-slate-700">{t("promoTierLabel")}</Label>
                       <Select
                         value={quickAddSelectedTier?.id || addForm.promoPriceTypeId}
                         onValueChange={(val) => setAddForm({ ...addForm, promoPriceTypeId: val })}
                       >
                         <SelectTrigger className="mt-1 h-9 text-xs bg-white">
-                          <SelectValue placeholder="Select Tier">
+                          <SelectValue placeholder={t("dealerPricingSelectTierPlaceholder")}>
                             {quickAddSelectedTier ? (
                               <span className="flex items-center gap-2">
                                 <span
                                   className="h-2 w-2 rounded-full"
                                   style={{ backgroundColor: quickAddSelectedTier.badgeColor || "#ef4444" }}
                                 />
-                                <span>{quickAddSelectedTier.label}</span>
+                                <span>{getPromoTierLabel(quickAddSelectedTier, locale)}</span>
                                 <span className="text-[10px] text-slate-400">({quickAddSelectedTier.mode === "PERCENT" ? "%" : "$"})</span>
                               </span>
                             ) : undefined}
@@ -2524,7 +2539,7 @@ export function DealerPricingManagement() {
                                   className="h-2 w-2 rounded-full"
                                   style={{ backgroundColor: pt.badgeColor || "#ef4444" }}
                                 />
-                                <span>{pt.label}</span>
+                                <span>{getPromoTierLabel(pt, locale)}</span>
                                 <span className="text-[10px] text-slate-400">({pt.mode === "PERCENT" ? "%" : "$"})</span>
                               </div>
                             </SelectItem>
@@ -2534,7 +2549,7 @@ export function DealerPricingManagement() {
                     </div>
 
                     <div>
-                      <Label className="text-xs font-semibold text-slate-700">Discount Value (% or $)</Label>
+                      <Label className="text-xs font-semibold text-slate-700">{t("dealerPricingDiscountPercentLabel")}</Label>
                       <Input
                         type="number"
                         min={1}
@@ -2551,13 +2566,13 @@ export function DealerPricingManagement() {
 
             {branches.length > 0 && (
               <div>
-                <Label className="text-xs font-semibold text-slate-700">Showroom Branch</Label>
+                <Label className="text-xs font-semibold text-slate-700">{t("dealerPricingShowroomBranch")}</Label>
                 <Select
                   value={addForm.branchId}
                   onValueChange={(val) => setAddForm({ ...addForm, branchId: val })}
                 >
                   <SelectTrigger className="mt-1 h-9 text-xs">
-                    <SelectValue placeholder="Select Showroom / Branch" />
+                    <SelectValue placeholder={t("dealerPricingSelectShowroom")} />
                   </SelectTrigger>
                   <SelectContent>
                     {branches.map((b) => (
@@ -2572,7 +2587,7 @@ export function DealerPricingManagement() {
 
             <DialogFooter className="gap-2 sm:gap-0 pt-2">
               <Button type="button" variant="outline" onClick={() => setQuickAddOpen(false)}>
-                Cancel
+                {t("pricingCancelBtn")}
               </Button>
               <Button
                 type="submit"
@@ -2580,7 +2595,7 @@ export function DealerPricingManagement() {
                 className="bg-slate-900 text-white hover:bg-slate-800 font-bold text-xs"
               >
                 {submitting ? <Loader2 className="h-4 w-4 animate-spin mr-1.5" /> : <Plus className="h-4 w-4 mr-1.5" />}
-                Add {addCategory === "CAR" ? "Car" : addCategory === "MOTOR" ? "Motorcycle" : "Spare Part"}
+                {t("dealerPricingAddVehicleBtn", { type: addCategory === "CAR" ? t("pricingCatCars") : addCategory === "MOTOR" ? t("pricingCatMotors") : t("pricingCatParts") })}
               </Button>
             </DialogFooter>
           </form>
@@ -2594,7 +2609,7 @@ export function DealerPricingManagement() {
             <div className="flex items-center justify-between pr-6">
               <DialogTitle className="flex items-center gap-2 text-base">
                 <Tag className="h-5 w-5 text-amber-600" />
-                Manage Promotional Price Tiers
+                {t("dealerPricingManageTiersTitle")}
               </DialogTitle>
               <Button
                 size="sm"
@@ -2602,32 +2617,32 @@ export function DealerPricingManagement() {
                 className="bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs gap-1.5 h-8"
               >
                 <Plus className="h-3.5 w-3.5" />
-                Add New Tier
+                {t("dealerPricingAddNewTier")}
               </Button>
             </div>
           </DialogHeader>
 
           <p className="text-xs text-slate-500 -mt-2">
-            Configure priority-based promotional tiers, calculation modes, badge styling, and active visibility for vehicle pricing.
+            {t("dealerPricingTiersDesc")}
           </p>
 
           <div className="rounded-xl border border-slate-200 overflow-hidden shadow-xs mt-3">
             <table className="w-full text-left text-xs text-slate-600">
               <thead className="bg-slate-50 border-b border-slate-100 text-[11px] font-bold uppercase tracking-wider text-slate-400">
                 <tr>
-                  <th className="py-2.5 px-3">Priority</th>
-                  <th className="py-2.5 px-3">Badge Preview</th>
-                  <th className="py-2.5 px-3">Code / Identifier</th>
-                  <th className="py-2.5 px-3">Mode</th>
-                  <th className="py-2.5 px-3">Status</th>
-                  <th className="py-2.5 px-3 text-right">Actions</th>
+                  <th className="py-2.5 px-3">{t("pricingPriorityCol")}</th>
+                  <th className="py-2.5 px-3">{t("pricingBadgeCol")}</th>
+                  <th className="py-2.5 px-3">{t("pricingCodeCol")}</th>
+                  <th className="py-2.5 px-3">{t("pricingModeCol")}</th>
+                  <th className="py-2.5 px-3">{t("pricingActiveCol")}</th>
+                  <th className="py-2.5 px-3 text-right">{t("pricingActionsCol")}</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
                 {priceTypes.length === 0 ? (
                   <tr>
                     <td colSpan={6} className="py-6 text-center text-slate-400">
-                      No promotional tiers found. Click "Add New Tier" to create one.
+                      {t("dealerPricingNoTiersFound")}
                     </td>
                   </tr>
                 ) : (
@@ -2642,7 +2657,7 @@ export function DealerPricingManagement() {
                           style={{ backgroundColor: pt.badgeColor || "#ef4444" }}
                         >
                           <Flame className="h-3 w-3 fill-white" />
-                          {pt.label}
+                          {getPromoTierLabel(pt, locale)}
                         </span>
                       </td>
                       <td className="py-2.5 px-3 font-mono text-[11px] text-slate-700 font-semibold">
@@ -2650,17 +2665,17 @@ export function DealerPricingManagement() {
                       </td>
                       <td className="py-2.5 px-3">
                         <Badge variant="outline" className="text-[10px] font-mono">
-                          {pt.mode === "PERCENT" ? "PERCENT (%)" : "FIXED ($)"}
+                          {pt.mode === "PERCENT" ? t("pricingPercentMode") : t("pricingFixedMode")}
                         </Badge>
                       </td>
                       <td className="py-2.5 px-3">
                         {pt.active !== false ? (
                           <Badge className="bg-emerald-100 text-emerald-800 border-emerald-200 text-[10px] font-bold">
-                            Active
+                            {t("dealerPricingStatusActive")}
                           </Badge>
                         ) : (
                           <Badge variant="secondary" className="text-slate-500 text-[10px]">
-                            Inactive
+                            {t("dealerPricingStatusInactive")}
                           </Badge>
                         )}
                       </td>
@@ -2696,7 +2711,7 @@ export function DealerPricingManagement() {
 
           <DialogFooter className="mt-4">
             <Button variant="outline" onClick={() => setTierModalOpen(false)}>
-              Done
+              {t("dealerPricingDoneBtn")}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -2708,13 +2723,13 @@ export function DealerPricingManagement() {
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2 text-base">
               <Tag className="h-5 w-5 text-amber-600" />
-              {editingTier ? `Edit Tier: ${editingTier.label}` : "Create Promotional Tier"}
+              {editingTier ? t("dealerPricingEditTierTitle", { label: editingTier.label }) : t("dealerPricingCreateTierTitle")}
             </DialogTitle>
           </DialogHeader>
 
           <div className="space-y-3.5 py-2">
             <div>
-              <Label className="text-xs font-semibold text-slate-700">Tier Label *</Label>
+              <Label className="text-xs font-semibold text-slate-700">{t("dealerPricingTierLabel")}</Label>
               <Input
                 value={tierLabel}
                 onChange={(e) => {
@@ -2729,7 +2744,7 @@ export function DealerPricingManagement() {
             </div>
 
             <div>
-              <Label className="text-xs font-semibold text-slate-700">Unique Code *</Label>
+              <Label className="text-xs font-semibold text-slate-700">{t("dealerPricingUniqueCode")}</Label>
               <Input
                 value={tierCode}
                 onChange={(e) => setTierCode(e.target.value.toUpperCase().replace(/[^A-Z0-9_]/g, "_"))}
@@ -2737,25 +2752,25 @@ export function DealerPricingManagement() {
                 placeholder="e.g. FLASH_SALE"
                 className="mt-1 h-9 text-xs font-mono"
               />
-              <p className="text-[10px] text-slate-400 mt-1">Unique uppercase identifier</p>
+              <p className="text-[10px] text-slate-400 mt-1">{t("dealerPricingUniqueCodeDesc")}</p>
             </div>
 
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <Label className="text-xs font-semibold text-slate-700">Calculation Mode</Label>
+                <Label className="text-xs font-semibold text-slate-700">{t("pricingCalculationMode")}</Label>
                 <Select value={tierMode} onValueChange={(v: "PERCENT" | "FIXED") => setTierMode(v)}>
                   <SelectTrigger className="mt-1 h-9 text-xs">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="PERCENT">Percentage (% off)</SelectItem>
-                    <SelectItem value="FIXED">Fixed Target ($)</SelectItem>
+                    <SelectItem value="PERCENT">{t("pricingModePercentOpt")}</SelectItem>
+                    <SelectItem value="FIXED">{t("pricingModeFixedOpt")}</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
 
               <div>
-                <Label className="text-xs font-semibold text-slate-700">Priority (Higher wins)</Label>
+                <Label className="text-xs font-semibold text-slate-700">{t("dealerPricingPriorityHigherWins")}</Label>
                 <Input
                   type="number"
                   value={tierPriority}
@@ -2768,7 +2783,7 @@ export function DealerPricingManagement() {
 
             {/* Badge Color Picker */}
             <div>
-              <Label className="text-xs font-semibold text-slate-700">Badge Color</Label>
+              <Label className="text-xs font-semibold text-slate-700">{t("pricingBadgeColor")}</Label>
               <div className="flex flex-wrap items-center gap-2 mt-1.5">
                 {[
                   { color: "#EF4444", name: "Red" },
@@ -2813,7 +2828,7 @@ export function DealerPricingManagement() {
 
             {/* Badge Preview */}
             <div className="p-3 bg-slate-50 rounded-xl border border-slate-100 flex items-center justify-between">
-              <span className="text-xs text-slate-500 font-medium">Badge Preview:</span>
+              <span className="text-xs text-slate-500 font-medium">{t("pricingBadgeCol")}:</span>
               <span
                 className="inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-black uppercase tracking-wide text-white shadow-xs"
                 style={{ backgroundColor: tierBadgeColor || "#ef4444" }}
@@ -2830,14 +2845,14 @@ export function DealerPricingManagement() {
                 onCheckedChange={setTierActive}
               />
               <Label htmlFor="tier-active" className="text-xs font-medium text-slate-700 cursor-pointer">
-                Active Tier (Available in promotional selectors)
+                {t("dealerPricingActiveTierToggle")}
               </Label>
             </div>
           </div>
 
           <DialogFooter className="gap-2 sm:gap-0 mt-2">
             <Button variant="outline" onClick={() => setTierFormOpen(false)}>
-              Cancel
+              {t("pricingCancelBtn")}
             </Button>
             <Button
               onClick={handleSaveTier}
@@ -2845,7 +2860,7 @@ export function DealerPricingManagement() {
               className="bg-amber-500 text-slate-950 hover:bg-amber-400 font-bold"
             >
               {tierSubmitting && <Loader2 className="h-4 w-4 animate-spin mr-1.5" />}
-              {editingTier ? "Save Changes" : "Create Tier"}
+              {editingTier ? t("pricingSaveChangesBtn") : t("dealerPricingCreateTierBtn")}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -2869,19 +2884,20 @@ export function DealerPricingManagement() {
         <AlertDialog open={Boolean(deletingVehicle)} onOpenChange={(open) => !open && setDeletingVehicle(null)}>
           <AlertDialogContent>
             <AlertDialogHeader>
-              <AlertDialogTitle>Delete Vehicle Listing?</AlertDialogTitle>
+              <AlertDialogTitle>{t("dealerPricingDeleteTitle")}</AlertDialogTitle>
               <AlertDialogDescription>
-                Are you sure you want to remove <strong>{deletingVehicle.make} {deletingVehicle.model} {deletingVehicle.year}</strong>
-                {deletingVehicle.stockNo ? ` (Stock: ${deletingVehicle.stockNo})` : ""}? This will archive the listing and remove it from the active marketplace.
+                {t("dealerPricingDeleteDesc", {
+                  vehicle: `${deletingVehicle.make} ${deletingVehicle.model} ${deletingVehicle.year}${deletingVehicle.stockNo ? ` (${deletingVehicle.stockNo})` : ""}`,
+                })}
               </AlertDialogDescription>
             </AlertDialogHeader>
             <AlertDialogFooter>
-              <AlertDialogCancel onClick={() => setDeletingVehicle(null)}>Cancel</AlertDialogCancel>
+              <AlertDialogCancel onClick={() => setDeletingVehicle(null)}>{t("pricingCancelBtn")}</AlertDialogCancel>
               <AlertDialogAction
                 onClick={() => handleDeleteListing(deletingVehicle.id)}
                 className="bg-rose-600 text-white hover:bg-rose-700 font-bold"
               >
-                Delete Listing
+                {t("dealerPricingDeleteConfirmBtn")}
               </AlertDialogAction>
             </AlertDialogFooter>
           </AlertDialogContent>
@@ -2894,10 +2910,10 @@ export function DealerPricingManagement() {
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2 text-base font-bold">
               <Boxes className="h-5 w-5 text-amber-600" />
-              Include Listings from Inventory
+              {t("dealerPricingIncludeTitle")}
             </DialogTitle>
             <p className="text-xs text-slate-500">
-              Select existing listings from your dealership catalog to quickly assign them to promotional pricing campaigns.
+              {t("dealerPricingIncludeDesc")}
             </p>
           </DialogHeader>
 
@@ -2905,10 +2921,10 @@ export function DealerPricingManagement() {
           <div className="flex flex-wrap items-center justify-between gap-3 pt-2">
             <div className="flex items-center gap-1.5 p-1 bg-slate-100 rounded-xl">
               {[
-                { id: "ALL", label: "All" },
-                { id: "CAR", label: "Cars" },
-                { id: "MOTOR", label: "Motors" },
-                { id: "SPARE_PART", label: "Parts" },
+                { id: "ALL", label: t("pricingCatAll") },
+                { id: "CAR", label: t("pricingCatCars") },
+                { id: "MOTOR", label: t("pricingCatMotors") },
+                { id: "SPARE_PART", label: t("pricingCatParts") },
               ].map((c) => (
                 <button
                   key={c.id}
@@ -2929,7 +2945,7 @@ export function DealerPricingManagement() {
             <div className="relative w-full sm:w-64">
               <Search className="absolute left-2.5 top-2.5 h-3.5 w-3.5 text-slate-400" />
               <Input
-                placeholder="Search inventory..."
+                placeholder={t("dealerPricingSearchInventoryPlaceholder")}
                 value={includeSearch}
                 onChange={(e) => setIncludeSearch(e.target.value)}
                 className="pl-8 h-9 text-xs"
@@ -2955,7 +2971,7 @@ export function DealerPricingManagement() {
               if (filtered.length === 0) {
                 return (
                   <div className="p-8 text-center text-xs text-slate-500">
-                    No matching inventory items found.
+                    {t("dealerPricingNoMatchingInventory")}
                   </div>
                 );
               }
@@ -2977,10 +2993,10 @@ export function DealerPricingManagement() {
                         }}
                         className="rounded border-slate-300 text-amber-500 focus:ring-amber-400 cursor-pointer h-4 w-4"
                       />
-                      <span>Select All ({filtered.length} items)</span>
+                      <span>{t("dealerPricingSelectAllCount", { count: filtered.length })}</span>
                     </label>
                     <span className="text-[11px] text-slate-400 font-mono">
-                      {includeSelectedIds.length} selected
+                      {t("dealerPricingSelectedCount", { count: includeSelectedIds.length })}
                     </span>
                   </div>
 
@@ -3022,9 +3038,9 @@ export function DealerPricingManagement() {
                             <div className="flex items-center gap-1.5 flex-wrap text-[10px] text-slate-500">
                               {v.stockNo && <span>Stock: {v.stockNo} ·</span>}
                               <span className="font-mono font-bold text-slate-700 bg-slate-100 px-1 py-0.2 rounded">
-                                {v.stockQuantity || 1} in stock
+                                {t("dealerPricingInStock", { count: v.stockQuantity || 1 })}
                               </span>
-                              <span>· Base: {formatUsd(v.basePriceUsd)}</span>
+                              <span>· {t("pricingBasePriceCol")}: {formatUsd(v.basePriceUsd)}</span>
                             </div>
                           </div>
                         </div>
@@ -3036,10 +3052,10 @@ export function DealerPricingManagement() {
                               style={{ backgroundColor: v.activePriceType.badgeColor || "#ef4444" }}
                             >
                               <Flame className="h-2.5 w-2.5" />
-                              {v.activePriceType.label}
+                              {getPromoTierLabel(v.activePriceType, locale)}
                             </span>
                           ) : (
-                            <span className="text-[11px] text-slate-400">Regular</span>
+                            <span className="text-[11px] text-slate-400">{t("pricingRegularBadge")}</span>
                           )}
                         </div>
                       </div>
@@ -3054,27 +3070,27 @@ export function DealerPricingManagement() {
           <div className="rounded-xl border border-amber-200 bg-amber-50/50 p-3.5 space-y-3">
             <p className="text-xs font-bold text-amber-950 flex items-center gap-1.5">
               <Sparkles className="h-3.5 w-3.5 text-amber-600" />
-              Assign Promotional Campaign to Selected ({includeSelectedIds.length}) Listings
+              {t("dealerPricingAssignCampaignTitle", { count: includeSelectedIds.length })}
             </p>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
-                <Label className="text-xs font-semibold text-slate-700">Promotional Tier</Label>
+                <Label className="text-xs font-semibold text-slate-700">{t("promoTierLabel")}</Label>
                 <Select
                   value={includeSelectedTier?.id || includePromoTypeId}
                   onValueChange={setIncludePromoTypeId}
                 >
                   <SelectTrigger className="mt-1 h-9 text-xs bg-white w-full">
-                    <SelectValue placeholder="Select Tier">
+                    <SelectValue placeholder={t("dealerPricingSelectTierPlaceholder")}>
                       {includeSelectedTier ? (
                         <span className="flex items-center gap-2">
                           <span
                             className="h-2 w-2 rounded-full shrink-0"
                             style={{ backgroundColor: includeSelectedTier.badgeColor || "#ef4444" }}
                           />
-                          <span>{includeSelectedTier.label}</span>
+                          <span>{getPromoTierLabel(includeSelectedTier, locale)}</span>
                           <span className="text-slate-400 text-[10px]">
-                            ({includeSelectedTier.mode === "PERCENT" ? "% off" : "Fixed $"})
+                            ({includeSelectedTier.mode === "PERCENT" ? t("dealerPricingPercentOff") : t("dealerPricingFixedUsd")})
                           </span>
                         </span>
                       ) : undefined}
@@ -3088,9 +3104,9 @@ export function DealerPricingManagement() {
                             className="h-2 w-2 rounded-full shrink-0"
                             style={{ backgroundColor: pt.badgeColor || "#ef4444" }}
                           />
-                          <span>{pt.label}</span>
+                          <span>{getPromoTierLabel(pt, locale)}</span>
                           <span className="text-slate-400 text-[10px]">
-                            ({pt.mode === "PERCENT" ? "% off" : "Fixed $"})
+                            ({pt.mode === "PERCENT" ? t("dealerPricingPercentOff") : t("dealerPricingFixedUsd")})
                           </span>
                         </div>
                       </SelectItem>
@@ -3102,8 +3118,8 @@ export function DealerPricingManagement() {
               <div>
                 <Label className="text-xs font-semibold text-slate-700">
                   {priceTypes.find((p) => p.id === (includePromoTypeId || priceTypes[0]?.id))?.mode === "PERCENT"
-                    ? "Discount Value (%)"
-                    : "Reduction Amount (USD $)"}
+                    ? t("dealerPricingDiscountPercentLabel")
+                    : t("dealerPricingReductionAmountLabel")}
                 </Label>
                 <Input
                   type="number"
@@ -3119,7 +3135,7 @@ export function DealerPricingManagement() {
 
           <DialogFooter className="mt-3 flex-row items-center justify-between gap-2">
             <Button variant="outline" onClick={() => setIncludeInventoryOpen(false)}>
-              Cancel
+              {t("pricingCancelBtn")}
             </Button>
             <Button
               onClick={handleIncludeInventorySubmit}
@@ -3127,7 +3143,7 @@ export function DealerPricingManagement() {
               className="bg-amber-500 text-slate-950 hover:bg-amber-400 font-bold"
             >
               {submitting && <Loader2 className="h-4 w-4 animate-spin mr-1.5" />}
-              Apply Promo to {includeSelectedIds.length} Items
+              {t("dealerPricingApplyPromoCountBtn", { count: includeSelectedIds.length })}
             </Button>
           </DialogFooter>
         </DialogContent>

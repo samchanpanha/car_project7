@@ -1,6 +1,7 @@
 "use client";
 
 import { useRef, useState } from "react";
+import { useT } from "@/hooks/use-t";
 import {
   Dialog,
   DialogContent,
@@ -132,6 +133,7 @@ export function PaymentOcrModal({
     };
   }) => void;
 }) {
+  const t = useT();
   const [image, setImage] = useState<string | null>(null);
   const [scanning, setScanning] = useState(false);
   const [scanStep, setScanStep] = useState<string>("");
@@ -209,13 +211,13 @@ export function PaymentOcrModal({
       setCustomRef(detected);
 
       if (res.verification.isWrongMerchant) {
-        toast.error("⛔ BLOCKED: Payment slip was not paid to our official KHQR! Security alert sent to admin.");
+        toast.error(t("ocrToastBlockedWrongMerchant"));
       } else if (res.verification.status === "PASS") {
-        toast.success("✨ Receipt verified successfully! Trx ID extracted.");
+        toast.success(t("ocrToastReceiptVerified"));
       } else if (res.verification.isDuplicate) {
-        toast.error("⚠️ Duplicate Trx ID detected!");
+        toast.error(t("ocrToastDuplicateTrx"));
       } else if (res.verification.isOld) {
-        toast.error("⚠️ Old transaction detected!");
+        toast.error(t("ocrToastOldTrx"));
       } else {
         toast.warning(res.verification.message);
       }
@@ -231,13 +233,13 @@ export function PaymentOcrModal({
   const loadSampleReceipt = async () => {
     try {
       setScanning(true);
-      setScanStep("Loading ABA sample receipt...");
+      setScanStep(t("ocrScanningWithProgress"));
       const resp = await fetch("/aba-receipt-sample.svg");
       const blob = await resp.blob();
       const file = new File([blob], "aba-receipt-sample.svg", { type: "image/svg+xml" });
       await processImageFile(file);
     } catch {
-      toast.error("Could not load sample receipt");
+      toast.error(t("ocrToastSampleFail"));
       setScanning(false);
     }
   };
@@ -246,7 +248,7 @@ export function PaymentOcrModal({
     if (!image || !result) return;
     const finalRef = customRef.trim() || result.data.trxId || result.data.externalRef || result.data.apv || "";
     if (!finalRef) {
-      toast.error("Transaction reference is required");
+      toast.error(t("ocrToastTrxRequired"));
       return;
     }
 
@@ -257,28 +259,28 @@ export function PaymentOcrModal({
       rawText: result.data.rawText,
     });
     if (!refMatch.match) {
-      toast.error(`Transaction ID Mismatch! Entered reference "${finalRef}" differs from scanned receipt slip ("${result.data.trxId || "scanned"}"). Because real money is involved, the transaction reference must match.`);
+      toast.error(t("ocrToastTrxMismatch", { entered: finalRef, scanned: result.data.trxId || "scanned" }));
       return;
     }
 
     if (result.verification.isWrongMerchant) {
-      toast.error("⛔ Cannot proceed: Receipt was not paid to our official KHQR account.");
+      toast.error(t("ocrToastCannotProceedWrongMerchant"));
       return;
     }
     if (result.verification.isDuplicate) {
-      toast.error("Cannot proceed: This transaction ID has already been used.");
+      toast.error(t("ocrToastCannotProceedDuplicate"));
       return;
     }
     if (result.verification.isNotCurrentDate) {
-      toast.error(result.verification.message || "Cannot proceed: Transaction date is not today.");
+      toast.error(result.verification.message || t("ocrToastCannotProceedDate"));
       return;
     }
     if (result.verification.isOld) {
-      toast.error("Cannot proceed: This transaction is older than allowed limit.");
+      toast.error(t("ocrToastCannotProceedOld"));
       return;
     }
     if (result.verification.status === "MISMATCH") {
-      toast.error(result.verification.message || "Cannot proceed: Receipt failed security verification.");
+      toast.error(result.verification.message || t("ocrToastCannotProceedSecurity"));
       return;
     }
 
@@ -309,7 +311,7 @@ export function PaymentOcrModal({
     if (!customRef) return;
     navigator.clipboard?.writeText(customRef);
     setCopiedRef(true);
-    toast.success(`Copied: ${customRef}`);
+    toast.success(t("ocrToastCopiedRef", { ref: customRef }));
     setTimeout(() => setCopiedRef(false), 2000);
   };
 
@@ -332,11 +334,11 @@ export function PaymentOcrModal({
               </div>
               <div>
                 <DialogTitle className="text-base sm:text-lg font-bold text-slate-900 dark:text-white flex items-center gap-1.5">
-                  AI Receipt Scanner &amp; Verifier
+                  {t("ocrModalTitle")}
                   <Sparkles className="h-4 w-4 text-amber-500" />
                 </DialogTitle>
                 <DialogDescription className="text-xs text-slate-500">
-                  Scan bank slip to extract Trx ID &amp; amount, and verify against duplicates &amp; old receipts
+                  {t("ocrModalSubtitle")}
                 </DialogDescription>
               </div>
             </div>
@@ -364,10 +366,10 @@ export function PaymentOcrModal({
                   <UploadCloud className="h-7 w-7" />
                 </div>
                 <h4 className="mt-3 text-sm font-bold text-slate-900 dark:text-white">
-                  Drop your payment slip or screenshot here
+                  {t("ocrDropTitle")}
                 </h4>
                 <p className="mt-1 text-xs text-slate-500 max-w-sm">
-                  Supports ABA Mobile, Bakong KHQR, ACLEDA, Wing, Canadia, and all Cambodian bank confirmation screens
+                  {t("ocrDropSubtitle")}
                 </p>
                 <Button
                   type="button"
@@ -376,14 +378,14 @@ export function PaymentOcrModal({
                   className="mt-4 h-8 text-xs font-semibold border-emerald-400 text-emerald-800 hover:bg-emerald-100/60"
                 >
                   <Camera className="h-3.5 w-3.5 mr-1.5" />
-                  Select Slip Photo
+                  {t("ocrSelectPhoto")}
                 </Button>
               </div>
 
               {/* Sample Helper Button */}
               <div className="flex items-center justify-between rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-100/70 dark:bg-slate-800/50 p-2.5 text-xs">
                 <span className="text-slate-600 dark:text-slate-400 font-medium">
-                  Want to test the OCR scanner without paying?
+                  {t("ocrTestWithoutPaying")}
                 </span>
                 <Button
                   type="button"
@@ -393,7 +395,7 @@ export function PaymentOcrModal({
                   className="h-7 text-xs font-bold text-amber-700 hover:text-amber-800 hover:bg-amber-100/60"
                 >
                   <Sparkles className="h-3 w-3 mr-1" />
-                  Try Sample ABA Receipt
+                  {t("ocrTrySampleReceipt")}
                 </Button>
               </div>
             </div>
@@ -415,7 +417,7 @@ export function PaymentOcrModal({
                     <div className="p-4 text-center space-y-2.5">
                       <span className="inline-flex items-center gap-2 rounded-full bg-slate-900/95 border border-emerald-400/80 px-4 py-1.5 text-xs font-bold text-emerald-400 shadow-xl">
                         <Loader2 className="h-3.5 w-3.5 animate-spin text-emerald-400" />
-                        {scanStep || "Scanning receipt with OCR..."}
+                        {scanStep || t("ocrScanningWithProgress")}
                         {scanProgress > 0 && <span className="text-emerald-300 ml-1 font-mono">{scanProgress}%</span>}
                       </span>
                       {scanProgress > 0 && (
@@ -442,11 +444,11 @@ export function PaymentOcrModal({
                   className="h-7 text-xs text-slate-600 hover:text-slate-900"
                 >
                   <RefreshCw className="h-3 w-3 mr-1" />
-                  Scan Different Image
+                  {t("ocrScanDifferent")}
                 </Button>
                 {result && (
                   <span className="text-[11px] font-semibold text-slate-500">
-                    Confidence: <strong className="text-emerald-700 dark:text-emerald-400">{result.data.confidence}%</strong>
+                    {t("ocrConfidence")} <strong className="text-emerald-700 dark:text-emerald-400">{result.data.confidence}%</strong>
                   </span>
                 )}
               </div>
@@ -456,13 +458,16 @@ export function PaymentOcrModal({
                 <div className="rounded-xl border-2 border-red-500 bg-red-50 dark:bg-red-950/60 p-4 text-xs space-y-2 shadow-md">
                   <div className="flex items-center gap-2 font-black text-sm text-red-700 dark:text-red-400">
                     <ShieldAlert className="h-5 w-5 text-red-600 shrink-0" />
-                    <span>⛔ PAYMENT SLIP BLOCKED — NOT PAID TO OUR KHQR</span>
+                    <span>{t("ocrWrongMerchantTitle")}</span>
                   </div>
                   <p className="text-xs text-red-900 dark:text-red-200 leading-relaxed font-medium">
-                    This slip was paid to <strong className="font-bold underline text-red-700 dark:text-red-300">{result.verification.detectedPayee || result.data.payee || "a foreign merchant"}</strong> instead of our official merchant KHQR account (<strong className="font-bold underline text-emerald-800 dark:text-emerald-300">{result.verification.expectedMerchant || "SAM CHAN PANHA"}</strong>).
+                    {t("ocrWrongMerchantDesc", {
+                      payee: result.verification.detectedPayee || result.data.payee || "a foreign merchant",
+                      expected: result.verification.expectedMerchant || "SAM CHAN PANHA",
+                    })}
                   </p>
                   <div className="pt-2 border-t border-red-200 dark:border-red-800 text-[11px] text-red-800 dark:text-red-300">
-                    ⚠️ <strong>Security Action:</strong> The submission has been blocked to protect the marketplace, and a fraud alert was dispatched to Telegram administrators.
+                    {t("ocrSecurityAction")}
                   </div>
                 </div>
               )}
@@ -483,17 +488,17 @@ export function PaymentOcrModal({
                     {result.verification.status === "PASS" ? (
                       <>
                         <ShieldCheck className="h-5 w-5 text-emerald-600" />
-                        <span>Ready &amp; Verified</span>
+                        <span>{t("ocrReadyVerified")}</span>
                       </>
                     ) : result.verification.status === "WARN" ? (
                       <>
                         <AlertTriangle className="h-5 w-5 text-amber-600" />
-                        <span>Review Required</span>
+                        <span>{t("ocrReviewRequired")}</span>
                       </>
                     ) : (
                       <>
                         <ShieldAlert className="h-5 w-5 text-rose-600" />
-                        <span>Verification Flagged / Rejected</span>
+                        <span>{t("ocrFlaggedRejected")}</span>
                       </>
                     )}
                   </div>
@@ -501,7 +506,7 @@ export function PaymentOcrModal({
                   {result.verification.isNotCurrentDate && (
                     <div className="pt-2 border-t border-rose-200 dark:border-rose-800 flex flex-wrap items-center justify-between gap-2 mt-2">
                       <span className="text-[11px] font-semibold text-rose-900 dark:text-rose-200">
-                        Date is not today. Contact Admin on Telegram:
+                        {t("ocrDateNotToday")}
                       </span>
                       <a
                         href={result.verification.telegramAdminLink || "https://t.me/samchanpanha"}
@@ -510,7 +515,7 @@ export function PaymentOcrModal({
                         className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-sky-600 hover:bg-sky-500 text-white font-bold text-xs shadow-sm transition cursor-pointer"
                       >
                         <Send className="h-3.5 w-3.5" />
-                        <span>Contact Admin ({result.verification.telegramAdmin || "@samchanpanha"})</span>
+                        <span>{t("ocrContactAdmin", { admin: result.verification.telegramAdmin || "@samchanpanha" })}</span>
                         <ExternalLink className="h-3 w-3" />
                       </a>
                     </div>
@@ -524,7 +529,7 @@ export function PaymentOcrModal({
                   <div className="flex items-center justify-between">
                     <span className="font-bold text-sky-950 dark:text-sky-200 flex items-center gap-1.5">
                       <CreditCard className="h-4 w-4 text-sky-600 dark:text-sky-400" />
-                      Interbank KHQR Payment Detected
+                      {t("ocrInterbankDetected")}
                     </span>
                     <Badge className="bg-sky-100 dark:bg-sky-900 text-sky-900 dark:text-sky-100 border-sky-300 text-[10px] font-bold">
                       {result.verification.originatingBank || result.data.bankName || "Interbank"} &rarr; {result.data.beneficiaryBank || "ABA Bank"}
@@ -532,18 +537,18 @@ export function PaymentOcrModal({
                   </div>
                   <div className="grid grid-cols-2 gap-2 text-[11px] pt-1 text-slate-700 dark:text-slate-300 border-t border-sky-200/60 dark:border-sky-800/50">
                     <div>
-                      <span className="text-slate-400 block text-[10px]">Sender Account:</span>
+                      <span className="text-slate-400 block text-[10px]">{t("ocrSenderAccount")}</span>
                       <strong className="font-mono">{result.data.payerName || "Customer"} {result.data.payerAccount ? `(${result.data.payerAccount})` : ""}</strong>
                     </div>
                     <div>
-                      <span className="text-slate-400 block text-[10px]">Bank Slip Reference:</span>
+                      <span className="text-slate-400 block text-[10px]">{t("ocrBankSlipRef")}</span>
                       <strong className="font-mono">{customRef || result.data.externalRef || "Ext Ref"}</strong>
                     </div>
                   </div>
                   {result.verification.abaTrxId && (
                     <div className="pt-1.5 border-t border-sky-200/80 dark:border-sky-800/60 flex items-center gap-1.5 text-[11px] text-emerald-700 dark:text-emerald-400 font-bold">
                       <Sparkles className="h-3.5 w-3.5" />
-                      <span>Correlated with live ABA PayWay Alert (Trx ID: <code className="font-mono font-extrabold text-slate-900 dark:text-white">{result.verification.abaTrxId}</code>)</span>
+                      <span>{t("ocrAbaLiveCorrelated", { trx: result.verification.abaTrxId })}</span>
                     </div>
                   )}
                 </div>
@@ -555,16 +560,16 @@ export function PaymentOcrModal({
                   {/* Trx ID Card */}
                   <div className="rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/40 p-3 space-y-1.5">
                     <div className="flex items-center justify-between text-xs text-slate-500">
-                      <span className="font-semibold">Bank Trx ID / APV</span>
+                      <span className="font-semibold">{t("ocrTrxIdApv")}</span>
                       {!result.verification.isDuplicate ? (
                         <span className="flex items-center gap-1 text-[10px] font-bold text-emerald-700 dark:text-emerald-400">
                           <Check className="h-3 w-3" />
-                          Unused &amp; Fresh
+                          {t("ocrUnusedFresh")}
                         </span>
                       ) : (
                         <span className="flex items-center gap-1 text-[10px] font-bold text-rose-600">
                           <XCircle className="h-3 w-3" />
-                          Duplicate Trx
+                          {t("ocrDuplicateTrx")}
                         </span>
                       )}
                     </div>
@@ -589,7 +594,7 @@ export function PaymentOcrModal({
                           </Button>
                         )}
                         <Badge variant="outline" className="text-[9px] font-semibold text-slate-500 bg-slate-100 dark:bg-slate-800 border-slate-300">
-                          Auto-Extracted
+                          {t("ocrAutoExtracted")}
                         </Badge>
                       </div>
                     </div>
@@ -598,16 +603,16 @@ export function PaymentOcrModal({
                   {/* Amount Card */}
                   <div className="rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/40 p-3 space-y-1.5">
                     <div className="flex items-center justify-between text-xs text-slate-500">
-                      <span className="font-semibold">Amount Paid</span>
+                      <span className="font-semibold">{t("ocrAmountPaid")}</span>
                       {result.verification.amountMatch ? (
                         <span className="flex items-center gap-1 text-[10px] font-bold text-emerald-700 dark:text-emerald-400">
                           <Check className="h-3 w-3" />
-                          Exact Match
+                          {t("ocrExactMatch")}
                         </span>
                       ) : (
                         <span className="flex items-center gap-1 text-[10px] font-bold text-amber-600">
                           <AlertTriangle className="h-3 w-3" />
-                          Mismatch
+                          {t("ocrMismatch")}
                         </span>
                       )}
                     </div>
@@ -620,7 +625,7 @@ export function PaymentOcrModal({
                           : "Unknown"}
                       </span>
                       <span className="text-[10px] text-slate-400">
-                        Req: {requiredAmountStr}
+                        {t("ocrReqAmount", { amt: requiredAmountStr })}
                       </span>
                     </div>
                   </div>
@@ -628,28 +633,28 @@ export function PaymentOcrModal({
                   {/* Timestamp Card */}
                   <div className="rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/40 p-3 space-y-1.5">
                     <div className="flex items-center justify-between text-xs text-slate-500">
-                      <span className="font-semibold">Transaction Date</span>
+                      <span className="font-semibold">{t("ocrTrxDate")}</span>
                       {!result.verification.isOld ? (
                         <span className="flex items-center gap-1 text-[10px] font-bold text-emerald-700 dark:text-emerald-400">
                           <Check className="h-3 w-3" />
-                          Fresh (&lt; 72h)
+                          {t("ocrFresh72h")}
                         </span>
                       ) : (
                         <span className="flex items-center gap-1 text-[10px] font-bold text-rose-600">
                           <Clock className="h-3 w-3" />
-                          Expired / Old
+                          {t("ocrExpiredOld")}
                         </span>
                       )}
                     </div>
                     <p className="text-xs font-semibold text-slate-800 dark:text-slate-200 truncate">
-                      {result.data.paidAtRaw || (result.data.paidAt ? new Date(result.data.paidAt).toLocaleString() : "Date not extracted")}
+                      {result.data.paidAtRaw || (result.data.paidAt ? new Date(result.data.paidAt).toLocaleString() : t("ocrDateNotExtracted"))}
                     </p>
                   </div>
 
                   {/* Payee & Bank Card */}
                   <div className="rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/40 p-3 space-y-1.5">
                     <div className="flex items-center justify-between text-xs text-slate-500">
-                      <span className="font-semibold">Bank / Payee</span>
+                      <span className="font-semibold">{t("ocrBankPayee")}</span>
                       <span className="text-[10px] font-bold text-sky-700 dark:text-sky-400">
                         {result.data.bankName || "Cambodian Bank"}
                       </span>
@@ -669,12 +674,12 @@ export function PaymentOcrModal({
                     onClick={() => setShowRawText(!showRawText)}
                     className="flex w-full items-center justify-between text-xs font-medium text-slate-500 hover:text-slate-800 cursor-pointer"
                   >
-                    <span>View Extracted OCR Text</span>
+                    <span>{t("ocrViewRawText")}</span>
                     {showRawText ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
                   </button>
                   {showRawText && (
                     <pre className="mt-2 max-h-32 overflow-y-auto rounded bg-slate-900 p-2 font-mono text-[10px] text-slate-200 whitespace-pre-wrap">
-                      {result.data.rawText || "No raw text available"}
+                      {result.data.rawText || t("ocrNoRawText")}
                     </pre>
                   )}
                 </div>
@@ -701,7 +706,7 @@ export function PaymentOcrModal({
             disabled={scanning}
             className="cursor-pointer"
           >
-            Cancel
+            {t("cancel")}
           </Button>
 
           {result && (
@@ -719,7 +724,7 @@ export function PaymentOcrModal({
               className="bg-emerald-600 hover:bg-emerald-500 text-white font-bold px-5 cursor-pointer shadow-sm"
             >
               <CheckCircle2 className="h-4 w-4 mr-1.5" />
-              Apply &amp; Verify Payment
+              {t("ocrApplyVerify")}
             </Button>
           )}
         </DialogFooter>

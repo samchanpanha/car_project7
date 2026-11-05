@@ -63,7 +63,7 @@ export function CustomerDashboard({ me }: { me: SessionDTO }) {
     ...(isSellerish
       ? [
           { id: "inventory", label: t("tabInventoryMine"), icon: Car } as DashboardTabDef,
-          { id: "pricing", label: "Promotions & Pricing", icon: Tag } as DashboardTabDef,
+          { id: "pricing", label: t("tabPricing"), icon: Tag } as DashboardTabDef,
           { id: "subscription", label: t("tabSubscription"), icon: CreditCard } as DashboardTabDef,
           { id: "telegram", label: t("tabTelegram"), icon: Send } as DashboardTabDef,
         ]

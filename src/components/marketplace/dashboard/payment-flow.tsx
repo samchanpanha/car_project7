@@ -525,7 +525,7 @@ export function RequestSubscriptionDialog({
     const name = manual?.accountName || "SAM CHAN PANHA";
     navigator.clipboard?.writeText(name);
     setCopiedPayee(true);
-    toast.success(`Copied Payee: ${name}`);
+    toast.success(t("payCopiedPayee", { name }));
     setTimeout(() => setCopiedPayee(false), 2000);
   };
 
@@ -533,7 +533,7 @@ export function RequestSubscriptionDialog({
     const amt = currency === "USD" ? `${priceUsd}` : `${priceKhr}`;
     navigator.clipboard?.writeText(amt);
     setCopiedAmount(true);
-    toast.success(`Copied Amount: ${amt} ${currency}`);
+    toast.success(t("payCopiedAmount", { amt, currency }));
     setTimeout(() => setCopiedAmount(false), 2000);
   };
 
@@ -545,7 +545,7 @@ export function RequestSubscriptionDialog({
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
-    toast.success("KHQR image downloaded to your device!");
+    toast.success(t("payKhqrDownloaded"));
   };
 
   const steps = [
@@ -623,7 +623,7 @@ export function RequestSubscriptionDialog({
             <TriangleAlert className="h-8 w-8" />
           </div>
           <div>
-            <h3 className="text-lg font-bold text-slate-900">Payment Rejected</h3>
+            <h3 className="text-lg font-bold text-slate-900">{t("payRejectedTitle")}</h3>
             <p className="mt-2 text-xs text-rose-800 bg-rose-50 border border-rose-200 rounded-lg p-3 text-left">
               <strong>Reason:</strong> {rejectionReason}
             </p>
@@ -1298,10 +1298,10 @@ export function RequestSubscriptionDialog({
                 <div className="p-2.5 rounded-lg border border-rose-300 bg-rose-50 dark:bg-rose-950/40 text-rose-900 dark:text-rose-200 text-xs space-y-1 animate-in fade-in">
                   <div className="font-bold flex items-center gap-1.5">
                     <ShieldAlert className="h-4 w-4 text-rose-600 shrink-0" />
-                    <span>Transaction ID could not be detected</span>
+                    <span>{t("payTrxNotDetectedTitle")}</span>
                   </div>
                   <p className="text-[11px] text-rose-800 dark:text-rose-300 leading-relaxed">
-                    The receipt image was uploaded, but the bank Trx ID / reference is missing or blurry. Please click <strong>Change</strong> above to upload a clearer photo or full screenshot of your slip.
+                    {t("payTrxNotDetectedHint")}
                   </p>
                 </div>
               ) : (
@@ -1384,7 +1384,7 @@ export function RequestSubscriptionDialog({
                         className="h-8 px-3 rounded-lg bg-rose-600 hover:bg-rose-500 text-white font-bold text-xs shadow-sm transition cursor-pointer flex items-center gap-1.5"
                       >
                         {creating ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Send className="h-3.5 w-3.5" />}
-                        <span>Submit for Telegram Admin Review</span>
+                        <span>{t("paySubmitTelegramReview")}</span>
                       </Button>
                       <a
                         href={refCheck?.telegramAdminLink || "https://t.me/samchanpanha"}
@@ -1392,7 +1392,7 @@ export function RequestSubscriptionDialog({
                         rel="noreferrer"
                         className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-sky-600 hover:bg-sky-500 text-white font-semibold text-xs shadow-sm transition cursor-pointer"
                       >
-                        <span>Chat Admin</span>
+                        <span>{t("payChatAdmin")}</span>
                         <ExternalLink className="h-3 w-3" />
                       </a>
                     </div>
@@ -1403,7 +1403,7 @@ export function RequestSubscriptionDialog({
                 <div className="flex items-start gap-2 text-xs text-rose-800 bg-rose-50 dark:bg-rose-950/30 border border-rose-300 dark:border-rose-800 p-2.5 rounded-lg font-semibold animate-in fade-in">
                   <ShieldAlert className="h-4 w-4 shrink-0 text-rose-600 mt-0.5" />
                   <div>
-                    <div className="font-bold text-rose-900 dark:text-rose-200">Duplicate Transaction Detected</div>
+                    <div className="font-bold text-rose-900 dark:text-rose-200">{t("payDuplicateDetectedTitle")}</div>
                     <div className="text-[11px] text-rose-700 dark:text-rose-300 mt-0.5">
                       {refCheck.message || t("payAlreadySubmittedRef")}
                     </div>
@@ -1414,7 +1414,7 @@ export function RequestSubscriptionDialog({
                 <div className="flex items-start gap-2 text-xs text-amber-800 bg-amber-50 dark:bg-amber-950/30 border border-amber-300 dark:border-amber-800 p-2.5 rounded-lg font-semibold animate-in fade-in">
                   <TriangleAlert className="h-4 w-4 shrink-0 text-amber-600 mt-0.5" />
                   <div>
-                    <div className="font-bold text-amber-900 dark:text-amber-200">Old Transaction Reference</div>
+                    <div className="font-bold text-amber-900 dark:text-amber-200">{t("payOldRefTitle")}</div>
                     <div className="text-[11px] text-amber-800 dark:text-amber-300 mt-0.5">
                       {refCheck.message || t("payTooOldRef")}
                     </div>
@@ -1427,7 +1427,7 @@ export function RequestSubscriptionDialog({
                   <div className="flex-1">
                     <div className="font-bold flex items-center justify-between gap-1.5">
                       <span>{(refCheck.originatingBank || ocrData?.originatingBank) || "Interbank"} Reference Detected</span>
-                      <Badge className="bg-sky-100 dark:bg-sky-900 text-sky-900 dark:text-sky-100 border-sky-300 text-[9px] font-bold">Interbank KHQR</Badge>
+                      <Badge className="bg-sky-100 dark:bg-sky-900 text-sky-900 dark:text-sky-100 border-sky-300 text-[9px] font-bold">{t("payInterbankBadge")}</Badge>
                     </div>
                     <div className="text-[11px] text-sky-700 dark:text-sky-300 mt-0.5">
                       {refCheck.matchedAba
@@ -1462,7 +1462,7 @@ export function RequestSubscriptionDialog({
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
               <div>
                 <Label htmlFor="pay-date" className="text-xs font-semibold text-slate-700 dark:text-slate-300 flex items-center justify-between">
-                  <span>Payment Date</span>
+                  <span>{t("payDateLabel")}</span>
                   <Badge variant="outline" className="text-[9px] font-semibold text-slate-500 py-0 px-1">
                     {paymentDate ? "Chosen" : "Today"}
                   </Badge>
@@ -1645,7 +1645,7 @@ export function PendingPaymentBanner() {
       if (latestVerified) {
         hadPending.current = false;
         sessionStorage.setItem("subscription_verified_alert", latestVerified.plan || "PRO");
-        toast.success(`🎉 Processing Completed! Your ${latestVerified.plan || "PRO"} subscription is now ACTIVE.`);
+        toast.success(t("payProcessingCompletedToast", { plan: latestVerified.plan || "PRO" }));
         setTimeout(() => {
           window.location.reload();
         }, 1000);
@@ -1691,14 +1691,14 @@ export function PendingPaymentBanner() {
   const copyRefText = () => {
     navigator.clipboard?.writeText(p.reference);
     setCopiedRef(true);
-    toast.success(`Copied: ${p.reference}`);
+    toast.success(t("ocrToastCopiedRef", { ref: p.reference }));
     setTimeout(() => setCopiedRef(false), 2000);
   };
 
   const copyTrxText = (trx: string) => {
     navigator.clipboard?.writeText(trx);
     setCopiedTrx(true);
-    toast.success(`Copied Trx ID: ${trx}`);
+    toast.success(t("ocrToastCopiedRef", { ref: trx }));
     setTimeout(() => setCopiedTrx(false), 2000);
   };
 
@@ -1871,7 +1871,7 @@ export function PendingPaymentBanner() {
                 rel="noreferrer"
                 className="inline-flex items-center gap-1 text-xs font-semibold text-sky-700 dark:text-sky-400 hover:underline px-2 py-1"
               >
-                <span>Telegram Support</span>
+                <span>{t("payTelegramSupport")}</span>
                 <ExternalLink className="h-3 w-3" />
               </a>
             </div>
@@ -2267,7 +2267,7 @@ export function SubscriptionPaywallCard({
         hadPending.current = false;
         setVerified(true);
         sessionStorage.setItem("subscription_verified_alert", latestVerified.plan || "PRO");
-        toast.success(`🎉 Subscription Activated! Your ${latestVerified.plan || "PRO"} plan is now active.`);
+        toast.success(t("paySubscriptionActivatedToast", { plan: latestVerified.plan || "PRO" }));
         setTimeout(() => {
           onActivated?.();
         }, 1200);
@@ -2427,7 +2427,7 @@ export function SubscriptionPaywallCard({
       if (payment?.status === "VERIFIED") {
         setVerified(true);
         sessionStorage.setItem("subscription_verified_alert", payment.plan || selectedPlan);
-        toast.success("🎉 Payment verified! Your subscription is active.");
+        toast.success(t("paySubscriptionActivatedToast", { plan: payment.plan || selectedPlan }));
         setTimeout(() => {
           onActivated?.();
         }, 1000);
@@ -2452,7 +2452,7 @@ export function SubscriptionPaywallCard({
       if (matched) {
         setVerified(true);
         sessionStorage.setItem("subscription_verified_alert", matched.plan || "PRO");
-        toast.success("🎉 Payment verified! Your subscription is active.");
+        toast.success(t("paySubscriptionActivatedToast", { plan: matched.plan || "PRO" }));
         setTimeout(() => {
           onActivated?.();
         }, 1000);
@@ -3104,7 +3104,7 @@ export function SubscriptionPaywallCard({
                       rel="noreferrer"
                       className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-sky-600 hover:bg-sky-500 text-white font-semibold text-xs shadow-sm transition cursor-pointer"
                     >
-                      <span>Chat Admin</span>
+                      <span>{t("payChatAdmin")}</span>
                       <ExternalLink className="h-3 w-3" />
                     </a>
                   </div>
@@ -3115,7 +3115,7 @@ export function SubscriptionPaywallCard({
               <div className="flex items-start gap-2 text-xs text-rose-800 bg-rose-50 border border-rose-300 p-2.5 rounded-lg font-semibold animate-in fade-in">
                 <ShieldAlert className="h-4 w-4 shrink-0 text-rose-600 mt-0.5" />
                 <div>
-                  <div className="font-bold text-rose-900">Duplicate Transaction Detected</div>
+                  <div className="font-bold text-rose-900">{t("payDuplicateDetectedTitle")}</div>
                   <div className="text-[11px] text-rose-700 mt-0.5">
                     {refCheck.message || t("payAlreadySubmittedRef")}
                   </div>
@@ -3126,7 +3126,7 @@ export function SubscriptionPaywallCard({
               <div className="flex items-start gap-2 text-xs text-amber-800 bg-amber-50 border border-amber-300 p-2.5 rounded-lg font-semibold animate-in fade-in">
                 <TriangleAlert className="h-4 w-4 shrink-0 text-amber-600 mt-0.5" />
                 <div>
-                  <div className="font-bold text-amber-900">Old Transaction Reference</div>
+                  <div className="font-bold text-amber-900">{t("payOldRefTitle")}</div>
                   <div className="text-[11px] text-amber-800 mt-0.5">
                     {refCheck.message || t("payTooOldRef")}
                   </div>
@@ -3139,7 +3139,7 @@ export function SubscriptionPaywallCard({
                 <div className="flex-1">
                   <div className="font-bold flex items-center justify-between gap-1.5">
                     <span>{(refCheck.originatingBank || ocrData?.originatingBank) || "Interbank"} Reference Detected</span>
-                    <Badge className="bg-sky-100 text-sky-900 border-sky-300 text-[9px] font-bold">Interbank KHQR</Badge>
+                    <Badge className="bg-sky-100 text-sky-900 border-sky-300 text-[9px] font-bold">{t("payInterbankBadge")}</Badge>
                   </div>
                   <div className="text-[11px] text-sky-700 mt-0.5">
                     {refCheck.matchedAba

@@ -7,6 +7,7 @@
 
 import { useAppStore } from "@/lib/store";
 import { useT } from "@/hooks/use-t";
+import { getPromoTierLabel } from "@/lib/i18n/labels";
 import { useFetch, apiSend } from "@/lib/client-hooks";
 import { formatUsd, formatKhr, timeAgo } from "@/lib/format";
 import type { MyListingRowDTO } from "@/lib/listing-types";
@@ -118,7 +119,12 @@ export function SellerInventory() {
               setFilters(next);
               setPage(1);
             }}
-            statusOptions={SELLER_STATUS_OPTIONS}
+            statusOptions={[
+              { value: "ALL", label: t("filterStatusAll") },
+              { value: "PUBLISHED", label: t("vstPUBLISHED") },
+              { value: "DRAFT", label: t("vstDRAFT") },
+              { value: "SOLD", label: t("vstSOLD") },
+            ]}
             searchPlaceholder="Search make, model, year..."
             totalResults={sorted.length}
           />
@@ -163,7 +169,7 @@ export function SellerInventory() {
             />
           ) : sorted.length === 0 ? (
             <div className="rounded-xl border border-dashed border-slate-200 p-8 text-center">
-              <p className="text-xs text-slate-500">No vehicles match your filter criteria.</p>
+              <p className="text-xs text-slate-500">{t("dashEmptyVehiclesFiltered")}</p>
               <Button
                 variant="ghost"
                 size="sm"
@@ -305,6 +311,8 @@ function SellerPromoModal({
   onClose: () => void;
   onSaved: () => void;
 }) {
+  const t = useT();
+  const locale = useAppStore((s) => s.locale);
   const [submitting, setSubmitting] = useState(false);
   const { data: promoTypesData } = useFetch<{
     types: { id: string; code: string; label: string; mode: string; badgeColor: string; priority: number }[];
@@ -368,7 +376,7 @@ function SellerPromoModal({
     if (!vehicle) return;
     const val = Number(value);
     if (!val || val <= 0) {
-      toast.warning("Please enter a valid promotional discount value");
+      toast.warning(t("dealerPricingEnterDiscountToast"));
       return;
     }
 
@@ -382,11 +390,11 @@ function SellerPromoModal({
         startDate: startDate ? new Date(startDate).toISOString() : null,
         endDate: endDate ? new Date(endDate).toISOString() : null,
       });
-      toast.success("Promotional pricing updated!");
+      toast.success(t("dealerPricingPromoAppliedToast", { vehicle: `${vehicle.make} ${vehicle.model}` }));
       onSaved();
       onClose();
     } catch (err: any) {
-      toast.error(err.message || "Failed to update promotional price");
+      toast.error(err.message || t("dealerPricingUpdatePricingFailedToast"));
     } finally {
       setSubmitting(false);
     }
@@ -397,11 +405,11 @@ function SellerPromoModal({
     setSubmitting(true);
     try {
       await apiSend(`/api/seller/pricing/item?vehicleId=${vehicle.id}`, "DELETE");
-      toast.success("Promotion removed. Listing restored to base asking price.");
+      toast.success(t("dealerPricingPromoRemovedToast"));
       onSaved();
       onClose();
     } catch (err: any) {
-      toast.error(err.message || "Failed to clear promotion");
+      toast.error(err.message || t("dealerPricingRemovePromoFailedToast"));
     } finally {
       setSubmitting(false);
     }
@@ -415,7 +423,7 @@ function SellerPromoModal({
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2 text-base">
             <Flame className="h-5 w-5 text-amber-600" />
-            Manage Listing Pricing & Promotion
+            {t("dealerPricingSingleTitle")}
           </DialogTitle>
         </DialogHeader>
 
@@ -431,18 +439,18 @@ function SellerPromoModal({
                 {vehicle.make} {vehicle.model} {vehicle.variant || ""} {vehicle.year}
               </p>
               <p className="text-xs text-slate-500">
-                Base asking: <span className="font-semibold text-slate-800">{formatUsd(vehicle.priceUsd)}</span>
+                {t("dealerPricingSingleBasePrice")}: <span className="font-semibold text-slate-800">{formatUsd(vehicle.priceUsd)}</span>
               </p>
             </div>
           </div>
 
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <Label className="text-xs font-semibold text-slate-600">Base Price</Label>
+              <Label className="text-xs font-semibold text-slate-600">{t("pricingBasePriceLabel")}</Label>
               <Input disabled value={formatUsd(vehicle.priceUsd)} className="mt-1.5 bg-slate-100 font-bold" />
             </div>
             <div>
-              <Label className="text-xs font-semibold text-slate-600">Floor Protection ($)</Label>
+              <Label className="text-xs font-semibold text-slate-600">{t("dealerPricingFloorProtectionLabel")}</Label>
               <Input
                 type="number"
                 min={0}
@@ -455,16 +463,16 @@ function SellerPromoModal({
           </div>
 
           <div>
-            <Label className="text-xs font-semibold text-slate-600">Promotional Tier</Label>
+            <Label className="text-xs font-semibold text-slate-600">{t("pricingPromoTypeLabel")}</Label>
             <div className="mt-1.5">
               <Select value={priceTypeId} onValueChange={setPriceTypeId}>
                 <SelectTrigger className="h-10 text-xs">
-                  <SelectValue placeholder="Select Tier" />
+                  <SelectValue placeholder={t("dealerPricingSelectTierPlaceholder")} />
                 </SelectTrigger>
                 <SelectContent>
                   {priceTypes.map((pt) => (
                     <SelectItem key={pt.id} value={pt.id}>
-                      {pt.label} ({pt.mode === "PERCENT" ? "% off" : "Fixed $"})
+                      {getPromoTierLabel(pt, locale)} ({pt.mode === "PERCENT" ? "% off" : "Fixed $"})
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -474,7 +482,7 @@ function SellerPromoModal({
 
           <div>
             <Label className="text-xs font-semibold text-slate-600">
-              {selectedType?.mode === "PERCENT" ? "Discount Percentage (%)" : "Promotional Target Price (USD $)"}
+              {selectedType?.mode === "PERCENT" ? t("pricingDiscountPercent") : t("dealerPricingTargetPriceLabel")}
             </Label>
             <Input
               type="number"
@@ -488,7 +496,7 @@ function SellerPromoModal({
 
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <Label className="text-xs font-semibold text-slate-600">Start Date (Optional)</Label>
+              <Label className="text-xs font-semibold text-slate-600">{t("pricingStartDateOpt")}</Label>
               <Input
                 type="datetime-local"
                 value={startDate}
@@ -497,7 +505,7 @@ function SellerPromoModal({
               />
             </div>
             <div>
-              <Label className="text-xs font-semibold text-slate-600">End Date (Optional)</Label>
+              <Label className="text-xs font-semibold text-slate-600">{t("pricingEndDateOpt")}</Label>
               <Input
                 type="datetime-local"
                 value={endDate}
@@ -511,10 +519,10 @@ function SellerPromoModal({
           {preview && (
             <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 space-y-2">
               <div className="flex items-center justify-between text-xs font-bold text-slate-700">
-                <span>Card Price Preview</span>
+                <span>{t("dealerPricingResolutionPreview")}</span>
                 {preview.discountUsd > 0 && (
                   <span className="text-emerald-700 bg-emerald-100 px-2 py-0.5 rounded-full text-[10px]">
-                    Save {formatUsd(preview.discountUsd)} ({preview.discountPercent}% OFF)
+                    {t("dealerPricingSaveAmount", { amount: formatUsd(preview.discountUsd), percent: preview.discountPercent })}
                   </span>
                 )}
               </div>
@@ -533,7 +541,7 @@ function SellerPromoModal({
                     className="rounded-md px-2 py-0.5 text-[10px] font-black uppercase text-white shadow-xs"
                     style={{ backgroundColor: selectedType.badgeColor || "#ef4444" }}
                   >
-                    {selectedType.label}
+                    {getPromoTierLabel(selectedType, locale)}
                   </span>
                 )}
               </div>
@@ -542,7 +550,10 @@ function SellerPromoModal({
                 <div className="flex items-start gap-1.5 text-xs text-amber-800 bg-amber-50 p-2 rounded-lg border border-amber-200 font-medium">
                   <ShieldCheck className="h-4 w-4 shrink-0 text-amber-600 mt-0.5" />
                   <span>
-                    Floor Protected: Candidate price of {formatUsd(preview.candidate)} is clamped to your minimum floor price of {formatUsd(preview.floor || 0)}.
+                    {t("dealerPricingFloorEnforcedDetail", {
+                      candidate: formatUsd(preview.candidate),
+                      floor: formatUsd(preview.floor || 0)
+                    })}
                   </span>
                 </div>
               )}
@@ -558,13 +569,13 @@ function SellerPromoModal({
               disabled={submitting}
               className="text-rose-600 hover:text-rose-700 border-rose-200"
             >
-              Clear Promo
+              {t("dealerPricingClearPromoBtn")}
             </Button>
           ) : <div />}
 
           <div className="flex items-center gap-2">
             <Button variant="outline" onClick={onClose}>
-              Cancel
+              {t("pricingCancelBtn")}
             </Button>
             <Button
               onClick={handleSave}
@@ -572,7 +583,7 @@ function SellerPromoModal({
               className="bg-amber-500 text-slate-950 hover:bg-amber-400 font-bold"
             >
               {submitting ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : null}
-              Save Pricing
+              {t("dealerPricingSavePricingBtn")}
             </Button>
           </div>
         </DialogFooter>

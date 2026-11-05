@@ -77,7 +77,7 @@ export function MessagesView({ conversationId }: { conversationId?: string }) {
 
           <div className="p-2.5 border-b border-slate-100 flex items-center gap-2 text-xs text-slate-400">
             <Search className="h-3.5 w-3.5" aria-hidden />
-            {filtered.length} {locale === "km" ? "ការសន្ទនា" : "conversations"}
+            {t("conversationCount", { count: filtered.length })}
           </div>
           {list.loading && !list.data ? (
             <div className="p-3 space-y-3">

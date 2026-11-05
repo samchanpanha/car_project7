@@ -3,6 +3,14 @@
 import { useState, useEffect, useMemo } from "react";
 import { useT } from "@/hooks/use-t";
 import { useAppStore } from "@/lib/store";
+import {
+  bodyTypeLabels,
+  transmissionLabels,
+  fuelLabels,
+  drivetrainLabels,
+  motorBodyTypeLabels,
+  partCategoryLabels,
+} from "@/lib/i18n";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -131,15 +139,15 @@ export const INITIAL_FILTER_STATE: FilterState = {
 };
 
 export const CAMBODIA_LOCATIONS_AND_PORTS = [
-  { value: "ALL", labelEn: "All Locations & Ports", labelKm: "គ្រប់ទីតាំង និងកំពង់ផែ" },
-  { value: "Phnom Penh", labelEn: "Phnom Penh (Central)", labelKm: "រាជធានីភ្នំពេញ" },
-  { value: "Sihanoukville Port", labelEn: "Sihanoukville Port (PAS Import)", labelKm: "កំពង់ផែស្វយ័តក្រុងព្រះសីហនុ" },
-  { value: "Siem Reap", labelEn: "Siem Reap", labelKm: "ខេត្តសៀមរាប" },
-  { value: "Battambang", labelEn: "Battambang", labelKm: "ខេត្តបាត់ដំបង" },
-  { value: "Poipet Border", labelEn: "Poipet Border (Thai Import)", labelKm: "ច្រកទ្វារប៉ោយប៉ែត" },
-  { value: "Kampot", labelEn: "Kampot", labelKm: "ខេត្តកំពត" },
-  { value: "Koh Kong Border", labelEn: "Koh Kong Border", labelKm: "ច្រកទ្វារកោះកុង" },
-  { value: "Bavet Border", labelEn: "Bavet Border", labelKm: "ច្រកទ្វារបាវិត" },
+  { value: "ALL", labelEn: "All Locations & Ports", labelKm: "គ្រប់ទីតាំង និងកំពង់ផែ", labelZh: "所有地区与港口", labelVi: "Tất cả khu vực & Cảng" },
+  { value: "Phnom Penh", labelEn: "Phnom Penh (Central)", labelKm: "រាជធានីភ្នំពេញ", labelZh: "金边市（市中心）", labelVi: "Phnôm Pênh (Trung tâm)" },
+  { value: "Sihanoukville Port", labelEn: "Sihanoukville Port (PAS Import)", labelKm: "កំពង់ផែស្វយ័តក្រុងព្រះសីហនុ", labelZh: "西哈努克港（PAS进口港）", labelVi: "Cảng Sihanoukville (Nhập khẩu PAS)" },
+  { value: "Siem Reap", labelEn: "Siem Reap", labelKm: "ខេត្តសៀមរាប", labelZh: "暹粒省", labelVi: "Xiêm Riệp" },
+  { value: "Battambang", labelEn: "Battambang", labelKm: "ខេត្តបាត់ដំបង", labelZh: "马德望省", labelVi: "Battambang" },
+  { value: "Poipet Border", labelEn: "Poipet Border (Thai Import)", labelKm: "ច្រកទ្វារប៉ោយប៉ែត", labelZh: "波贝口岸（泰柬边境）", labelVi: "Cửa khẩu Poipet (Thái Lan)" },
+  { value: "Kampot", labelEn: "Kampot", labelKm: "ខេត្តកំពត", labelZh: "贡布省", labelVi: "Kampot" },
+  { value: "Koh Kong Border", labelEn: "Koh Kong Border", labelKm: "ច្រកទ្វារកោះកុង", labelZh: "戈公口岸", labelVi: "Cửa khẩu Koh Kong" },
+  { value: "Bavet Border", labelEn: "Bavet Border", labelKm: "ច្រកទ្វារបាវិត", labelZh: "巴域口岸（越柬边境）", labelVi: "Cửa khẩu Bavet (Việt Nam)" },
 ];
 
 export const POPULAR_FEATURES = [
@@ -434,7 +442,7 @@ export function CategoryFilterTabs({
               className="h-8 px-2 text-xs text-rose-600 hover:bg-rose-50"
             >
               <RotateCcw className="h-3 w-3 mr-1" />
-              {locale === "km" ? "កំណត់ឡើងវិញ" : "Clear Filters"}
+              {t("clearFilters")}
             </Button>
           )}
         </div>
@@ -450,16 +458,10 @@ export function CategoryFilterTabs({
             onChange={(e) => setPatch({ q: e.target.value })}
             placeholder={
               filters.category === "CAR"
-                ? locale === "km"
-                  ? "ស្វែងរក ម៉ាក, ម៉ូឌែល, ស្លាកលេខ, តួកាដូ..."
-                  : "Search make, model, chassis, VIN..."
+                ? t("searchCarPlaceholder")
                 : filters.category === "MOTOR"
-                ? locale === "km"
-                  ? "ស្វែងរក ម៉ូតូ, ស្លាកលេខ, ស៊ីឡាំង..."
-                  : "Search motorcycle make, model, cc..."
-                : locale === "km"
-                ? "ស្វែងរក លេខកូដគ្រឿងបន្លាស់ OEM, ម៉ាក..."
-                : "Search OEM part no, brand, component..."
+                ? t("searchMotorPlaceholder")
+                : t("searchPartsPlaceholder")
             }
             className="h-9.5 pl-9 pr-7 text-xs bg-slate-50/70 focus-visible:bg-white"
           />
@@ -481,10 +483,10 @@ export function CategoryFilterTabs({
             onValueChange={(val) => setPatch({ make: val, model: "ALL" })}
           >
             <SelectTrigger className="h-9.5 text-xs">
-              <SelectValue placeholder={loadingMakes ? "Loading..." : "All Makes"} />
+              <SelectValue placeholder={loadingMakes ? t("loading") : t("allMakes")} />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="ALL">All Makes (ទាំងអស់)</SelectItem>
+              <SelectItem value="ALL">{t("allMakes")}</SelectItem>
               {makesList.map((m) => (
                 <SelectItem key={m} value={m} className="text-xs">
                   {m}
@@ -505,15 +507,15 @@ export function CategoryFilterTabs({
               <SelectValue
                 placeholder={
                   filters.make === "ALL"
-                    ? "Select Make First"
+                    ? t("filterSelectMakeFirst")
                     : loadingModels
-                    ? "Loading Models..."
-                    : "All Models"
+                    ? t("filterLoadingModels")
+                    : t("filterAllModels")
                 }
               />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="ALL">All Models (គ្រប់ម៉ូឌែល)</SelectItem>
+              <SelectItem value="ALL">{t("filterAllModels")}</SelectItem>
               {modelsList.map((m) => (
                 <SelectItem key={m} value={m} className="text-xs">
                   {m}
@@ -528,7 +530,7 @@ export function CategoryFilterTabs({
           <Input
             type="number"
             min={0}
-            placeholder="Min $"
+            placeholder={t("priceMin")}
             value={filters.priceMin}
             onChange={(e) => setPatch({ priceMin: e.target.value })}
             className="h-9.5 text-xs"
@@ -537,7 +539,7 @@ export function CategoryFilterTabs({
           <Input
             type="number"
             min={0}
-            placeholder="Max $"
+            placeholder={t("priceMax")}
             value={filters.priceMax}
             onChange={(e) => setPatch({ priceMax: e.target.value })}
             className="h-9.5 text-xs"
@@ -549,15 +551,15 @@ export function CategoryFilterTabs({
           <Select value={filters.sort} onValueChange={(val) => setPatch({ sort: val })}>
             <SelectTrigger className="h-9.5 text-xs flex-1">
               <ArrowUpDown className="h-3 w-3 mr-1 text-slate-400 shrink-0" />
-              <SelectValue placeholder="Sort" />
+              <SelectValue placeholder={t("filterSortPlaceholder")} />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="newest" className="text-xs">Newest (ថ្មីបំផុត)</SelectItem>
-              <SelectItem value="price_asc" className="text-xs">Price: Low to High</SelectItem>
-              <SelectItem value="price_desc" className="text-xs">Price: High to Low</SelectItem>
-              <SelectItem value="discount_desc" className="text-xs">Biggest Discount (បញ្ចុះតម្លៃច្រើន)</SelectItem>
-              <SelectItem value="year_desc" className="text-xs">Year: Newest</SelectItem>
-              <SelectItem value="mileage_asc" className="text-xs">Mileage: Low to High</SelectItem>
+              <SelectItem value="newest" className="text-xs">{t("sortNewest")}</SelectItem>
+              <SelectItem value="price_asc" className="text-xs">{t("sortPriceAsc")}</SelectItem>
+              <SelectItem value="price_desc" className="text-xs">{t("sortPriceDesc")}</SelectItem>
+              <SelectItem value="discount_desc" className="text-xs">{t("sortDiscountDesc")}</SelectItem>
+              <SelectItem value="year_desc" className="text-xs">{t("sortYearDesc")}</SelectItem>
+              <SelectItem value="mileage_asc" className="text-xs">{t("sortMileageAsc")}</SelectItem>
             </SelectContent>
           </Select>
 
@@ -575,7 +577,7 @@ export function CategoryFilterTabs({
             )}
           >
             <SlidersHorizontal className="h-3.5 w-3.5" />
-            <span>Filters</span>
+            <span>{t("filters")}</span>
             {activeCount > 0 && (
               <Badge className="h-4.5 px-1.5 text-[10px] bg-amber-500 text-white font-bold">
                 {activeCount}
@@ -645,59 +647,69 @@ export function CategoryFilterTabs({
           {/* Shared Row: Location & Port, Condition, Status */}
           <div className="grid gap-3 sm:grid-cols-2 md:grid-cols-4">
             <div>
-              <Label className="text-[11px] font-semibold text-slate-600">Location / Import Port</Label>
+              <Label className="text-[11px] font-semibold text-slate-600">{t("filterLocationPortLabel")}</Label>
               <Select value={filters.locationPort} onValueChange={(val) => setPatch({ locationPort: val })}>
                 <SelectTrigger className="mt-1 h-8.5 bg-white text-xs">
-                  <SelectValue placeholder="Location or Port" />
+                  <SelectValue placeholder={t("filterLocationPort")} />
                 </SelectTrigger>
                 <SelectContent>
-                  {CAMBODIA_LOCATIONS_AND_PORTS.map((loc) => (
-                    <SelectItem key={loc.value} value={loc.value} className="text-xs">
-                      {locale === "km" ? loc.labelKm : loc.labelEn}
-                    </SelectItem>
-                  ))}
+                  {CAMBODIA_LOCATIONS_AND_PORTS.map((loc) => {
+                    const label =
+                      locale === "km"
+                        ? loc.labelKm
+                        : locale === "zh"
+                        ? (loc.labelZh || loc.labelEn)
+                        : locale === "vi"
+                        ? (loc.labelVi || loc.labelEn)
+                        : loc.labelEn;
+                    return (
+                      <SelectItem key={loc.value} value={loc.value} className="text-xs">
+                        {label}
+                      </SelectItem>
+                    );
+                  })}
                 </SelectContent>
               </Select>
             </div>
 
             <div>
-              <Label className="text-[11px] font-semibold text-slate-600">Condition (ស្ថានភាព)</Label>
+              <Label className="text-[11px] font-semibold text-slate-600">{t("filterConditionLabel")}</Label>
               <Select value={filters.condition} onValueChange={(val) => setPatch({ condition: val })}>
                 <SelectTrigger className="mt-1 h-8.5 bg-white text-xs">
-                  <SelectValue placeholder="All Conditions" />
+                  <SelectValue placeholder={t("filterAllConditions")} />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="ALL">All Conditions (ទាំងអស់)</SelectItem>
-                  <SelectItem value="LIKE_NEW">Like New / Unregistered (ស្ទើរថ្មី)</SelectItem>
-                  <SelectItem value="USED">Used (មួយទឹក)</SelectItem>
+                  <SelectItem value="ALL">{t("filterAllConditions")}</SelectItem>
+                  <SelectItem value="LIKE_NEW">{t("filterConditionLikeNew")}</SelectItem>
+                  <SelectItem value="USED">{t("filterConditionUsed")}</SelectItem>
                 </SelectContent>
               </Select>
             </div>
 
             <div>
-              <Label className="text-[11px] font-semibold text-slate-600">Steering (ចង្កូត)</Label>
+              <Label className="text-[11px] font-semibold text-slate-600">{t("filterSteeringLabel")}</Label>
               <Select value={filters.steering} onValueChange={(val) => setPatch({ steering: val })}>
                 <SelectTrigger className="mt-1 h-8.5 bg-white text-xs">
-                  <SelectValue placeholder="Steering" />
+                  <SelectValue placeholder={t("filterSteering")} />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="ALL">All Steering (ឆ្វេង & ស្តាំ)</SelectItem>
-                  <SelectItem value="LEFT">Left-Hand Drive (ចង្កូតឆ្វេង - LHD)</SelectItem>
-                  <SelectItem value="RIGHT">Right-Hand Drive (ចង្កូតស្តាំ - RHD)</SelectItem>
+                  <SelectItem value="ALL">{t("filterSteeringAll")}</SelectItem>
+                  <SelectItem value="LEFT">{t("filterSteeringLhd")}</SelectItem>
+                  <SelectItem value="RIGHT">{t("filterSteeringRhd")}</SelectItem>
                 </SelectContent>
               </Select>
             </div>
 
             <div>
-              <Label className="text-[11px] font-semibold text-slate-600">Listing Status</Label>
+              <Label className="text-[11px] font-semibold text-slate-600">{t("filterListingStatus")}</Label>
               <Select value={filters.status} onValueChange={(val) => setPatch({ status: val })}>
                 <SelectTrigger className="mt-1 h-8.5 bg-white text-xs">
-                  <SelectValue placeholder="Status" />
+                  <SelectValue placeholder={t("filterStatusPlaceholder")} />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="PUBLISHED">Published / For Sale</SelectItem>
-                  <SelectItem value="ALL">All (Including Sold & Review)</SelectItem>
-                  <SelectItem value="SOLD">Sold Out</SelectItem>
+                  <SelectItem value="PUBLISHED">{t("filterStatusPublished")}</SelectItem>
+                  <SelectItem value="ALL">{t("filterStatusAll")}</SelectItem>
+                  <SelectItem value="SOLD">{t("filterStatusSoldOut")}</SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -706,110 +718,111 @@ export function CategoryFilterTabs({
           {/* TAB-SPECIFIC FILTERS */}
           {filters.category === "ALL" && (
             <div className="rounded-lg border border-slate-200 bg-white p-3 text-center text-xs text-slate-500">
-              <span className="font-semibold text-slate-700">Viewing All Categories: </span>
-              Select <span className="font-bold text-sky-600">Cars</span>, <span className="font-bold text-amber-600">Motorcycles</span>, or <span className="font-bold text-emerald-600">Spare Parts</span> above for category-specific attributes (engine CC, ABS, OEM parts, body styles).
+              <span className="font-semibold text-slate-700">{t("filterViewingAllCategories")} </span>
+              {t("filterCategoryHint")}
             </div>
           )}
 
           {filters.category === "CAR" && (
             <div className="space-y-3 border-t border-slate-200/80 pt-3">
               <div className="text-[11px] font-bold uppercase tracking-wider text-slate-500">
-                Car Specifications & Import Filters
+                {t("filterCarSpecsHeader")}
               </div>
 
               <div className="grid gap-3 sm:grid-cols-2 md:grid-cols-4 lg:grid-cols-6">
                 <div>
-                  <Label className="text-[11px] text-slate-600">Body Type</Label>
+                  <Label className="text-[11px] text-slate-600">{t("bodyType")}</Label>
                   <Select value={filters.bodyType} onValueChange={(v) => setPatch({ bodyType: v })}>
                     <SelectTrigger className="mt-1 h-8.5 bg-white text-xs">
-                      <SelectValue placeholder="Body Type" />
+                      <SelectValue placeholder={t("bodyType")} />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="ALL">All Bodies</SelectItem>
-                      <SelectItem value="SUV">SUV</SelectItem>
-                      <SelectItem value="SEDAN">Sedan</SelectItem>
-                      <SelectItem value="PICKUP">Pickup</SelectItem>
-                      <SelectItem value="VAN">Van</SelectItem>
-                      <SelectItem value="HATCHBACK">Hatchback</SelectItem>
-                      <SelectItem value="COUPE">Coupe</SelectItem>
+                      <SelectItem value="ALL">{t("filterAllBodies")}</SelectItem>
+                      {Object.keys(bodyTypeLabels).map((b) => (
+                        <SelectItem key={b} value={b}>
+                          {bodyTypeLabels[b]?.[locale] ?? b}
+                        </SelectItem>
+                      ))}
                     </SelectContent>
                   </Select>
                 </div>
 
                 <div>
-                  <Label className="text-[11px] text-slate-600">Transmission</Label>
+                  <Label className="text-[11px] text-slate-600">{t("transmission")}</Label>
                   <Select value={filters.transmission} onValueChange={(v) => setPatch({ transmission: v })}>
                     <SelectTrigger className="mt-1 h-8.5 bg-white text-xs">
-                      <SelectValue placeholder="Transmission" />
+                      <SelectValue placeholder={t("transmission")} />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="ALL">All</SelectItem>
-                      <SelectItem value="AUTOMATIC">Automatic</SelectItem>
-                      <SelectItem value="MANUAL">Manual</SelectItem>
+                      <SelectItem value="ALL">{t("filterAllOption")}</SelectItem>
+                      <SelectItem value="AUTOMATIC">{transmissionLabels.AUTOMATIC?.[locale] ?? "Automatic"}</SelectItem>
+                      <SelectItem value="MANUAL">{transmissionLabels.MANUAL?.[locale] ?? "Manual"}</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
 
                 <div>
-                  <Label className="text-[11px] text-slate-600">Fuel Type</Label>
+                  <Label className="text-[11px] text-slate-600">{t("fuelType")}</Label>
                   <Select value={filters.fuel} onValueChange={(v) => setPatch({ fuel: v })}>
                     <SelectTrigger className="mt-1 h-8.5 bg-white text-xs">
-                      <SelectValue placeholder="Fuel" />
+                      <SelectValue placeholder={t("fuelType")} />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="ALL">All</SelectItem>
-                      <SelectItem value="PETROL">Petrol (សាំង)</SelectItem>
-                      <SelectItem value="DIESEL">Diesel (ម៉ាស៊ូត)</SelectItem>
-                      <SelectItem value="HYBRID">Hybrid</SelectItem>
-                      <SelectItem value="ELECTRIC">Electric (EV)</SelectItem>
+                      <SelectItem value="ALL">{t("filterAllOption")}</SelectItem>
+                      {Object.keys(fuelLabels).map((f) => (
+                        <SelectItem key={f} value={f}>
+                          {fuelLabels[f]?.[locale] ?? f}
+                        </SelectItem>
+                      ))}
                     </SelectContent>
                   </Select>
                 </div>
 
                 <div>
-                  <Label className="text-[11px] text-slate-600">Drive Type</Label>
+                  <Label className="text-[11px] text-slate-600">{t("filterDrivetrainLabel")}</Label>
                   <Select value={filters.drivetrain} onValueChange={(v) => setPatch({ drivetrain: v })}>
                     <SelectTrigger className="mt-1 h-8.5 bg-white text-xs">
-                      <SelectValue placeholder="Drivetrain" />
+                      <SelectValue placeholder={t("filterDrivetrainLabel")} />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="ALL">All</SelectItem>
-                      <SelectItem value="AWD">AWD / 4WD</SelectItem>
-                      <SelectItem value="FWD">FWD</SelectItem>
-                      <SelectItem value="RWD">RWD</SelectItem>
+                      <SelectItem value="ALL">{t("filterAllOption")}</SelectItem>
+                      <SelectItem value="AWD">{drivetrainLabels.AWD?.[locale] ?? "AWD"}</SelectItem>
+                      <SelectItem value="4WD">{drivetrainLabels["4WD"]?.[locale] ?? "4WD"}</SelectItem>
+                      <SelectItem value="FWD">{drivetrainLabels.FWD?.[locale] ?? "FWD"}</SelectItem>
+                      <SelectItem value="RWD">{drivetrainLabels.RWD?.[locale] ?? "RWD"}</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
 
                 <div>
-                  <Label className="text-[11px] text-slate-600">Seats (កៅអី)</Label>
+                  <Label className="text-[11px] text-slate-600">{t("filterSeatsLabel")}</Label>
                   <Select value={filters.seats} onValueChange={(v) => setPatch({ seats: v })}>
                     <SelectTrigger className="mt-1 h-8.5 bg-white text-xs">
-                      <SelectValue placeholder="Seats" />
+                      <SelectValue placeholder={t("filterSeatsPlaceholder")} />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="ALL">Any Seats</SelectItem>
-                      <SelectItem value="2">2 Seats</SelectItem>
-                      <SelectItem value="4">4 Seats</SelectItem>
-                      <SelectItem value="5">5 Seats</SelectItem>
-                      <SelectItem value="7">7 Seats</SelectItem>
-                      <SelectItem value="8">8+ Seats</SelectItem>
+                      <SelectItem value="ALL">{t("filterAnySeats")}</SelectItem>
+                      <SelectItem value="2">{t("filterSeatsCount", { n: 2 })}</SelectItem>
+                      <SelectItem value="4">{t("filterSeatsCount", { n: 4 })}</SelectItem>
+                      <SelectItem value="5">{t("filterSeatsCount", { n: 5 })}</SelectItem>
+                      <SelectItem value="7">{t("filterSeatsCount", { n: 7 })}</SelectItem>
+                      <SelectItem value="8">8+ {t("filterSeatsLabel")}</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
 
                 <div>
-                  <Label className="text-[11px] text-slate-600">Doors (ទ្វារ)</Label>
+                  <Label className="text-[11px] text-slate-600">{t("filterDoorsLabel")}</Label>
                   <Select value={filters.doors} onValueChange={(v) => setPatch({ doors: v })}>
                     <SelectTrigger className="mt-1 h-8.5 bg-white text-xs">
-                      <SelectValue placeholder="Doors" />
+                      <SelectValue placeholder={t("filterDoorsPlaceholder")} />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="ALL">Any</SelectItem>
-                      <SelectItem value="2">2 Doors</SelectItem>
-                      <SelectItem value="3">3 Doors</SelectItem>
-                      <SelectItem value="4">4 Doors</SelectItem>
-                      <SelectItem value="5">5 Doors</SelectItem>
+                      <SelectItem value="ALL">{t("filterAnyDoors")}</SelectItem>
+                      <SelectItem value="2">{t("filterDoorsCount", { n: 2 })}</SelectItem>
+                      <SelectItem value="3">{t("filterDoorsCount", { n: 3 })}</SelectItem>
+                      <SelectItem value="4">{t("filterDoorsCount", { n: 4 })}</SelectItem>
+                      <SelectItem value="5">{t("filterDoorsCount", { n: 5 })}</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
@@ -818,11 +831,11 @@ export function CategoryFilterTabs({
               {/* Year, Mileage, Engine displacement, Grade/Trim, Stock No, Chassis No */}
               <div className="grid gap-3 sm:grid-cols-2 md:grid-cols-4 lg:grid-cols-6">
                 <div>
-                  <Label className="text-[11px] text-slate-600">Year Range</Label>
+                  <Label className="text-[11px] text-slate-600">{t("filterYearRange")}</Label>
                   <div className="mt-1 flex items-center gap-1">
                     <Input
                       type="number"
-                      placeholder="Min"
+                      placeholder={t("filterYearMinPlaceholder")}
                       value={filters.yearMin}
                       onChange={(e) => setPatch({ yearMin: e.target.value })}
                       className="h-8.5 text-xs bg-white"
@@ -830,7 +843,7 @@ export function CategoryFilterTabs({
                     <span>-</span>
                     <Input
                       type="number"
-                      placeholder="Max"
+                      placeholder={t("filterYearMaxPlaceholder")}
                       value={filters.yearMax}
                       onChange={(e) => setPatch({ yearMax: e.target.value })}
                       className="h-8.5 text-xs bg-white"
@@ -839,11 +852,11 @@ export function CategoryFilterTabs({
                 </div>
 
                 <div>
-                  <Label className="text-[11px] text-slate-600">Mileage (Km)</Label>
+                  <Label className="text-[11px] text-slate-600">{t("filterMileageLabel")}</Label>
                   <div className="mt-1 flex items-center gap-1">
                     <Input
                       type="number"
-                      placeholder="Min"
+                      placeholder={t("filterMileageMinPlaceholder")}
                       value={filters.mileageMin}
                       onChange={(e) => setPatch({ mileageMin: e.target.value })}
                       className="h-8.5 text-xs bg-white"
@@ -851,7 +864,7 @@ export function CategoryFilterTabs({
                     <span>-</span>
                     <Input
                       type="number"
-                      placeholder="Max"
+                      placeholder={t("filterMileageMaxPlaceholder")}
                       value={filters.mileageMax}
                       onChange={(e) => setPatch({ mileageMax: e.target.value })}
                       className="h-8.5 text-xs bg-white"
@@ -860,11 +873,11 @@ export function CategoryFilterTabs({
                 </div>
 
                 <div>
-                  <Label className="text-[11px] text-slate-600">Engine CC</Label>
+                  <Label className="text-[11px] text-slate-600">{t("filterEngineCc")}</Label>
                   <div className="mt-1 flex items-center gap-1">
                     <Input
                       type="number"
-                      placeholder="Min cc"
+                      placeholder={t("filterMinCcPlaceholder")}
                       value={filters.engineCcMin}
                       onChange={(e) => setPatch({ engineCcMin: e.target.value })}
                       className="h-8.5 text-xs bg-white"
@@ -872,7 +885,7 @@ export function CategoryFilterTabs({
                     <span>-</span>
                     <Input
                       type="number"
-                      placeholder="Max cc"
+                      placeholder={t("filterMaxCcPlaceholder")}
                       value={filters.engineCcMax}
                       onChange={(e) => setPatch({ engineCcMax: e.target.value })}
                       className="h-8.5 text-xs bg-white"
@@ -881,9 +894,9 @@ export function CategoryFilterTabs({
                 </div>
 
                 <div>
-                  <Label className="text-[11px] text-slate-600">Grade / Trim</Label>
+                  <Label className="text-[11px] text-slate-600">{t("filterGradeTrimLabel")}</Label>
                   <Input
-                    placeholder="e.g. TX-L, Platinum, Sport"
+                    placeholder={t("filterTrimPlaceholder")}
                     value={filters.variant}
                     onChange={(e) => setPatch({ variant: e.target.value })}
                     className="mt-1 h-8.5 text-xs bg-white"
@@ -891,9 +904,9 @@ export function CategoryFilterTabs({
                 </div>
 
                 <div>
-                  <Label className="text-[11px] text-slate-600">Chassis No / VIN</Label>
+                  <Label className="text-[11px] text-slate-600">{t("filterChassisVinLabel")}</Label>
                   <Input
-                    placeholder="Chassis or VIN"
+                    placeholder={t("filterChassisVin")}
                     value={filters.chassisNo}
                     onChange={(e) => setPatch({ chassisNo: e.target.value })}
                     className="mt-1 h-8.5 text-xs bg-white"
@@ -901,9 +914,9 @@ export function CategoryFilterTabs({
                 </div>
 
                 <div>
-                  <Label className="text-[11px] text-slate-600">Stock No</Label>
+                  <Label className="text-[11px] text-slate-600">{t("filterStockNo")}</Label>
                   <Input
-                    placeholder="Dealer Stock #"
+                    placeholder={t("filterStockPlaceholder")}
                     value={filters.stockNo}
                     onChange={(e) => setPatch({ stockNo: e.target.value })}
                     className="mt-1 h-8.5 text-xs bg-white"
@@ -913,7 +926,7 @@ export function CategoryFilterTabs({
 
               {/* Features & Options Checklist */}
               <div>
-                <Label className="text-[11px] font-semibold text-slate-600">Features & Options</Label>
+                <Label className="text-[11px] font-semibold text-slate-600">{t("filterFeaturesOptionsLabel")}</Label>
                 <div className="mt-1.5 flex flex-wrap gap-2">
                   {POPULAR_FEATURES.map((feat) => {
                     const checked = filters.features.includes(feat);
@@ -950,36 +963,33 @@ export function CategoryFilterTabs({
           {filters.category === "MOTOR" && (
             <div className="space-y-3 border-t border-slate-200/80 pt-3">
               <div className="text-[11px] font-bold uppercase tracking-wider text-slate-500">
-                Motorcycle Specific Filters
+                {t("filterMotorSpecsHeader")}
               </div>
 
               <div className="grid gap-3 sm:grid-cols-2 md:grid-cols-4">
                 <div>
-                  <Label className="text-[11px] text-slate-600">Motorcycle Type</Label>
+                  <Label className="text-[11px] text-slate-600">{t("filterMotorType")}</Label>
                   <Select value={filters.motorType} onValueChange={(v) => setPatch({ motorType: v })}>
                     <SelectTrigger className="mt-1 h-8.5 bg-white text-xs">
-                      <SelectValue placeholder="Type" />
+                      <SelectValue placeholder={t("filterMotorType")} />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="ALL">All Types</SelectItem>
-                      <SelectItem value="SCOOTER">Scooter (Click, Scoopy, Air Blade)</SelectItem>
-                      <SelectItem value="CUB">Cub / Semi-Auto (Dream 125, Wave)</SelectItem>
-                      <SelectItem value="SPORT">Sport / Racing (CBR, R15, Ninja)</SelectItem>
-                      <SelectItem value="CRUISER">Cruiser / Chopper</SelectItem>
-                      <SelectItem value="DIRT">Dirt / Enduro (KLX)</SelectItem>
-                      <SelectItem value="NAKED">Naked / Streetfighter</SelectItem>
-                      <SelectItem value="TOURING">Touring / Adventure (GS)</SelectItem>
-                      <SelectItem value="ELECTRIC">Electric Scooter</SelectItem>
+                      <SelectItem value="ALL">{t("filterAllMotorTypes")}</SelectItem>
+                      {Object.keys(motorBodyTypeLabels).map((mb) => (
+                        <SelectItem key={mb} value={mb}>
+                          {motorBodyTypeLabels[mb]?.[locale] ?? mb}
+                        </SelectItem>
+                      ))}
                     </SelectContent>
                   </Select>
                 </div>
 
                 <div>
-                  <Label className="text-[11px] text-slate-600">Engine Displacement CC</Label>
+                  <Label className="text-[11px] text-slate-600">{t("filterEngineDisplacementCc")}</Label>
                   <div className="mt-1 flex items-center gap-1">
                     <Input
                       type="number"
-                      placeholder="Min cc"
+                      placeholder={t("filterMinCcPlaceholder")}
                       value={filters.engineCcMin}
                       onChange={(e) => setPatch({ engineCcMin: e.target.value })}
                       className="h-8.5 text-xs bg-white"
@@ -987,7 +997,7 @@ export function CategoryFilterTabs({
                     <span>-</span>
                     <Input
                       type="number"
-                      placeholder="Max cc"
+                      placeholder={t("filterMaxCcPlaceholder")}
                       value={filters.engineCcMax}
                       onChange={(e) => setPatch({ engineCcMax: e.target.value })}
                       className="h-8.5 text-xs bg-white"
@@ -996,30 +1006,30 @@ export function CategoryFilterTabs({
                 </div>
 
                 <div>
-                  <Label className="text-[11px] text-slate-600">ABS Braking System</Label>
+                  <Label className="text-[11px] text-slate-600">{t("filterAbsBraking")}</Label>
                   <Select value={filters.hasAbs} onValueChange={(v) => setPatch({ hasAbs: v })}>
                     <SelectTrigger className="mt-1 h-8.5 bg-white text-xs">
-                      <SelectValue placeholder="ABS" />
+                      <SelectValue placeholder={t("filterAbsPlaceholder")} />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="ALL">Any (ABS or Non-ABS)</SelectItem>
-                      <SelectItem value="true">ABS Equipped (មានហ្វ្រាំង ABS)</SelectItem>
-                      <SelectItem value="false">Non-ABS Standard</SelectItem>
+                      <SelectItem value="ALL">{t("filterMotorAbsAny")}</SelectItem>
+                      <SelectItem value="true">{t("filterMotorAbsEquipped")}</SelectItem>
+                      <SelectItem value="false">{t("filterMotorAbsNon")}</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
 
                 <div>
-                  <Label className="text-[11px] text-slate-600">Start Type (ប្រព័ន្ធបញ្ឆេះ)</Label>
+                  <Label className="text-[11px] text-slate-600">{t("filterMotorStartTypeLabel")}</Label>
                   <Select value={filters.startType} onValueChange={(v) => setPatch({ startType: v })}>
                     <SelectTrigger className="mt-1 h-8.5 bg-white text-xs">
-                      <SelectValue placeholder="Start Type" />
+                      <SelectValue placeholder={t("filterStartType")} />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="ALL">All Start Types</SelectItem>
-                      <SelectItem value="ELECTRIC">Electric Start (ចុចបញ្ឆេះ)</SelectItem>
-                      <SelectItem value="KICK">Kick Start (ធាក់បញ្ឆេះ)</SelectItem>
-                      <SelectItem value="BOTH">Electric + Kick (ចុច និងធាក់)</SelectItem>
+                      <SelectItem value="ALL">{t("filterAllStartTypes")}</SelectItem>
+                      <SelectItem value="ELECTRIC">{t("filterMotorStartElectric")}</SelectItem>
+                      <SelectItem value="KICK">{t("filterMotorStartKick")}</SelectItem>
+                      <SelectItem value="BOTH">{t("filterMotorStartBoth")}</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
@@ -1031,34 +1041,31 @@ export function CategoryFilterTabs({
           {filters.category === "SPARE_PART" && (
             <div className="space-y-3 border-t border-slate-200/80 pt-3">
               <div className="text-[11px] font-bold uppercase tracking-wider text-slate-500">
-                Spare Part & OEM Component Filters
+                {t("filterPartsHeader")}
               </div>
 
               <div className="grid gap-3 sm:grid-cols-2 md:grid-cols-4">
                 <div>
-                  <Label className="text-[11px] text-slate-600">Part Category</Label>
+                  <Label className="text-[11px] text-slate-600">{t("filterPartCategory")}</Label>
                   <Select value={filters.partCategory} onValueChange={(v) => setPatch({ partCategory: v })}>
                     <SelectTrigger className="mt-1 h-8.5 bg-white text-xs">
-                      <SelectValue placeholder="Category" />
+                      <SelectValue placeholder={t("filterPartCategory")} />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="ALL">All Categories</SelectItem>
-                      <SelectItem value="ENGINE_TRANSMISSION">Engine & Transmission</SelectItem>
-                      <SelectItem value="BRAKES_SUSPENSION">Brakes & Suspension</SelectItem>
-                      <SelectItem value="TIRES_WHEELS">Tires & Wheels</SelectItem>
-                      <SelectItem value="BATTERY_ELECTRICAL">Battery & Electrical</SelectItem>
-                      <SelectItem value="LIGHTS_BULBS">Lights & Bulbs</SelectItem>
-                      <SelectItem value="BODY_MIRRORS">Body & Mirrors</SelectItem>
-                      <SelectItem value="OILS_LUBRICANTS">Oils & Lubricants</SelectItem>
-                      <SelectItem value="ACCESSORIES">Accessories</SelectItem>
+                      <SelectItem value="ALL">{t("filterAllPartCategories")}</SelectItem>
+                      {Object.keys(partCategoryLabels).map((pc) => (
+                        <SelectItem key={pc} value={pc}>
+                          {partCategoryLabels[pc]?.[locale] ?? pc}
+                        </SelectItem>
+                      ))}
                     </SelectContent>
                   </Select>
                 </div>
 
                 <div>
-                  <Label className="text-[11px] text-slate-600">OEM / Part Number</Label>
+                  <Label className="text-[11px] text-slate-600">{t("filterPartNoLabel")}</Label>
                   <Input
-                    placeholder="e.g. 09.A820.11 or Part #"
+                    placeholder={t("filterPartNoPlaceholder")}
                     value={filters.partNumber}
                     onChange={(e) => setPatch({ partNumber: e.target.value })}
                     className="mt-1 h-8.5 text-xs bg-white"
@@ -1066,32 +1073,32 @@ export function CategoryFilterTabs({
                 </div>
 
                 <div>
-                  <Label className="text-[11px] text-slate-600">OEM vs Aftermarket</Label>
+                  <Label className="text-[11px] text-slate-600">{t("filterOemVsAftermarket")}</Label>
                   <Select value={filters.isOem} onValueChange={(v) => setPatch({ isOem: v })}>
                     <SelectTrigger className="mt-1 h-8.5 bg-white text-xs">
-                      <SelectValue placeholder="All Types" />
+                      <SelectValue placeholder={t("filterAllPartTypes")} />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="ALL">All Types</SelectItem>
-                      <SelectItem value="true">OEM Genuine Parts (គ្រឿងស៊ីន)</SelectItem>
-                      <SelectItem value="false">Aftermarket Performance</SelectItem>
+                      <SelectItem value="ALL">{t("filterAllPartTypes")}</SelectItem>
+                      <SelectItem value="true">{t("filterOemGenuine")}</SelectItem>
+                      <SelectItem value="false">{t("filterAftermarketPerformance")}</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
 
                 <div>
-                  <Label className="text-[11px] text-slate-600">Position on Vehicle</Label>
+                  <Label className="text-[11px] text-slate-600">{t("filterPositionOnVehicle")}</Label>
                   <Select value={filters.position} onValueChange={(v) => setPatch({ position: v })}>
                     <SelectTrigger className="mt-1 h-8.5 bg-white text-xs">
-                      <SelectValue placeholder="Position" />
+                      <SelectValue placeholder={t("filterPositionOnVehicle")} />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="ALL">All Positions</SelectItem>
-                      <SelectItem value="FRONT">Front</SelectItem>
-                      <SelectItem value="REAR">Rear</SelectItem>
-                      <SelectItem value="LEFT">Left</SelectItem>
-                      <SelectItem value="RIGHT">Right</SelectItem>
-                      <SelectItem value="UNIVERSAL">Universal</SelectItem>
+                      <SelectItem value="ALL">{t("filterAllPositions")}</SelectItem>
+                      <SelectItem value="FRONT">{t("filterPosFront")}</SelectItem>
+                      <SelectItem value="REAR">{t("filterPosRear")}</SelectItem>
+                      <SelectItem value="LEFT">{t("filterPosLeft")}</SelectItem>
+                      <SelectItem value="RIGHT">{t("filterPosRight")}</SelectItem>
+                      <SelectItem value="UNIVERSAL">{t("filterPosUniversal")}</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
@@ -1100,9 +1107,9 @@ export function CategoryFilterTabs({
               {/* Compatible Vehicle Details */}
               <div className="grid gap-3 sm:grid-cols-3">
                 <div>
-                  <Label className="text-[11px] text-slate-600">Compatible Vehicle Make</Label>
+                  <Label className="text-[11px] text-slate-600">{t("filterCompatibleVehicleMakeLabel")}</Label>
                   <Input
-                    placeholder="e.g. Toyota, Honda"
+                    placeholder={t("filterCompatibleMakePlaceholder")}
                     value={filters.compatibleMake === "ALL" ? "" : filters.compatibleMake}
                     onChange={(e) => setPatch({ compatibleMake: e.target.value || "ALL" })}
                     className="mt-1 h-8.5 text-xs bg-white"
@@ -1110,9 +1117,9 @@ export function CategoryFilterTabs({
                 </div>
 
                 <div>
-                  <Label className="text-[11px] text-slate-600">Compatible Vehicle Model</Label>
+                  <Label className="text-[11px] text-slate-600">{t("filterCompatibleVehicleModelLabel")}</Label>
                   <Input
-                    placeholder="e.g. Prius, Dream 125"
+                    placeholder={t("filterCompatibleModelPlaceholder")}
                     value={filters.compatibleModel === "ALL" ? "" : filters.compatibleModel}
                     onChange={(e) => setPatch({ compatibleModel: e.target.value || "ALL" })}
                     className="mt-1 h-8.5 text-xs bg-white"
@@ -1120,10 +1127,10 @@ export function CategoryFilterTabs({
                 </div>
 
                 <div>
-                  <Label className="text-[11px] text-slate-600">Compatible Year</Label>
+                  <Label className="text-[11px] text-slate-600">{t("filterCompatibleYearLabel")}</Label>
                   <Input
                     type="number"
-                    placeholder="e.g. 2018"
+                    placeholder={t("filterCompatibleYearPlaceholder")}
                     value={filters.compatibleYear}
                     onChange={(e) => setPatch({ compatibleYear: e.target.value })}
                     className="mt-1 h-8.5 text-xs bg-white"

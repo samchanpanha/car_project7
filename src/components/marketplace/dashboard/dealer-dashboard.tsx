@@ -67,8 +67,8 @@ export function DealerDashboard({ me }: { me: SessionDTO }) {
   const tabs: DashboardTabDef[] = [
     { id: "overview", label: t("tabOverview"), icon: LayoutDashboard },
     { id: "inventory", label: t("tabInventory"), icon: Car },
-    { id: "pricing", label: "Promotions & Pricing", icon: Tag },
-    { id: "branches", label: "Branches", icon: Store },
+    { id: "pricing", label: t("tabPricing"), icon: Tag },
+    { id: "branches", label: t("tabBranches"), icon: Store },
     { id: "leads", label: t("tabLeads"), icon: MessageSquare },
     { id: "appointments", label: t("tabAppointments"), icon: CalendarDays },
     { id: "telegram", label: t("tabTelegram"), icon: Send },
@@ -306,7 +306,7 @@ function DealerInventory() {
 
   const statusOptions = TENANT_STATUSES.map((s) => ({
     value: s,
-    label: s === "ALL" ? "All Statuses" : t(`vst${s}` as never),
+    label: s === "ALL" ? t("filterStatusAll") : t(`vst${s}` as never),
   }));
 
   const url = `/api/tenant/inventory${qs({
@@ -667,7 +667,7 @@ function DealerLeads() {
           <EmptyState icon={MessageSquare} text={t("leadsEmpty")} hint={t("leadsEmptyHint")} />
         ) : filtered.length === 0 ? (
           <div className="rounded-xl border border-dashed border-slate-200 p-8 text-center bg-white">
-            <p className="text-xs text-slate-500">No leads match “{q}”</p>
+            <p className="text-xs text-slate-500">{t("filterNoLeadsMatch", { q })}</p>
             <Button
               variant="ghost"
               size="sm"
@@ -677,7 +677,7 @@ function DealerLeads() {
               }}
               className="mt-2 text-xs text-amber-700"
             >
-              Clear search
+              {t("filterClearSearch")}
             </Button>
           </div>
         ) : (
@@ -751,11 +751,11 @@ function DealerAppointments() {
   const [pageSize, setPageSize] = useState(10);
 
   const APPT_STATUS_FILTERS = [
-    { value: "ALL", label: "All" },
-    { value: "REQUESTED", label: "Requested" },
-    { value: "CONFIRMED", label: "Confirmed" },
-    { value: "COMPLETED", label: "Completed" },
-    { value: "CANCELLED", label: "Cancelled" },
+    { value: "ALL", label: t("filterAllOption") },
+    { value: "REQUESTED", label: t("astREQUESTED") },
+    { value: "CONFIRMED", label: t("astCONFIRMED") },
+    { value: "COMPLETED", label: t("astCOMPLETED") },
+    { value: "CANCELLED", label: t("astCANCELLED") },
   ];
 
   const patch = async (id: string, status: string) => {

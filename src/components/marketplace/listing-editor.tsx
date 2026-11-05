@@ -387,7 +387,7 @@ export function PhotoUploader({
       const { urls, failedCount } = await uploadImagesParallel(list, (p) => setProgress(p), 3);
       if (urls.length > 0) commit([...latest.current, ...urls]);
       if (failedCount > 0) toast.error(t("uploadFailedCount", { n: failedCount }));
-      else if (urls.length > 0) toast.success(`Uploaded ${urls.length} photo${urls.length > 1 ? "s" : ""}`);
+      else if (urls.length > 0) toast.success(t("listingUploadedPhotosToast", { n: urls.length }));
     } catch {
       toast.error(t("errorGeneric"));
     } finally {
@@ -531,7 +531,7 @@ export function PhotoUploader({
               addUrl();
             }
           }}
-          placeholder="https://... (or paste image link)"
+          placeholder={t("listingPasteImageLinkPlaceholder")}
           className="h-8 text-xs"
           aria-label={t("addPhotoUrl")}
           disabled={disabled || isUploading}
@@ -924,7 +924,7 @@ export function ListingEditorDialog({
           <div className="space-y-5">
             {/* Category Selector Tabs */}
             <div>
-              <Label className="text-xs font-semibold text-slate-500 mb-1.5 block">Category</Label>
+              <Label className="text-xs font-semibold text-slate-500 mb-1.5 block">{t("listingCategoryLabel")}</Label>
               <div className="grid grid-cols-3 gap-2 p-1 bg-slate-100 rounded-xl border border-slate-200">
                 <button
                   type="button"
@@ -1046,14 +1046,14 @@ export function ListingEditorDialog({
                 </div>
 
                 <div className="grid grid-cols-2 gap-3">
-                  <EditField label="Brand / Manufacturer">
-                    <Input value={form.make} onChange={(e) => set({ make: e.target.value })} placeholder="Toyota, Michelin..." list="kl-edit-part-makes" />
+                  <EditField label={t("flowPartBrand")}>
+                    <Input value={form.make} onChange={(e) => set({ make: e.target.value })} placeholder={t("listingPartsMakePlaceholder")} list="kl-edit-part-makes" />
                     <datalist id="kl-edit-part-makes">
                       {getPartManufacturers(meta?.makes).map((make) => <option key={make} value={make} />)}
                     </datalist>
                   </EditField>
-                  <EditField label="Part Name / Model">
-                    <Input value={form.model} onChange={(e) => set({ model: e.target.value })} placeholder="Brake Pads, Battery..." list="kl-edit-part-models" />
+                  <EditField label={t("flowPartName")}>
+                    <Input value={form.model} onChange={(e) => set({ model: e.target.value })} placeholder={t("listingPartsModelPlaceholder")} list="kl-edit-part-models" />
                     <datalist id="kl-edit-part-models">
                       {getPartModels().map((model) => <option key={model} value={model} />)}
                     </datalist>
@@ -1081,14 +1081,14 @@ export function ListingEditorDialog({
               <section className="space-y-3">
                 <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">{t("categoryMotors")}</p>
                 <div className="grid grid-cols-2 gap-3">
-                  <EditField label="Motorcycle Make">
-                    <Input value={form.make} onChange={(e) => set({ make: e.target.value })} placeholder="Honda, Yamaha..." list="kl-edit-motor-makes" />
+                  <EditField label={t("formMake")}>
+                    <Input value={form.make} onChange={(e) => set({ make: e.target.value })} placeholder={t("listingMotorMakePlaceholder")} list="kl-edit-motor-makes" />
                     <datalist id="kl-edit-motor-makes">
                       {getVehicleMakes("MOTOR", meta?.makes).map((make) => <option key={make} value={make} />)}
                     </datalist>
                   </EditField>
-                  <EditField label="Motorcycle Model">
-                    <Input value={form.model} onChange={(e) => set({ model: e.target.value })} placeholder="Dream 125, Scoopy..." list="kl-edit-motor-models" />
+                  <EditField label={t("formModel")}>
+                    <Input value={form.model} onChange={(e) => set({ model: e.target.value })} placeholder={t("listingMotorModelPlaceholder")} list="kl-edit-motor-models" />
                     <datalist id="kl-edit-motor-models">
                       {getVehicleModels("MOTOR", form.make).map((model) => <option key={model} value={model} />)}
                     </datalist>
@@ -1370,10 +1370,10 @@ export function ListingEditorDialog({
                         value={form.branchId || "none"}
                         onChange={(v) => set({ branchId: v === "none" ? "" : v })}
                         options={[
-                          { value: "none", label: "Main / Central Showroom" },
+                          { value: "none", label: t("flowDefaultBranch") },
                           ...branches.data.branches.map((b) => ({ value: b.id, label: `${b.name} (${b.city})` })),
                         ]}
-                        placeholder="Select showroom branch"
+                        placeholder={t("sellSelectBranchPlaceholder")}
                       />
                     </EditField>
                   </div>

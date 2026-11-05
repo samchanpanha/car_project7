@@ -26,9 +26,9 @@ export function LiveStatusPill({ className }: { className?: string }) {
     setTesting(true);
     try {
       await apiSend("/api/realtime/test", "POST");
-      toast.success("Test ping sent to your stream!");
+      toast.success(t("liveStreamPingSuccess"));
     } catch (e) {
-      toast.error("Failed to send test event");
+      toast.error(t("liveStreamPingFailed"));
     } finally {
       setTesting(false);
     }

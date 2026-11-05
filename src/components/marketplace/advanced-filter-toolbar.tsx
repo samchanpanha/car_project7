@@ -53,13 +53,22 @@ export function AdvancedFilterToolbar({
   onChange,
   statusOptions,
   branchOptions,
-  sortOptions = DEFAULT_SORT_OPTIONS,
-  searchPlaceholder = "Search make, model, VIN...",
+  sortOptions,
+  searchPlaceholder,
   totalResults,
   className,
 }: AdvancedFilterToolbarProps) {
   const t = useT();
   const [showAdvanced, setShowAdvanced] = useState(false);
+
+  const effectiveSortOptions = sortOptions ?? [
+    { value: "newest", label: t("sortNewest") },
+    { value: "price_asc", label: t("sortPriceAsc") },
+    { value: "price_desc", label: t("sortPriceDesc") },
+    { value: "views", label: t("sortMostViewed") },
+    { value: "year_desc", label: t("sortYearDesc") },
+  ];
+  const effectivePlaceholder = searchPlaceholder || t("searchPlaceholder");
 
   const activeFilterCount =
     (values.q ? 1 : 0) +
@@ -89,7 +98,7 @@ export function AdvancedFilterToolbar({
           <Input
             value={values.q || ""}
             onChange={(e) => onChange({ ...values, q: e.target.value })}
-            placeholder={searchPlaceholder}
+            placeholder={effectivePlaceholder}
             className="h-9 pl-9 pr-8 text-xs bg-slate-50/50 focus-visible:bg-white"
           />
           {values.q && (
@@ -114,7 +123,7 @@ export function AdvancedFilterToolbar({
               <SelectValue placeholder="Sort" />
             </SelectTrigger>
             <SelectContent>
-              {sortOptions.map((opt) => (
+              {effectiveSortOptions.map((opt) => (
                 <SelectItem key={opt.value} value={opt.value} className="text-xs">
                   {opt.label}
                 </SelectItem>

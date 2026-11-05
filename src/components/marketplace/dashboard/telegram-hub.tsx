@@ -134,7 +134,7 @@ export function TelegramHub({ isDealer = false }: { isDealer?: boolean }) {
   const testPersonalBot = async () => {
     const targetChatId = form.chatId.trim();
     if (!targetChatId) {
-      toast.error("Please connect your Telegram bot first");
+      toast.error(t("tgConnectBotFirstToast"));
       return;
     }
     setTestingPersonal(true);
@@ -347,7 +347,7 @@ export function TelegramHub({ isDealer = false }: { isDealer?: boolean }) {
 
         <div className="grid gap-3 sm:grid-cols-2">
           <div className="rounded-xl border border-slate-200 bg-slate-50/60 p-3">
-            <Label className="text-xs font-medium text-slate-600">Telegram Group URL</Label>
+            <Label className="text-xs font-medium text-slate-600">{t("tgGroupUrlLabel")}</Label>
             <Input
               value={form.groupUrl}
               onChange={(e) => setForm((f) => ({ ...f, groupUrl: e.target.value }))}
@@ -356,7 +356,7 @@ export function TelegramHub({ isDealer = false }: { isDealer?: boolean }) {
             />
           </div>
           <div className="rounded-xl border border-slate-200 bg-slate-50/60 p-3">
-            <Label className="text-xs font-medium text-slate-600">Telegram Channel URL</Label>
+            <Label className="text-xs font-medium text-slate-600">{t("tgChannelUrlLabel")}</Label>
             <Input
               value={form.channelUrl}
               onChange={(e) => setForm((f) => ({ ...f, channelUrl: e.target.value }))}

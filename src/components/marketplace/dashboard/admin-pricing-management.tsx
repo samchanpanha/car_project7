@@ -2,6 +2,8 @@
 
 import { useState, useMemo } from "react";
 import { useT } from "@/hooks/use-t";
+import { useAppStore } from "@/lib/store";
+import { getPromoTierLabel } from "@/lib/i18n/labels";
 import { useFetch, apiSend } from "@/lib/client-hooks";
 import { formatUsd } from "@/lib/format";
 import { Button } from "@/components/ui/button";
@@ -79,6 +81,7 @@ export interface AdminVehicleItem {
 
 export function AdminPricingManagement() {
   const t = useT();
+  const locale = useAppStore((s) => s.locale);
   const [activeTab, setActiveTab] = useState<"types" | "items" | "bulk">("types");
 
   // Price types query
@@ -158,7 +161,7 @@ export function AdminPricingManagement() {
   // Save new Price Type
   const handleCreatePriceType = async () => {
     if (!newTypeForm.code || !newTypeForm.label) {
-      toast.error("Please fill in Code and Label");
+      toast.error(t("pricingFillCodeLabelToast"));
       return;
     }
 
@@ -167,7 +170,7 @@ export function AdminPricingManagement() {
         ...newTypeForm,
         priority: Number(newTypeForm.priority) || 0,
       });
-      toast.success("Price type created successfully");
+      toast.success(t("pricingTypeCreatedToast"));
       setIsNewTypeOpen(false);
       setNewTypeForm({
         code: "",
@@ -180,7 +183,7 @@ export function AdminPricingManagement() {
       });
       refetchTypes();
     } catch (err: any) {
-      toast.error(err.message || "Failed to create price type");
+      toast.error(err.message || t("pricingTypeCreateFailedToast"));
     }
   };
 
@@ -196,18 +199,18 @@ export function AdminPricingManagement() {
         stackable: editingType.stackable,
         active: editingType.active,
       });
-      toast.success("Price type updated");
+      toast.success(t("pricingTypeUpdatedToast"));
       setEditingType(null);
       refetchTypes();
     } catch (err: any) {
-      toast.error(err.message || "Failed to update price type");
+      toast.error(err.message || t("pricingTypeUpdateFailedToast"));
     }
   };
 
   // Save individual item price
   const handleSaveItemPrice = async () => {
     if (!selectedVehicle || !itemPriceForm.priceTypeId || !itemPriceForm.value) {
-      toast.error("Please select a price type and enter an amount");
+      toast.error(t("pricingSelectTypeAmountToast"));
       return;
     }
 
@@ -220,18 +223,18 @@ export function AdminPricingManagement() {
         endDate: itemPriceForm.endDate ? new Date(itemPriceForm.endDate).toISOString() : null,
         active: itemPriceForm.active,
       });
-      toast.success(`Promotional price applied to ${selectedVehicle.make} ${selectedVehicle.model}`);
+      toast.success(t("pricingPromoAppliedVehicleToast", { vehicle: `${selectedVehicle.make} ${selectedVehicle.model}` }));
       setSelectedVehicle(null);
       refetchVehicles();
     } catch (err: any) {
-      toast.error(err.message || "Failed to set promotional price");
+      toast.error(err.message || t("pricingPromoSetFailedToast"));
     }
   };
 
   // Apply X% to category or selection
   const handleApplyBulkPricing = async () => {
     if (!bulkPriceTypeId || !bulkPercent) {
-      toast.error("Please choose a price type and discount percentage");
+      toast.error(t("pricingChooseTypeDiscountToast"));
       return;
     }
 
@@ -240,7 +243,7 @@ export function AdminPricingManagement() {
     );
 
     if (filteredVehicles.length === 0) {
-      toast.warning("No listings found matching the selected category");
+      toast.warning(t("pricingNoListingsCategoryToast"));
       return;
     }
 
@@ -255,11 +258,11 @@ export function AdminPricingManagement() {
       });
 
       toast.success(
-        `Applied to ${res.updatedCount} listings (${res.floorEnforcedCount} clamped by floor price)`,
+        t("pricingBulkAppliedToast", { updated: res.updatedCount, clamped: res.floorEnforcedCount })
       );
       refetchVehicles();
     } catch (err: any) {
-      toast.error(err.message || "Failed to apply bulk pricing");
+      toast.error(err.message || t("pricingBulkApplyFailedToast"));
     } finally {
       setIsBulkSubmitting(false);
     }
@@ -268,7 +271,7 @@ export function AdminPricingManagement() {
   // CSV Import Submit
   const handleCsvImport = async () => {
     if (!csvText.trim()) {
-      toast.error("No CSV data to import");
+      toast.error(t("pricingNoCsvDataToast"));
       return;
     }
 
@@ -278,10 +281,10 @@ export function AdminPricingManagement() {
         csv: csvText,
       });
       setCsvImportResult(res);
-      toast.success(`Imported ${res.importedCount} rows successfully`);
+      toast.success(t("pricingCsvImportedToast", { count: res.importedCount }));
       refetchVehicles();
     } catch (err: any) {
-      toast.error(err.message || "CSV import failed");
+      toast.error(err.message || t("pricingCsvImportFailedToast"));
     } finally {
       setIsCsvSubmitting(false);
     }
@@ -319,30 +322,30 @@ export function AdminPricingManagement() {
               <DollarSign className="h-5 w-5" />
             </div>
             <h2 className="text-xl font-bold text-slate-900">
-              Flexible Pricing & Promotional Engine
+              {t("pricingAdminTitle")}
             </h2>
           </div>
           <p className="mt-1 text-xs text-slate-500">
-            Configure priority-based promotional tiers, schedule start/end dates, enforce floor prices, and execute bulk discounts.
+            {t("pricingAdminSubtitle")}
           </p>
         </div>
 
         {/* Quick KPI stats */}
         <div className="flex flex-wrap items-center gap-3">
           <div className="rounded-xl border border-slate-100 bg-slate-50 px-3.5 py-2 text-center">
-            <span className="text-[11px] font-medium text-slate-500">Active Price Types</span>
+            <span className="text-[11px] font-medium text-slate-500">{t("pricingActiveTypes")}</span>
             <div className="text-base font-bold text-slate-900">{priceTypes.filter((p) => p.active).length}</div>
           </div>
 
           <div className="rounded-xl border border-rose-100 bg-rose-50 px-3.5 py-2 text-center">
-            <span className="text-[11px] font-medium text-rose-700">Listings on Sale</span>
+            <span className="text-[11px] font-medium text-rose-700">{t("pricingListingsOnSale")}</span>
             <div className="text-base font-bold text-rose-800">{activePromoCount}</div>
           </div>
 
           <div className="rounded-xl border border-emerald-100 bg-emerald-50 px-3.5 py-2 text-center">
-            <span className="text-[11px] font-medium text-emerald-700">Floor Price Shield</span>
+            <span className="text-[11px] font-medium text-emerald-700">{t("pricingFloorShield")}</span>
             <div className="flex items-center justify-center gap-1 text-base font-bold text-emerald-800">
-              <ShieldCheck className="h-4 w-4" /> Enforced
+              <ShieldCheck className="h-4 w-4" /> {t("pricingFloorEnforced")}
             </div>
           </div>
         </div>
@@ -361,7 +364,7 @@ export function AdminPricingManagement() {
           )}
         >
           <Tag className="h-3.5 w-3.5" />
-          <span>Price Types Config</span>
+          <span>{t("pricingTabConfig")}</span>
           <Badge className="ml-1 bg-slate-700 text-white text-[10px]">{priceTypes.length}</Badge>
         </button>
 
@@ -376,7 +379,7 @@ export function AdminPricingManagement() {
           )}
         >
           <DollarSign className="h-3.5 w-3.5" />
-          <span>Item Pricing & Schedule</span>
+          <span>{t("pricingTabItems")}</span>
         </button>
 
         <button
@@ -390,7 +393,7 @@ export function AdminPricingManagement() {
           )}
         >
           <Layers className="h-3.5 w-3.5" />
-          <span>Bulk Pricing & CSV Import</span>
+          <span>{t("pricingTabBulk")}</span>
         </button>
       </div>
 
@@ -398,7 +401,7 @@ export function AdminPricingManagement() {
       {activeTab === "types" && (
         <div className="space-y-4">
           <div className="flex items-center justify-between">
-            <h3 className="text-sm font-bold text-slate-800">Marketplace Promotional Price Tiers</h3>
+            <h3 className="text-sm font-bold text-slate-800">{t("pricingMarketplaceTiers")}</h3>
             <Button
               type="button"
               size="sm"
@@ -406,7 +409,7 @@ export function AdminPricingManagement() {
               className="bg-amber-500 hover:bg-amber-400 text-slate-950 font-semibold text-xs gap-1"
             >
               <Plus className="h-3.5 w-3.5" />
-              Add Price Type
+              {t("pricingAddType")}
             </Button>
           </div>
 
@@ -415,13 +418,13 @@ export function AdminPricingManagement() {
               <table className="w-full text-left text-xs">
                 <thead className="bg-slate-50 text-slate-600 border-b border-slate-200">
                   <tr>
-                    <th className="px-4 py-3 font-semibold">Priority</th>
-                    <th className="px-4 py-3 font-semibold">Code</th>
-                    <th className="px-4 py-3 font-semibold">Label</th>
-                    <th className="px-4 py-3 font-semibold">Mode</th>
-                    <th className="px-4 py-3 font-semibold">Badge Preview</th>
-                    <th className="px-4 py-3 font-semibold">Active</th>
-                    <th className="px-4 py-3 font-semibold text-right">Actions</th>
+                    <th className="px-4 py-3 font-semibold">{t("pricingPriorityCol")}</th>
+                    <th className="px-4 py-3 font-semibold">{t("pricingCodeCol")}</th>
+                    <th className="px-4 py-3 font-semibold">{t("pricingLabelCol")}</th>
+                    <th className="px-4 py-3 font-semibold">{t("pricingModeCol")}</th>
+                    <th className="px-4 py-3 font-semibold">{t("pricingBadgeCol")}</th>
+                    <th className="px-4 py-3 font-semibold">{t("pricingActiveCol")}</th>
+                    <th className="px-4 py-3 font-semibold text-right">{t("pricingActionsCol")}</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
@@ -433,10 +436,10 @@ export function AdminPricingManagement() {
                       <td className="px-4 py-3 font-mono font-semibold text-slate-900">
                         {pt.code}
                       </td>
-                      <td className="px-4 py-3 font-medium text-slate-800">{pt.label}</td>
+                      <td className="px-4 py-3 font-medium text-slate-800">{getPromoTierLabel(pt, locale)}</td>
                       <td className="px-4 py-3">
                         <Badge variant="outline" className="text-[10px]">
-                          {pt.mode === "PERCENT" ? "PERCENT (%)" : "FIXED ($)"}
+                          {pt.mode === "PERCENT" ? t("pricingPercentMode") : t("pricingFixedMode")}
                         </Badge>
                       </td>
                       <td className="px-4 py-3">
@@ -445,7 +448,7 @@ export function AdminPricingManagement() {
                           style={{ backgroundColor: pt.badgeColor }}
                         >
                           <Flame className="h-3 w-3 fill-white" />
-                          {pt.label}
+                          {getPromoTierLabel(pt, locale)}
                         </Badge>
                       </td>
                       <td className="px-4 py-3">
@@ -465,7 +468,7 @@ export function AdminPricingManagement() {
                           className="h-7 px-2 text-xs text-slate-600 hover:text-slate-900"
                         >
                           <Edit2 className="h-3 w-3 mr-1" />
-                          Edit
+                          {t("pricingEdit")}
                         </Button>
                       </td>
                     </tr>
@@ -482,13 +485,13 @@ export function AdminPricingManagement() {
         <div className="space-y-4">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div className="flex flex-wrap items-center gap-2">
-              <h3 className="text-sm font-bold text-slate-800">Listing Promotional Prices & Schedules</h3>
+              <h3 className="text-sm font-bold text-slate-800">{t("pricingListingSchedules")}</h3>
               <div className="flex items-center gap-1.5 p-1 bg-slate-100 rounded-xl">
                 {[
-                  { id: "ALL", label: "All" },
-                  { id: "CAR", label: "Cars" },
-                  { id: "MOTOR", label: "Motors" },
-                  { id: "SPARE_PART", label: "Parts" },
+                  { id: "ALL", label: t("pricingCatAll") },
+                  { id: "CAR", label: t("pricingCatCars") },
+                  { id: "MOTOR", label: t("pricingCatMotors") },
+                  { id: "SPARE_PART", label: t("pricingCatParts") },
                 ].map((c) => (
                   <button
                     key={c.id}
@@ -509,7 +512,7 @@ export function AdminPricingManagement() {
               <Input
                 value={vehicleSearch}
                 onChange={(e) => setVehicleSearch(e.target.value)}
-                placeholder="Search listing by make, model, stock#..."
+                placeholder={t("pricingSearchPlaceholder")}
                 className="h-8.5 pl-9 text-xs"
               />
             </div>
@@ -520,14 +523,14 @@ export function AdminPricingManagement() {
               <table className="w-full text-left text-xs">
                 <thead className="bg-slate-50 text-slate-600 border-b border-slate-200">
                   <tr>
-                    <th className="px-4 py-3 font-semibold">Vehicle</th>
-                    <th className="px-4 py-3 font-semibold">Category</th>
-                    <th className="px-4 py-3 font-semibold">Stock / Chassis</th>
-                    <th className="px-4 py-3 font-semibold">Base Price</th>
-                    <th className="px-4 py-3 font-semibold">Floor Price</th>
-                    <th className="px-4 py-3 font-semibold">Effective Price</th>
-                    <th className="px-4 py-3 font-semibold">Active Promo</th>
-                    <th className="px-4 py-3 font-semibold text-right">Action</th>
+                    <th className="px-4 py-3 font-semibold">{t("pricingVehicleCol")}</th>
+                    <th className="px-4 py-3 font-semibold">{t("pricingCategoryCol")}</th>
+                    <th className="px-4 py-3 font-semibold">{t("pricingStockChassisCol")}</th>
+                    <th className="px-4 py-3 font-semibold">{t("pricingBasePriceCol")}</th>
+                    <th className="px-4 py-3 font-semibold">{t("pricingFloorPriceCol")}</th>
+                    <th className="px-4 py-3 font-semibold">{t("pricingEffectivePriceCol")}</th>
+                    <th className="px-4 py-3 font-semibold">{t("pricingActivePromoCol")}</th>
+                    <th className="px-4 py-3 font-semibold text-right">{t("pricingActionsCol")}</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
@@ -554,7 +557,7 @@ export function AdminPricingManagement() {
                         {formatUsd(v.effectivePriceUsd || v.priceUsd)}
                         {v.floorEnforced && (
                           <span className="ml-1 rounded bg-amber-100 px-1 text-[9px] text-amber-800 font-bold">
-                            FLOOR
+                            {t("pricingFloorBadge")}
                           </span>
                         )}
                       </td>
@@ -565,10 +568,10 @@ export function AdminPricingManagement() {
                             style={{ backgroundColor: v.activePriceType.badgeColor }}
                           >
                             <Flame className="h-2.5 w-2.5 fill-white" />
-                            {v.activePriceType.label}
+                            {getPromoTierLabel(v.activePriceType, locale)}
                           </Badge>
                         ) : (
-                          <span className="text-slate-400">Regular</span>
+                          <span className="text-slate-400">{t("pricingRegularBadge")}</span>
                         )}
                       </td>
                       <td className="px-4 py-3 text-right">
@@ -587,7 +590,7 @@ export function AdminPricingManagement() {
                           }}
                           className="h-7 text-xs font-semibold"
                         >
-                          Set Price
+                          {t("pricingSetPriceBtn")}
                         </Button>
                       </td>
                     </tr>
@@ -608,38 +611,38 @@ export function AdminPricingManagement() {
               <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-sky-100 text-sky-700 font-bold">
                 <Percent className="h-4 w-4" />
               </div>
-              <h3 className="font-bold text-slate-900 text-sm">Apply % Discount to Selection</h3>
+              <h3 className="font-bold text-slate-900 text-sm">{t("pricingApplyPercentTitle")}</h3>
             </div>
             <p className="text-xs text-slate-500">
-              Bulk update listings by category with a promotional rate, scheduled launch date, and auto floor price enforcement.
+              {t("pricingApplyPercentSubtitle")}
             </p>
 
             <div className="space-y-3 text-xs">
               <div>
-                <Label className="text-xs text-slate-600">Target Category</Label>
+                <Label className="text-xs text-slate-600">{t("pricingTargetCategory")}</Label>
                 <Select value={bulkCategory} onValueChange={setBulkCategory}>
                   <SelectTrigger className="mt-1 h-9 bg-slate-50 text-xs">
-                    <SelectValue placeholder="Category" />
+                    <SelectValue placeholder={t("pricingTargetCategory")} />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="ALL">All Categories</SelectItem>
-                    <SelectItem value="CAR">Cars Only</SelectItem>
-                    <SelectItem value="MOTOR">Motorcycles Only</SelectItem>
-                    <SelectItem value="SPARE_PART">Spare Parts Only</SelectItem>
+                    <SelectItem value="ALL">{t("pricingAllCategories")}</SelectItem>
+                    <SelectItem value="CAR">{t("pricingCarsOnly")}</SelectItem>
+                    <SelectItem value="MOTOR">{t("pricingMotorsOnly")}</SelectItem>
+                    <SelectItem value="SPARE_PART">{t("pricingPartsOnly")}</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
 
               <div>
-                <Label className="text-xs text-slate-600">Promotional Price Type</Label>
+                <Label className="text-xs text-slate-600">{t("pricingPromoTypeLabel")}</Label>
                 <Select value={bulkPriceTypeId} onValueChange={setBulkPriceTypeId}>
                   <SelectTrigger className="mt-1 h-9 bg-slate-50 text-xs">
-                    <SelectValue placeholder="Select Price Type" />
+                    <SelectValue placeholder={t("pricingSelectPromoType")} />
                   </SelectTrigger>
                   <SelectContent>
                     {priceTypes.map((pt) => (
                       <SelectItem key={pt.id} value={pt.id} className="text-xs">
-                        {pt.label} ({pt.code})
+                        {getPromoTierLabel(pt, locale)} ({pt.code})
                       </SelectItem>
                     ))}
                   </SelectContent>
@@ -647,21 +650,21 @@ export function AdminPricingManagement() {
               </div>
 
               <div>
-                <Label className="text-xs text-slate-600">Discount Percentage (%)</Label>
+                <Label className="text-xs text-slate-600">{t("pricingDiscountPercent")}</Label>
                 <Input
                   type="number"
                   min={1}
                   max={90}
                   value={bulkPercent}
                   onChange={(e) => setBulkPercent(e.target.value)}
-                  placeholder="e.g. 15 for 15% off"
+                  placeholder={t("pricingPercentPlaceholder")}
                   className="mt-1 h-9 text-xs"
                 />
               </div>
 
               <div className="grid grid-cols-2 gap-2">
                 <div>
-                  <Label className="text-xs text-slate-600">Start Date (Optional)</Label>
+                  <Label className="text-xs text-slate-600">{t("pricingStartDateOpt")}</Label>
                   <Input
                     type="date"
                     value={bulkStartDate}
@@ -670,7 +673,7 @@ export function AdminPricingManagement() {
                   />
                 </div>
                 <div>
-                  <Label className="text-xs text-slate-600">End Date (Optional)</Label>
+                  <Label className="text-xs text-slate-600">{t("pricingEndDateOpt")}</Label>
                   <Input
                     type="date"
                     value={bulkEndDate}
@@ -683,7 +686,7 @@ export function AdminPricingManagement() {
               <div className="rounded-lg bg-amber-50 p-2.5 text-[11px] text-amber-800 flex items-start gap-2">
                 <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5 text-amber-600" />
                 <span>
-                  Floor price safety active: Any item whose promotional price falls below its configured floor price will be clamped to its floor price.
+                  {t("pricingFloorSafetyNotice")}
                 </span>
               </div>
 
@@ -694,7 +697,7 @@ export function AdminPricingManagement() {
                 className="w-full bg-slate-900 hover:bg-slate-800 text-white font-semibold text-xs h-9"
               >
                 {isBulkSubmitting ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <Layers className="h-4 w-4 mr-1" />}
-                Apply Discount to Listings
+                {t("pricingApplyDiscountBtn")}
               </Button>
             </div>
           </div>
@@ -706,7 +709,7 @@ export function AdminPricingManagement() {
                 <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-emerald-100 text-emerald-700 font-bold">
                   <Upload className="h-4 w-4" />
                 </div>
-                <h3 className="font-bold text-slate-900 text-sm">Bulk CSV Pricing Import</h3>
+                <h3 className="font-bold text-slate-900 text-sm">{t("pricingBulkCsvTitle")}</h3>
               </div>
               <Button
                 type="button"
@@ -716,19 +719,19 @@ export function AdminPricingManagement() {
                 className="h-7 text-xs text-slate-600 hover:text-slate-900 gap-1"
               >
                 <Download className="h-3 w-3" />
-                Sample CSV
+                {t("pricingSampleCsvBtn")}
               </Button>
             </div>
 
             <p className="text-xs text-slate-500">
-              Upload a spreadsheet CSV with vehicle identifiers (`stock_no` or `vehicle_id`), promo code, value, and scheduling dates.
+              {t("pricingBulkCsvSubtitle")}
             </p>
 
             <div className="space-y-3 text-xs">
               <div className="flex flex-col items-center justify-center border-2 border-dashed border-slate-200 rounded-xl p-4 bg-slate-50/50 hover:bg-slate-50 transition-colors">
                 <Upload className="h-6 w-6 text-slate-400 mb-2" />
                 <label className="cursor-pointer text-xs font-semibold text-sky-600 hover:text-sky-700">
-                  <span>Browse CSV file</span>
+                  <span>{t("pricingBrowseCsv")}</span>
                   <input
                     type="file"
                     accept=".csv,text/csv"
@@ -743,7 +746,7 @@ export function AdminPricingManagement() {
 
               {csvText && (
                 <div>
-                  <Label className="text-xs text-slate-600">CSV Raw Preview</Label>
+                  <Label className="text-xs text-slate-600">{t("pricingCsvPreview")}</Label>
                   <textarea
                     rows={4}
                     value={csvText}
@@ -755,10 +758,10 @@ export function AdminPricingManagement() {
 
               {csvImportResult && (
                 <div className="rounded-lg bg-emerald-50 p-2.5 text-emerald-800 text-[11px]">
-                  <p className="font-bold">Import Status:</p>
-                  <p>Applied {csvImportResult.importedCount} of {csvImportResult.totalRows} rows.</p>
+                  <p className="font-bold">{t("pricingImportStatus")}</p>
+                  <p>{t("pricingImportSuccessCount", { applied: csvImportResult.importedCount, total: csvImportResult.totalRows })}</p>
                   {csvImportResult.failedCount > 0 && (
-                    <p className="text-rose-700">{csvImportResult.failedCount} rows failed.</p>
+                    <p className="text-rose-700">{t("pricingImportFailedCount", { failed: csvImportResult.failedCount })}</p>
                   )}
                 </div>
               )}
@@ -770,7 +773,7 @@ export function AdminPricingManagement() {
                 className="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-semibold text-xs h-9"
               >
                 {isCsvSubmitting ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <Upload className="h-4 w-4 mr-1" />}
-                Import & Update Prices
+                {t("pricingImportBtn")}
               </Button>
             </div>
           </div>
@@ -781,22 +784,22 @@ export function AdminPricingManagement() {
       <Dialog open={isNewTypeOpen} onOpenChange={setIsNewTypeOpen}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
-            <DialogTitle>Add New Price Type</DialogTitle>
+            <DialogTitle>{t("pricingNewTypeTitle")}</DialogTitle>
           </DialogHeader>
           <div className="space-y-3 text-xs">
             <div>
-              <Label className="text-xs">Price Type Code</Label>
+              <Label className="text-xs">{t("pricingTypeCode")}</Label>
               <Input
-                placeholder="e.g. CLEARANCE, FLASH_SALE, MEMBER"
+                placeholder={t("pricingTypeCodePlaceholder")}
                 value={newTypeForm.code}
                 onChange={(e) => setNewTypeForm({ ...newTypeForm, code: e.target.value })}
                 className="mt-1 h-8.5 font-mono text-xs uppercase"
               />
             </div>
             <div>
-              <Label className="text-xs">Display Label</Label>
+              <Label className="text-xs">{t("pricingDisplayLabel")}</Label>
               <Input
-                placeholder="e.g. Flash Sale, Clearance Sale"
+                placeholder={t("pricingDisplayLabelPlaceholder")}
                 value={newTypeForm.label}
                 onChange={(e) => setNewTypeForm({ ...newTypeForm, label: e.target.value })}
                 className="mt-1 h-8.5 text-xs"
@@ -804,7 +807,7 @@ export function AdminPricingManagement() {
             </div>
             <div className="grid grid-cols-2 gap-2">
               <div>
-                <Label className="text-xs">Calculation Mode</Label>
+                <Label className="text-xs">{t("pricingCalculationMode")}</Label>
                 <Select
                   value={newTypeForm.mode}
                   onValueChange={(val: any) => setNewTypeForm({ ...newTypeForm, mode: val })}
@@ -813,13 +816,13 @@ export function AdminPricingManagement() {
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="PERCENT">PERCENT (% Discount)</SelectItem>
-                    <SelectItem value="FIXED">FIXED ($ Dollar Promo)</SelectItem>
+                    <SelectItem value="PERCENT">{t("pricingModePercentOpt")}</SelectItem>
+                    <SelectItem value="FIXED">{t("pricingModeFixedOpt")}</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
               <div>
-                <Label className="text-xs">Priority</Label>
+                <Label className="text-xs">{t("pricingPriorityCol")}</Label>
                 <Input
                   type="number"
                   value={newTypeForm.priority}
@@ -829,7 +832,7 @@ export function AdminPricingManagement() {
               </div>
             </div>
             <div>
-              <Label className="text-xs">Badge Color</Label>
+              <Label className="text-xs">{t("pricingBadgeColor")}</Label>
               <div className="mt-1 flex items-center gap-2">
                 <input
                   type="color"
@@ -847,10 +850,10 @@ export function AdminPricingManagement() {
           </div>
           <DialogFooter>
             <Button variant="ghost" size="sm" onClick={() => setIsNewTypeOpen(false)}>
-              Cancel
+              {t("pricingCancelBtn")}
             </Button>
             <Button size="sm" onClick={handleCreatePriceType} className="bg-slate-900 text-white">
-              Create Price Type
+              {t("pricingCreateTypeBtn")}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -861,11 +864,11 @@ export function AdminPricingManagement() {
         <Dialog open={Boolean(editingType)} onOpenChange={() => setEditingType(null)}>
           <DialogContent className="sm:max-w-md">
             <DialogHeader>
-              <DialogTitle>Edit Price Type ({editingType.code})</DialogTitle>
+              <DialogTitle>{t("pricingEditTypeTitle", { code: editingType.code })}</DialogTitle>
             </DialogHeader>
             <div className="space-y-3 text-xs">
               <div>
-                <Label className="text-xs">Label</Label>
+                <Label className="text-xs">{t("pricingLabelCol")}</Label>
                 <Input
                   value={editingType.label}
                   onChange={(e) => setEditingType({ ...editingType, label: e.target.value })}
@@ -874,7 +877,7 @@ export function AdminPricingManagement() {
               </div>
               <div className="grid grid-cols-2 gap-2">
                 <div>
-                  <Label className="text-xs">Mode</Label>
+                  <Label className="text-xs">{t("pricingModeCol")}</Label>
                   <Select
                     value={editingType.mode}
                     onValueChange={(val: any) => setEditingType({ ...editingType, mode: val })}
@@ -883,13 +886,13 @@ export function AdminPricingManagement() {
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="PERCENT">PERCENT (%)</SelectItem>
-                      <SelectItem value="FIXED">FIXED ($)</SelectItem>
+                      <SelectItem value="PERCENT">{t("pricingPercentMode")}</SelectItem>
+                      <SelectItem value="FIXED">{t("pricingFixedMode")}</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
                 <div>
-                  <Label className="text-xs">Priority</Label>
+                  <Label className="text-xs">{t("pricingPriorityCol")}</Label>
                   <Input
                     type="number"
                     value={editingType.priority}
@@ -899,7 +902,7 @@ export function AdminPricingManagement() {
                 </div>
               </div>
               <div>
-                <Label className="text-xs">Badge Color</Label>
+                <Label className="text-xs">{t("pricingBadgeColor")}</Label>
                 <div className="mt-1 flex items-center gap-2">
                   <input
                     type="color"
@@ -915,7 +918,7 @@ export function AdminPricingManagement() {
                 </div>
               </div>
               <div className="flex items-center justify-between pt-2">
-                <Label className="text-xs">Active</Label>
+                <Label className="text-xs">{t("pricingActiveCol")}</Label>
                 <Switch
                   checked={editingType.active}
                   onCheckedChange={(active) => setEditingType({ ...editingType, active })}
@@ -924,10 +927,10 @@ export function AdminPricingManagement() {
             </div>
             <DialogFooter>
               <Button variant="ghost" size="sm" onClick={() => setEditingType(null)}>
-                Cancel
+                {t("pricingCancelBtn")}
               </Button>
               <Button size="sm" onClick={handleUpdatePriceType} className="bg-slate-900 text-white">
-                Save Changes
+                {t("pricingSaveChangesBtn")}
               </Button>
             </DialogFooter>
           </DialogContent>
@@ -940,36 +943,36 @@ export function AdminPricingManagement() {
           <DialogContent className="sm:max-w-md">
             <DialogHeader>
               <DialogTitle>
-                Set Promo Price: {selectedVehicle.make} {selectedVehicle.model} ({selectedVehicle.year})
+                {t("pricingSetItemPromoTitle", { vehicle: `${selectedVehicle.make} ${selectedVehicle.model} (${selectedVehicle.year})` })}
               </DialogTitle>
             </DialogHeader>
             <div className="space-y-3 text-xs">
               <div className="rounded-lg bg-slate-50 p-2.5 flex items-center justify-between text-xs">
                 <div>
-                  <span className="text-slate-500">Base Price:</span>
+                  <span className="text-slate-500">{t("pricingBasePriceLabel")}</span>
                   <div className="font-bold text-slate-800">{formatUsd(selectedVehicle.priceUsd)}</div>
                 </div>
                 <div>
-                  <span className="text-slate-500">Floor Price:</span>
+                  <span className="text-slate-500">{t("pricingFloorPriceLabel")}</span>
                   <div className="font-bold text-amber-700">
-                    {selectedVehicle.floorPriceUsd ? formatUsd(selectedVehicle.floorPriceUsd) : "None"}
+                    {selectedVehicle.floorPriceUsd ? formatUsd(selectedVehicle.floorPriceUsd) : t("pricingNone")}
                   </div>
                 </div>
               </div>
 
               <div>
-                <Label className="text-xs">Price Type Tier</Label>
+                <Label className="text-xs">{t("pricingPromoTypeLabel")}</Label>
                 <Select
                   value={itemPriceForm.priceTypeId}
                   onValueChange={(val) => setItemPriceForm({ ...itemPriceForm, priceTypeId: val })}
                 >
                   <SelectTrigger className="mt-1 h-8.5 text-xs">
-                    <SelectValue placeholder="Choose Price Type" />
+                    <SelectValue placeholder={t("pricingSelectPromoType")} />
                   </SelectTrigger>
                   <SelectContent>
                     {priceTypes.map((pt) => (
                       <SelectItem key={pt.id} value={pt.id} className="text-xs">
-                        {pt.label} ({pt.mode === "PERCENT" ? "% Discount" : "Fixed $ Price"})
+                        {getPromoTierLabel(pt, locale)} ({pt.mode === "PERCENT" ? t("pricingPercentMode") : t("pricingFixedMode")})
                       </SelectItem>
                     ))}
                   </SelectContent>
@@ -977,10 +980,10 @@ export function AdminPricingManagement() {
               </div>
 
               <div>
-                <Label className="text-xs">Promotional Value</Label>
+                <Label className="text-xs">{t("pricingPromotionalValue")}</Label>
                 <Input
                   type="number"
-                  placeholder="e.g. 15 for 15% off, or 21000 for fixed $21,000"
+                  placeholder={t("pricingPromoValPlaceholder")}
                   value={itemPriceForm.value}
                   onChange={(e) => setItemPriceForm({ ...itemPriceForm, value: e.target.value })}
                   className="mt-1 h-8.5 text-xs"
@@ -989,7 +992,7 @@ export function AdminPricingManagement() {
 
               <div className="grid grid-cols-2 gap-2">
                 <div>
-                  <Label className="text-xs">Start Date</Label>
+                  <Label className="text-xs">{t("pricingStartDate")}</Label>
                   <Input
                     type="date"
                     value={itemPriceForm.startDate}
@@ -998,7 +1001,7 @@ export function AdminPricingManagement() {
                   />
                 </div>
                 <div>
-                  <Label className="text-xs">End Date</Label>
+                  <Label className="text-xs">{t("pricingEndDate")}</Label>
                   <Input
                     type="date"
                     value={itemPriceForm.endDate}
@@ -1009,7 +1012,7 @@ export function AdminPricingManagement() {
               </div>
 
               <div className="flex items-center justify-between pt-1">
-                <Label className="text-xs">Active Immediately</Label>
+                <Label className="text-xs">{t("pricingActiveImmediately")}</Label>
                 <Switch
                   checked={itemPriceForm.active}
                   onCheckedChange={(active) => setItemPriceForm({ ...itemPriceForm, active })}
@@ -1018,10 +1021,10 @@ export function AdminPricingManagement() {
             </div>
             <DialogFooter>
               <Button variant="ghost" size="sm" onClick={() => setSelectedVehicle(null)}>
-                Cancel
+                {t("pricingCancelBtn")}
               </Button>
               <Button size="sm" onClick={handleSaveItemPrice} className="bg-slate-900 text-white">
-                Save Price
+                {t("pricingSavePriceBtn")}
               </Button>
             </DialogFooter>
           </DialogContent>

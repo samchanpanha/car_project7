@@ -91,7 +91,7 @@ export function DealerBranches() {
   const canAddMore = data?.canAddMore ?? false;
 
   const goToUpgrade = () => {
-    toast.info("Please upgrade to PRO or ENTERPRISE to enable multiple showroom branches.");
+    toast.info(t("branchUpgradeRequiredToast"));
     navigate({ name: "dashboard", tab: "subscription" });
   };
 
@@ -127,7 +127,7 @@ export function DealerBranches() {
 
   const saveBranch = async () => {
     if (!form.name.trim() || !form.address.trim()) {
-      toast.warning("Please provide both branch name and address");
+      toast.warning(t("branchProvideNameAndAddressToast"));
       return;
     }
 
@@ -146,7 +146,7 @@ export function DealerBranches() {
           imageUrl: form.imageUrl.trim() || null,
           isMain: form.isMain,
         });
-        toast.success("Branch updated successfully");
+        toast.success(t("branchUpdatedToast"));
       } else {
         await apiSend("/api/tenant/branches", "POST", {
           name: form.name.trim(),
@@ -160,7 +160,7 @@ export function DealerBranches() {
           imageUrl: form.imageUrl.trim() || null,
           isMain: form.isMain,
         });
-        toast.success("Branch created successfully");
+        toast.success(t("branchCreatedToast"));
       }
       setDialogOpen(false);
       refetch();
@@ -169,7 +169,7 @@ export function DealerBranches() {
         setDialogOpen(false);
         goToUpgrade();
       } else {
-        toast.error(e instanceof Error ? e.message : "Failed to save branch");
+        toast.error(e instanceof Error ? e.message : t("branchFailedSave"));
       }
     } finally {
       setSubmitting(false);
@@ -180,24 +180,24 @@ export function DealerBranches() {
     setBusyId(branchId);
     try {
       await apiSend(`/api/tenant/branches/${branchId}`, "PATCH", { isMain: true });
-      toast.success("Main showroom branch updated");
+      toast.success(t("branchMainUpdatedToast"));
       refetch();
     } catch (e: any) {
-      toast.error(e instanceof Error ? e.message : "Failed to set main branch");
+      toast.error(e instanceof Error ? e.message : t("branchFailedSetMain"));
     } finally {
       setBusyId(null);
     }
   };
 
   const deleteBranch = async (branchId: string) => {
-    if (!confirm("Are you sure you want to delete this branch? Vehicles assigned to it will remain in stock.")) return;
+    if (!confirm(t("branchConfirmDelete"))) return;
     setBusyId(branchId);
     try {
       await apiSend(`/api/tenant/branches/${branchId}`, "DELETE");
-      toast.success("Branch removed");
+      toast.success(t("branchRemovedToast"));
       refetch();
     } catch (e: any) {
-      toast.error(e instanceof Error ? e.message : "Failed to delete branch");
+      toast.error(e instanceof Error ? e.message : t("branchFailedDelete"));
     } finally {
       setBusyId(null);
     }
@@ -277,20 +277,18 @@ export function DealerBranches() {
         </div>
       ) : error && !data ? (
         <div className="rounded-xl border border-rose-200 bg-rose-50 p-4 text-xs text-rose-800">
-          <p className="font-semibold">Failed to load showroom branches</p>
+          <p className="font-semibold">{t("branchFailedLoad")}</p>
           <p className="mt-1">{error}</p>
           <Button variant="outline" size="sm" onClick={refetch} className="mt-2 text-xs">
-            Retry
+            {t("analyticsRetry")}
           </Button>
         </div>
       ) : branches.length === 0 ? (
         <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-slate-300 bg-white p-10 text-center">
           <Building2 className="h-10 w-10 text-slate-300 mb-2" />
-          <h4 className="text-sm font-bold text-slate-800">No Branches Registered Yet</h4>
+          <h4 className="text-sm font-bold text-slate-800">{t("branchNoRegistered")}</h4>
           <p className="text-xs text-slate-500 max-w-sm mt-1">
-            {isPro
-              ? "Register your dealership branches so buyers can find your showrooms and physical stock."
-              : "Showroom branches are available on Pro and Enterprise plans. Upgrade your plan to add showroom locations."}
+            {isPro ? t("branchNoRegisteredDescPro") : t("branchNoRegisteredDescFree")}
           </p>
           {isPro ? (
             <Button
@@ -298,7 +296,7 @@ export function DealerBranches() {
               className="mt-4 bg-amber-500 text-slate-950 font-semibold text-xs"
             >
               <Plus className="h-4 w-4 mr-1.5" />
-              Add Branch
+              {t("branchAddBtn")}
             </Button>
           ) : (
             <Button
@@ -306,7 +304,7 @@ export function DealerBranches() {
               className="mt-4 bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs gap-1.5"
             >
               <Crown className="h-4 w-4" />
-              Upgrade to Pro Plan
+              {t("branchUpgradeProBtn")}
             </Button>
           )}
         </div>
@@ -333,7 +331,7 @@ export function DealerBranches() {
                   {b.isMain && (
                     <span className="absolute left-2.5 top-2.5 flex items-center gap-1 rounded-full bg-amber-500 px-2 py-0.5 text-[10px] font-bold text-slate-950 shadow-xs">
                       <Star className="h-3 w-3 fill-slate-950" />
-                      Main Showroom
+                      {t("branchMainShowroomBadge")}
                     </span>
                   )}
                 </div>
@@ -360,16 +358,16 @@ export function DealerBranches() {
                       </Button>
                     </DropdownMenuTrigger>
                     <DropdownMenuContent align="end" className="w-44 text-xs">
-                      <DropdownMenuLabel className="text-[11px]">Branch Options</DropdownMenuLabel>
+                      <DropdownMenuLabel className="text-[11px]">{t("branchOptions")}</DropdownMenuLabel>
                       <DropdownMenuSeparator />
                       <DropdownMenuItem onClick={() => openEditDialog(b)}>
                         <Edit2 className="h-3.5 w-3.5 mr-2" />
-                        Edit Details
+                        {t("branchEditDetails")}
                       </DropdownMenuItem>
                       {!b.isMain && (
                         <DropdownMenuItem onClick={() => setMainBranch(b.id)}>
                           <Star className="h-3.5 w-3.5 mr-2" />
-                          Set as Main Branch
+                          {t("branchSetMain")}
                         </DropdownMenuItem>
                       )}
                       <DropdownMenuSeparator />
@@ -378,7 +376,7 @@ export function DealerBranches() {
                         className="text-rose-600 focus:text-rose-600 focus:bg-rose-50"
                       >
                         <Trash2 className="h-3.5 w-3.5 mr-2" />
-                        Delete Branch
+                        {t("branchDelete")}
                       </DropdownMenuItem>
                     </DropdownMenuContent>
                   </DropdownMenu>
@@ -416,13 +414,13 @@ export function DealerBranches() {
               <div className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between text-xs">
                 <span className="flex items-center gap-1 font-semibold text-slate-700">
                   <Car className="h-3.5 w-3.5 text-amber-600" />
-                  {b.vehicleCount || 0} cars in stock
+                  {t("branchCarsInStock", { count: b.vehicleCount || 0 })}
                 </span>
                 <span className="text-[11px] text-slate-400">
                   {b.status === "ACTIVE" ? (
-                    <span className="text-emerald-700 font-medium">● Active</span>
+                    <span className="text-emerald-700 font-medium">● {t("branchStatusActive")}</span>
                   ) : (
-                    <span className="text-slate-400">● Inactive</span>
+                    <span className="text-slate-400">● {t("branchStatusInactive")}</span>
                   )}
                 </span>
               </div>
@@ -437,13 +435,13 @@ export function DealerBranches() {
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2 text-base">
               <Building2 className="h-4 w-4 text-amber-600" />
-              {editingBranch ? "Edit Showroom Branch" : "Add New Showroom Branch"}
+              {editingBranch ? t("branchModalTitleEdit") : t("branchModalTitleCreate")}
             </DialogTitle>
           </DialogHeader>
 
           <div className="space-y-3.5 py-2">
             <div>
-              <Label className="text-xs">Branch Name (English) *</Label>
+              <Label className="text-xs">{t("branchFieldNameEn")}</Label>
               <Input
                 value={form.name}
                 onChange={(e) => setForm({ ...form, name: e.target.value })}
@@ -453,7 +451,7 @@ export function DealerBranches() {
             </div>
 
             <div>
-              <Label className="text-xs">Branch Name (Khmer)</Label>
+              <Label className="text-xs">{t("branchFieldNameKm")}</Label>
               <Input
                 value={form.nameKm}
                 onChange={(e) => setForm({ ...form, nameKm: e.target.value })}
@@ -464,7 +462,7 @@ export function DealerBranches() {
 
             <div className="grid grid-cols-2 gap-2">
               <div>
-                <Label className="text-xs">City / Province *</Label>
+                <Label className="text-xs">{t("branchFieldCity")}</Label>
                 <Input
                   value={form.city}
                   onChange={(e) => setForm({ ...form, city: e.target.value })}
@@ -473,7 +471,7 @@ export function DealerBranches() {
                 />
               </div>
               <div>
-                <Label className="text-xs">District / Khan</Label>
+                <Label className="text-xs">{t("branchFieldDistrict")}</Label>
                 <Input
                   value={form.district}
                   onChange={(e) => setForm({ ...form, district: e.target.value })}
@@ -484,7 +482,7 @@ export function DealerBranches() {
             </div>
 
             <div>
-              <Label className="text-xs">Full Physical Address *</Label>
+              <Label className="text-xs">{t("branchFieldAddress")}</Label>
               <Input
                 value={form.address}
                 onChange={(e) => setForm({ ...form, address: e.target.value })}
@@ -495,7 +493,7 @@ export function DealerBranches() {
 
             <div className="grid grid-cols-2 gap-2">
               <div>
-                <Label className="text-xs">Branch Phone</Label>
+                <Label className="text-xs">{t("branchFieldPhone")}</Label>
                 <Input
                   value={form.phone}
                   onChange={(e) => setForm({ ...form, phone: e.target.value })}
@@ -504,7 +502,7 @@ export function DealerBranches() {
                 />
               </div>
               <div>
-                <Label className="text-xs">Telegram Username</Label>
+                <Label className="text-xs">{t("branchFieldTelegram")}</Label>
                 <Input
                   value={form.telegram}
                   onChange={(e) => setForm({ ...form, telegram: e.target.value })}
@@ -515,7 +513,7 @@ export function DealerBranches() {
             </div>
 
             <div>
-              <Label className="text-xs">Opening Hours</Label>
+              <Label className="text-xs">{t("branchFieldHours")}</Label>
               <Input
                 value={form.openingHours}
                 onChange={(e) => setForm({ ...form, openingHours: e.target.value })}
@@ -525,7 +523,7 @@ export function DealerBranches() {
             </div>
 
             <div>
-              <Label className="text-xs">Showroom Photo URL</Label>
+              <Label className="text-xs">{t("branchFieldPhotoUrl")}</Label>
               <Input
                 value={form.imageUrl}
                 onChange={(e) => setForm({ ...form, imageUrl: e.target.value })}
@@ -543,7 +541,7 @@ export function DealerBranches() {
                 className="h-4 w-4 rounded border-slate-300 text-amber-500 focus:ring-amber-400"
               />
               <label htmlFor="isMainBranchCheck" className="text-xs font-medium text-slate-700">
-                Set as Primary / Main Showroom
+                {t("branchFieldIsMain")}
               </label>
             </div>
           </div>
@@ -556,7 +554,7 @@ export function DealerBranches() {
               disabled={submitting}
               className="text-xs"
             >
-              Cancel
+              {t("pricingCancelBtn")}
             </Button>
             <Button
               size="sm"
@@ -565,7 +563,7 @@ export function DealerBranches() {
               className="bg-amber-500 hover:bg-amber-400 text-slate-950 font-semibold text-xs"
             >
               {submitting ? <Loader2 className="h-4 w-4 animate-spin mr-1.5" /> : null}
-              {editingBranch ? "Save Changes" : "Create Branch"}
+              {editingBranch ? t("branchSaveBtn") : t("branchCreateBtn")}
             </Button>
           </DialogFooter>
         </DialogContent>

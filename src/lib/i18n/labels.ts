@@ -61,3 +61,22 @@ export const drivetrainLabels: Record<string, Record<Locale, string>> = {
   AWD: { en: "AWD", km: "គង់គ្រប់កង់", zh: "全轮驱动", vi: "Hai cầu (AWD)" },
   "4WD": { en: "4WD", km: "៤កង់", zh: "四驱", vi: "4WD" },
 };
+
+export const promoTierLabels: Record<string, Record<Locale, string>> = {
+  HOT_PRICE: { en: "Hot Price", km: "តម្លៃពិសេស (Hot Price)", zh: "热销特价", vi: "Giá sốc" },
+  PROMOTE_PRICE: { en: "Promote Price", km: "តម្លៃប្រូម៉ូសិន", zh: "促销特惠", vi: "Giá khuyến mãi" },
+  CLEARANCE: { en: "Clearance", km: "លក់ចេញរហ័ស (Clearance)", zh: "清仓特卖", vi: "Xả kho thanh lý" },
+  FLASH_SALE: { en: "Flash Sale", km: "លក់បញ្ចុះតម្លៃរហ័ស (Flash Sale)", zh: "限时秒杀", vi: "Flash Sale" },
+  DISCOUNT_PRICE: { en: "Discount Price", km: "តម្លៃបញ្ចុះ", zh: "折扣特惠", vi: "Giá giảm sâu" },
+  WHOLESALE: { en: "Wholesale", km: "តម្លៃបោះដុំ", zh: "批发专享价", vi: "Giá bán buôn (Sỉ)" },
+  MEMBER: { en: "Member Special", km: "តម្លៃពិសេសសម្រាប់សមាជិក", zh: "会员专属价", vi: "Ưu đãi thành viên" },
+  BUNDLE: { en: "Bundle Deal", km: "កញ្ចប់លក់ពិសេស (Bundle)", zh: "组合套餐特惠", vi: "Gói combo ưu đãi" },
+};
+
+export function getPromoTierLabel(tier: { code?: string; label?: string } | null | undefined, locale: Locale): string {
+  if (!tier) return "";
+  if (tier.code && promoTierLabels[tier.code]?.[locale]) {
+    return promoTierLabels[tier.code][locale];
+  }
+  return tier.label || tier.code || "";
+}

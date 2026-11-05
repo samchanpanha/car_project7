@@ -341,7 +341,7 @@ export function SellerTelegram() {
                   size="sm"
                   onClick={() => {
                     refetch();
-                    toast.info("Checking Telegram connection status...");
+                    toast.info(t("tgCheckingStatusToast"));
                   }}
                   disabled={loading}
                   className="h-8 text-xs border-slate-200 text-slate-700 hover:bg-slate-100"

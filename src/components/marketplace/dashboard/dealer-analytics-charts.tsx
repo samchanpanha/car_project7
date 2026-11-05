@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useFetch } from "@/lib/client-hooks";
 import { formatUsd } from "@/lib/format";
+import { useT } from "@/hooks/use-t";
 import type { TenantAnalyticsDTO } from "@/lib/dashboard-types";
 import { SectionCard, StatCardSkeleton } from "./bits";
 import { Button } from "@/components/ui/button";
@@ -34,14 +35,15 @@ import {
 } from "lucide-react";
 
 const TIMEFRAMES = [
-  { label: "7 Days", value: 7 },
-  { label: "30 Days", value: 30 },
-  { label: "90 Days", value: 90 },
-];
+  { key: "analyticsTimeframe7d", value: 7 },
+  { key: "analyticsTimeframe30d", value: 30 },
+  { key: "analyticsTimeframe90d", value: 90 },
+] as const;
 
 const COLORS = ["#f59e0b", "#10b981", "#3b82f6", "#8b5cf6", "#ec4899", "#64748b"];
 
 export function DealerAnalyticsCharts() {
+  const t = useT();
   const [days, setDays] = useState(30);
   const { data, loading, error, refetch } = useFetch<TenantAnalyticsDTO>(
     `/api/tenant/analytics?days=${days}`,
@@ -63,10 +65,10 @@ export function DealerAnalyticsCharts() {
   if (error && !data) {
     return (
       <div className="rounded-xl border border-rose-200 bg-rose-50 p-4 text-xs text-rose-800">
-        <p className="font-semibold">Failed to load analytics</p>
+        <p className="font-semibold">{t("analyticsFailedLoad")}</p>
         <p className="mt-1">{error}</p>
         <Button variant="outline" size="sm" onClick={refetch} className="mt-2 text-xs">
-          Retry
+          {t("analyticsRetry")}
         </Button>
       </div>
     );
@@ -83,9 +85,9 @@ export function DealerAnalyticsCharts() {
         <div>
           <h3 className="text-sm font-bold text-slate-900 flex items-center gap-1.5">
             <TrendingUp className="h-4 w-4 text-amber-600" />
-            Performance & Inventory Analytics
+            {t("analyticsTitle")}
           </h3>
-          <p className="text-xs text-slate-500">Live operational overview, buyer inquiry trends, and asset value</p>
+          <p className="text-xs text-slate-500">{t("analyticsSubtitle")}</p>
         </div>
         <div className="flex items-center gap-1 rounded-lg border border-slate-200 bg-slate-100/70 p-1">
           {TIMEFRAMES.map((tf) => (
@@ -99,7 +101,7 @@ export function DealerAnalyticsCharts() {
                   : "text-slate-600 hover:text-slate-950"
               }`}
             >
-              {tf.label}
+              {t(tf.key)}
             </button>
           ))}
         </div>
@@ -110,7 +112,7 @@ export function DealerAnalyticsCharts() {
         <div className="rounded-xl border border-amber-200/80 bg-gradient-to-br from-amber-50/70 to-white p-3.5 shadow-2xs">
           <div className="flex items-center justify-between">
             <span className="text-[11px] font-semibold uppercase tracking-wider text-amber-800">
-              Inventory Value
+              {t("analyticsKpiInventoryValue")}
             </span>
             <DollarSign className="h-4 w-4 text-amber-600" />
           </div>
@@ -118,43 +120,45 @@ export function DealerAnalyticsCharts() {
             {formatUsd(summary.totalInventoryValue)}
           </p>
           <p className="mt-0.5 text-[11px] text-slate-500">
-            Avg {formatUsd(summary.avgPrice)} / car
+            {t("analyticsKpiAvgPerCar", { avg: formatUsd(summary.avgPrice) })}
           </p>
         </div>
 
         <div className="rounded-xl border border-emerald-200/80 bg-gradient-to-br from-emerald-50/70 to-white p-3.5 shadow-2xs">
           <div className="flex items-center justify-between">
             <span className="text-[11px] font-semibold uppercase tracking-wider text-emerald-800">
-              Inquiries (Leads)
+              {t("analyticsKpiInquiries")}
             </span>
             <MessageSquare className="h-4 w-4 text-emerald-600" />
           </div>
           <p className="mt-2 text-xl font-extrabold text-slate-950">{summary.totalLeads}</p>
           <p className="mt-0.5 text-[11px] text-emerald-700 font-medium">
-            {summary.conversionRate}% conversion rate
+            {t("analyticsKpiConversionRate", { rate: summary.conversionRate })}
           </p>
         </div>
 
         <div className="rounded-xl border border-sky-200/80 bg-gradient-to-br from-sky-50/70 to-white p-3.5 shadow-2xs">
           <div className="flex items-center justify-between">
             <span className="text-[11px] font-semibold uppercase tracking-wider text-sky-800">
-              Total Car Views
+              {t("analyticsKpiTotalCarViews")}
             </span>
             <Eye className="h-4 w-4 text-sky-600" />
           </div>
           <p className="mt-2 text-xl font-extrabold text-slate-950">{summary.totalViews.toLocaleString()}</p>
-          <p className="mt-0.5 text-[11px] text-slate-500">Across {summary.totalListings} listings</p>
+          <p className="mt-0.5 text-[11px] text-slate-500">
+            {t("analyticsKpiAcrossListings", { count: summary.totalListings })}
+          </p>
         </div>
 
         <div className="rounded-xl border border-violet-200/80 bg-gradient-to-br from-violet-50/70 to-white p-3.5 shadow-2xs">
           <div className="flex items-center justify-between">
             <span className="text-[11px] font-semibold uppercase tracking-wider text-violet-800">
-              Appointments
+              {t("analyticsKpiAppointments")}
             </span>
             <CalendarCheck className="h-4 w-4 text-violet-600" />
           </div>
           <p className="mt-2 text-xl font-extrabold text-slate-950">{summary.appointmentCount}</p>
-          <p className="mt-0.5 text-[11px] text-slate-500">Confirmed & requested</p>
+          <p className="mt-0.5 text-[11px] text-slate-500">{t("analyticsKpiApptConfirmed")}</p>
         </div>
       </div>
 
@@ -162,34 +166,47 @@ export function DealerAnalyticsCharts() {
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
         <div className="rounded-xl border border-rose-200/80 bg-gradient-to-br from-rose-50/70 to-white p-3.5 shadow-2xs">
           <div className="flex items-center justify-between">
-            <span className="text-[11px] font-semibold uppercase tracking-wider text-rose-800">Pending Appointments</span>
+            <span className="text-[11px] font-semibold uppercase tracking-wider text-rose-800">
+              {t("analyticsKpiPendingAppts")}
+            </span>
           </div>
           <p className="mt-2 text-xl font-extrabold text-slate-950">{summary.pendingAppointments ?? 0}</p>
-          <p className="mt-0.5 text-[11px] text-slate-500">Requested but not confirmed</p>
+          <p className="mt-0.5 text-[11px] text-slate-500">{t("analyticsKpiPendingApptsDesc")}</p>
         </div>
         <div className="rounded-xl border border-amber-200/80 bg-gradient-to-br from-amber-50/70 to-white p-3.5 shadow-2xs">
           <div className="flex items-center justify-between">
-            <span className="text-[11px] font-semibold uppercase tracking-wider text-amber-800">Stale Leads</span>
+            <span className="text-[11px] font-semibold uppercase tracking-wider text-amber-800">
+              {t("analyticsKpiStaleLeads")}
+            </span>
           </div>
           <p className="mt-2 text-xl font-extrabold text-slate-950">{summary.staleLeads ?? 0}</p>
-          <p className="mt-0.5 text-[11px] text-slate-500">Pending over 24 hours</p>
+          <p className="mt-0.5 text-[11px] text-slate-500">{t("analyticsKpiStaleLeadsDesc")}</p>
         </div>
         <div className="rounded-xl border border-sky-200/80 bg-gradient-to-br from-sky-50/70 to-white p-3.5 shadow-2xs">
           <div className="flex items-center justify-between">
-            <span className="text-[11px] font-semibold uppercase tracking-wider text-sky-800">Avg Response Time</span>
+            <span className="text-[11px] font-semibold uppercase tracking-wider text-sky-800">
+              {t("analyticsKpiAvgResponseTime")}
+            </span>
           </div>
-          <p className="mt-2 text-xl font-extrabold text-slate-950">{summary.avgResponseHours ?? 0} h</p>
-          <p className="mt-0.5 text-[11px] text-slate-500">Appointment update latency</p>
+          <p className="mt-2 text-xl font-extrabold text-slate-950">
+            {t("analyticsKpiAvgResponseHours", { hours: summary.avgResponseHours ?? 0 })}
+          </p>
+          <p className="mt-0.5 text-[11px] text-slate-500">{t("analyticsKpiResponseLatency")}</p>
         </div>
       </div>
 
       {data.staleLeadDetails && data.staleLeadDetails.length > 0 && (
         <div className="rounded-xl border border-slate-200 bg-white p-3 shadow-2xs">
-          <p className="text-xs font-bold text-slate-800 mb-2">Stale Lead Drill-down</p>
+          <p className="text-xs font-bold text-slate-800 mb-2">{t("analyticsStaleDrilldown")}</p>
           <ul className="space-y-1">
             {data.staleLeadDetails.map((lead) => (
               <li key={lead.id} className="text-xs text-slate-600">
-                {lead.type} #{lead.id.slice(-6)} on vehicle {lead.vehicleId.slice(-6)} – {lead.hoursPending}h pending
+                {t("analyticsStaleLeadPending", {
+                  type: lead.type,
+                  id: lead.id.slice(-6),
+                  vehicleId: lead.vehicleId.slice(-6),
+                  hours: lead.hoursPending,
+                })}
               </li>
             ))}
           </ul>
@@ -197,7 +214,7 @@ export function DealerAnalyticsCharts() {
       )}
 
       {/* Main Views & Leads Performance Chart */}
-      <SectionCard title={`Views & Buyer Inquiries Trend (Last ${days} Days)`}>
+      <SectionCard title={t("analyticsTrendTitle", { days })}>
         <div className="h-64 w-full pt-2">
           <ResponsiveContainer width="100%" height="100%">
             <AreaChart data={timeline} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
@@ -227,7 +244,7 @@ export function DealerAnalyticsCharts() {
               <Area
                 type="monotone"
                 dataKey="views"
-                name="Listing Views"
+                name={t("analyticsViewsSeries")}
                 stroke="#f59e0b"
                 strokeWidth={2}
                 fillOpacity={1}
@@ -236,7 +253,7 @@ export function DealerAnalyticsCharts() {
               <Area
                 type="monotone"
                 dataKey="leads"
-                name="Buyer Inquiries"
+                name={t("analyticsLeadsSeries")}
                 stroke="#10b981"
                 strokeWidth={2}
                 fillOpacity={1}
@@ -250,7 +267,7 @@ export function DealerAnalyticsCharts() {
       {/* Secondary charts: Status Breakdown & Body Types */}
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
         {/* Status Distribution */}
-        <SectionCard title="Inventory by Status & Asset Value">
+        <SectionCard title={t("analyticsStockByStatusTitle")}>
           <div className="h-56 w-full pt-1">
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={statusBreakdown} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
@@ -259,8 +276,8 @@ export function DealerAnalyticsCharts() {
                 <YAxis tickLine={false} axisLine={false} tick={{ fontSize: 10, fill: "#64748b" }} />
                 <Tooltip
                   formatter={(val: any, name: string) => [
-                    name === "count" ? `${val} cars` : formatUsd(Number(val)),
-                    name === "count" ? "Vehicle Count" : "Value",
+                    name === "count" ? t("analyticsCarsCount", { count: val }) : formatUsd(Number(val)),
+                    name === "count" ? t("analyticsVehicleCount") : t("analyticsValueLabel"),
                   ]}
                   contentStyle={{ backgroundColor: "#0f172a", borderRadius: "8px", border: "none", fontSize: "12px", color: "#fff" }}
                 />
@@ -278,7 +295,7 @@ export function DealerAnalyticsCharts() {
         </SectionCard>
 
         {/* Body Types Distribution */}
-        <SectionCard title="Stock by Vehicle Type">
+        <SectionCard title={t("analyticsStockByTypeTitle")}>
           <div className="h-56 w-full pt-1">
             <ResponsiveContainer width="100%" height="100%">
               <PieChart>
@@ -298,7 +315,7 @@ export function DealerAnalyticsCharts() {
                   ))}
                 </Pie>
                 <Tooltip
-                  formatter={(val: any) => [`${val} vehicles`, "Stock Count"]}
+                  formatter={(val: any) => [t("analyticsVehiclesTooltip", { count: val }), t("analyticsStockCountTooltip")]}
                   contentStyle={{ backgroundColor: "#0f172a", borderRadius: "8px", border: "none", fontSize: "12px", color: "#fff" }}
                 />
               </PieChart>
@@ -309,7 +326,7 @@ export function DealerAnalyticsCharts() {
 
       {/* Branch Performance Comparison (When Dealership Has Branches) */}
       {branchBreakdown && branchBreakdown.length > 0 && (
-        <SectionCard title="Showroom Branches Performance Comparison">
+        <SectionCard title={t("analyticsBranchCompTitle")}>
           <div className="h-56 w-full pt-1">
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={branchBreakdown} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
@@ -320,8 +337,8 @@ export function DealerAnalyticsCharts() {
                   contentStyle={{ backgroundColor: "#0f172a", borderRadius: "8px", border: "none", fontSize: "12px", color: "#fff" }}
                 />
                 <Legend verticalAlign="top" height={32} iconType="circle" wrapperStyle={{ fontSize: "12px" }} />
-                <Bar dataKey="count" name="Stock Count" fill="#3b82f6" radius={[4, 4, 0, 0]} />
-                <Bar dataKey="leads" name="Buyer Leads" fill="#10b981" radius={[4, 4, 0, 0]} />
+                <Bar dataKey="count" name={t("analyticsBranchStock")} fill="#3b82f6" radius={[4, 4, 0, 0]} />
+                <Bar dataKey="leads" name={t("analyticsBranchLeads")} fill="#10b981" radius={[4, 4, 0, 0]} />
               </BarChart>
             </ResponsiveContainer>
           </div>

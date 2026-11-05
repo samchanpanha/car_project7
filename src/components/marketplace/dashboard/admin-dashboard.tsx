@@ -77,7 +77,7 @@ export function AdminDashboard({ me }: { me: SessionDTO }) {
     { id: "overview", label: t("tabOverview"), icon: LayoutDashboard },
     { id: "tenants", label: t("tabTenants"), icon: Store },
     { id: "listings", label: t("tabListings"), icon: Car },
-    { id: "pricing", label: "Pricing & Promos", icon: DollarSign },
+    { id: "pricing", label: t("tabPricing"), icon: DollarSign },
     { id: "users", label: t("tabUsers"), icon: Users },
     { id: "payments", label: t("tabPayments"), icon: CreditCard },
     { id: "ai", label: t("tabAi"), icon: Sparkles },
@@ -1337,7 +1337,7 @@ function AdminPayments() {
     setBusyId(paymentId);
     try {
       await apiSend(`/api/admin/payments/${paymentId}`, "PATCH", { action: "send_telegram" });
-      toast.success("Card with [Approve] and [Reject] buttons sent to Telegram group!");
+      toast.success(t("adminTgCardSentSuccess"));
       refetch();
     } catch (e) {
       toast.error(errorText(e));
@@ -1362,7 +1362,7 @@ function AdminPayments() {
             )}
           >
             <Wallet className="h-4 w-4" />
-            Verification Queue
+            {t("adminSubTabQueue")}
           </button>
           <button
             type="button"
@@ -1375,7 +1375,7 @@ function AdminPayments() {
             )}
           >
             <Send className="h-4 w-4 text-sky-600" />
-            ABA PayWay Synced Transactions
+            {t("adminSubTabAba")}
           </button>
         </div>
       </div>
@@ -1720,6 +1720,7 @@ interface AbaResponseDTO {
 }
 
 function AdminAbaTransactionsView({ onVerified }: { onVerified?: () => void }) {
+  const t = useT();
   const [filter, setFilter] = useState<string>("ALL");
   const [selectedDay, setSelectedDay] = useState<string>("");
   const [search, setSearch] = useState<string>("");
@@ -1768,11 +1769,11 @@ function AdminAbaTransactionsView({ onVerified }: { onVerified?: () => void }) {
         rawMessage: ingestText.trim(),
       });
       if (res.isDuplicate) {
-        toast.info("Transaction received as duplicate! Deduplication protection applied.");
+        toast.info(t("adminTrxDuplicateToast"));
       } else if (res.isSameTimeCollision) {
-        toast.warning("Transaction saved with Same-Time Collision detected!");
+        toast.warning(t("adminTrxCollisionToast"));
       } else {
-        toast.success("Transaction parsed and recorded successfully!");
+        toast.success(t("adminTrxParsedToast"));
       }
       setIngestText("");
       setIngestOpen(false);
@@ -1800,7 +1801,7 @@ function AdminAbaTransactionsView({ onVerified }: { onVerified?: () => void }) {
   const copyToClipboard = async (text: string, label: string) => {
     try {
       await navigator.clipboard.writeText(text);
-      toast.success(`Copied ${label} to clipboard!`);
+      toast.success(t("adminCopiedToClipboard", { label }));
     } catch {
       toast.info(`${label}: ${text}`);
     }
@@ -1830,7 +1831,7 @@ function AdminAbaTransactionsView({ onVerified }: { onVerified?: () => void }) {
       const outcome = res.outcome;
       if (!res.success || !outcome) {
         const detail = outcome?.errors?.length ? outcome.errors.join("; ") : "Telegram sync failed.";
-        toast.error(`Telegram sync did not complete: ${detail}`);
+        toast.error(t("adminTgSyncIncomplete", { detail }));
         refetch();
         pendingPayments.refetch();
         return;
@@ -1838,7 +1839,7 @@ function AdminAbaTransactionsView({ onVerified }: { onVerified?: () => void }) {
 
       const syncErrors = outcome.errors ?? [];
       if (syncErrors.length > 0) {
-        toast.error(`Telegram sync reported errors: ${syncErrors.join("; ")}`, { duration: 10000 });
+        toast.error(t("adminTgSyncErrors", { errors: syncErrors.join("; ") }), { duration: 10000 });
         refetch();
         pendingPayments.refetch();
         return;
@@ -1937,7 +1938,7 @@ function AdminAbaTransactionsView({ onVerified }: { onVerified?: () => void }) {
         transactionId: txId,
         subscriptionPaymentId: paymentId,
       });
-      toast.success("Transaction matched and subscription activated!");
+      toast.success(t("adminTrxMatchedSubActive"));
       setMatchingTx(null);
       refetch();
       pendingPayments.refetch();
@@ -2287,12 +2288,12 @@ function AdminAbaTransactionsView({ onVerified }: { onVerified?: () => void }) {
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex flex-wrap items-center gap-1.5">
           {[
-            { id: "ALL", label: "All Transactions" },
-            { id: "UNMATCHED", label: `Unmatched (${summary?.unmatchedCount ?? 0})` },
-            { id: "UNDERPAID", label: `⚠️ Underpaid (${summary?.underpaidCount ?? 0})` },
-            { id: "MATCHED", label: `Matched (${summary?.matchedCount ?? 0})` },
-            { id: "COLLISIONS", label: `⚠️ Conflicts (${summary?.collisionCount ?? 0})` },
-            { id: "DUPLICATES", label: `🔁 Duplicates (${summary?.duplicateCount ?? 0})` },
+            { id: "ALL", label: t("abaFilterAll") },
+            { id: "UNMATCHED", label: t("abaFilterUnmatched", { count: summary?.unmatchedCount ?? 0 }) },
+            { id: "UNDERPAID", label: t("abaFilterUnderpaid", { count: summary?.underpaidCount ?? 0 }) },
+            { id: "MATCHED", label: t("abaFilterMatched", { count: summary?.matchedCount ?? 0 }) },
+            { id: "COLLISIONS", label: t("abaFilterConflicts", { count: summary?.collisionCount ?? 0 }) },
+            { id: "DUPLICATES", label: t("abaFilterDuplicates", { count: summary?.duplicateCount ?? 0 }) },
           ].map((st) => (
             <button
               key={st.id}
@@ -3410,7 +3411,7 @@ function AdminPlanPricing() {
         priceKhrYearly: y,
       },
     });
-    toast.success(`Calculated KHR for ${plan}: ៛${m.toLocaleString()} / ៛${y.toLocaleString()}`);
+    toast.success(t("adminKhrCalculated", { plan, m: m.toLocaleString(), y: y.toLocaleString() }));
   };
 
   const autoCalcAllKhr = () => {
@@ -3425,7 +3426,7 @@ function AdminPlanPricing() {
       };
     }
     setForm(updated);
-    toast.success(`Synced all plans with exchange rate $1 = ${khrRate.toLocaleString()} ៛`);
+    toast.success(t("adminRateSynced", { rate: khrRate.toLocaleString() }));
   };
 
   if (loading && !data) return <Skeleton className="h-64 w-full rounded-xl" />;
@@ -3735,7 +3736,7 @@ function AdminStorageResilience() {
       }>("/api/admin/storage/test-connection", "POST");
       setTestResult(res);
       if (res.success) {
-        toast.success(`Cloudflare R2 ping successful (${res.latencyMs}ms)`);
+        toast.success(t("adminR2PingSuccess", { latency: res.latencyMs }));
       } else {
         toast.error(`R2 test failed: ${res.error || "Unknown error"}`);
       }
@@ -3755,7 +3756,7 @@ function AdminStorageResilience() {
         "POST"
       );
       if (res.failed > 0) {
-        toast.warning(`Synced ${res.synced} files, but ${res.failed} failed: ${res.errors.join(", ")}`);
+        toast.warning(t("adminR2SyncPartial", { synced: res.synced, failed: res.failed, errors: res.errors.join(", ") }));
       } else {
         toast.success(t("syncSuccess", { n: res.synced }));
       }
@@ -3983,9 +3984,9 @@ function AdminNacosConfigCard() {
     try {
       const res = await apiSend<{ published: string[]; errors: string[] }>("/api/admin/nacos/sync", "POST");
       if (res.errors.length > 0) {
-        toast.warning(`Published ${res.published.length} configs, but encountered errors: ${res.errors.join(", ")}`);
+        toast.warning(t("adminNacosPublishErrors", { count: res.published.length, errors: res.errors.join(", ") }));
       } else {
-        toast.success(`Successfully published ${res.published.length} modular configurations to Nacos!`);
+        toast.success(t("adminNacosPublishSuccess", { count: res.published.length }));
       }
       refetch();
     } catch (e) {
