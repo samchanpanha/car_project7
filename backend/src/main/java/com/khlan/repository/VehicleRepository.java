@@ -29,6 +29,11 @@ public interface VehicleRepository extends JpaRepository<VehicleEntity, String>,
     @org.springframework.data.jpa.repository.Query("SELECT MIN(v.year), MAX(v.year) FROM VehicleEntity v WHERE v.status = 'PUBLISHED'")
     List<Object[]> findYearMinMax();
 
+    /** Comparable published listings for the same make/model across a year band
+     *  (used by the AI report price-vs-market check). */
+    List<VehicleEntity> findByStatusAndMakeIgnoreCaseAndModelIgnoreCaseAndYearBetween(
+            String status, String make, String model, int yearMin, int yearMax);
+
     long countByTenantIdAndStatus(String tenantId, String status);
     long countByTenantIdAndStatusIn(String tenantId, List<String> statuses);
     long countByTenantIdAndFeaturedTrue(String tenantId);

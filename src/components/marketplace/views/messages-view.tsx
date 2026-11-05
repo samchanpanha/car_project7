@@ -55,14 +55,14 @@ export function MessagesView({ conversationId }: { conversationId?: string }) {
               onClick={() => setFilter("ALL")}
               className={cn("flex-1 py-1 rounded-lg transition-colors cursor-pointer text-center", filter === "ALL" ? "bg-white text-slate-900 shadow-xs" : "text-slate-500 hover:text-slate-800")}
             >
-              All ({conversations.length})
+              {t("messageTabAll")} ({conversations.length})
             </button>
             <button
               type="button"
               onClick={() => setFilter("SELLER")}
               className={cn("flex-1 py-1 rounded-lg transition-colors cursor-pointer text-center flex items-center justify-center gap-1", filter === "SELLER" ? "bg-white text-amber-900 shadow-xs" : "text-slate-500 hover:text-slate-800")}
             >
-              <span>Selling</span>
+              <span>{t("messageTabSelling")}</span>
               <span className="rounded-full bg-amber-100 text-amber-800 text-[10px] px-1.5 font-bold">{sellerCount}</span>
             </button>
             <button
@@ -70,7 +70,7 @@ export function MessagesView({ conversationId }: { conversationId?: string }) {
               onClick={() => setFilter("BUYER")}
               className={cn("flex-1 py-1 rounded-lg transition-colors cursor-pointer text-center flex items-center justify-center gap-1", filter === "BUYER" ? "bg-white text-sky-900 shadow-xs" : "text-slate-500 hover:text-slate-800")}
             >
-              <span>Buying</span>
+              <span>{t("messageTabBuying")}</span>
               <span className="rounded-full bg-sky-100 text-sky-800 text-[10px] px-1.5 font-bold">{buyerCount}</span>
             </button>
           </div>
@@ -123,7 +123,7 @@ export function MessagesView({ conversationId }: { conversationId?: string }) {
                           "text-[9px] font-extrabold uppercase px-1.5 py-0.5 rounded shrink-0",
                           c.role === "SELLER" ? "bg-amber-100 text-amber-800 border border-amber-200" : "bg-sky-100 text-sky-800 border border-sky-200"
                         )}>
-                          {c.role === "SELLER" ? "Selling" : "Buying"}
+                          {c.role === "SELLER" ? t("messageTabSelling") : t("messageTabBuying")}
                         </span>
                       </span>
                       <span className="block truncate text-[11px] text-slate-500 mt-0.5">
@@ -170,10 +170,22 @@ function Thread({ conversationId, onBack }: { conversationId: string; onBack: ()
   const [sending, setSending] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
 
-  // Auto-poll every 3 seconds for fresh incoming messages
+  // Auto-poll every 3 seconds for fresh incoming messages. Polling pauses while
+  // the tab is hidden (saves battery/data on slow mobile networks) and an
+  // immediate refetch fires when the user returns to the tab.
   useEffect(() => {
-    const id = setInterval(refetch, 3000);
-    return () => clearInterval(id);
+    const poll = () => {
+      if (document.visibilityState === "visible") refetch();
+    };
+    const id = setInterval(poll, 3000);
+    const onVis = () => {
+      if (document.visibilityState === "visible") refetch();
+    };
+    document.addEventListener("visibilitychange", onVis);
+    return () => {
+      clearInterval(id);
+      document.removeEventListener("visibilitychange", onVis);
+    };
   }, [refetch]);
 
   const messages: MessageDTO[] = data?.conversation.messages ?? [];

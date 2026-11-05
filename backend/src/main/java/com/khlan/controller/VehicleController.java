@@ -11,6 +11,7 @@ import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 
@@ -101,6 +102,7 @@ public class VehicleController {
 
     @Operation(summary = "Create a new vehicle listing with images and paperwork")
     @PostMapping
+    @PreAuthorize("isAuthenticated()")
     public ResponseEntity<Map<String, Object>> createVehicle(
             @Valid @RequestBody VehicleDTO.CreateVehicleRequest req,
             @AuthenticationPrincipal UserEntity seller
@@ -114,6 +116,7 @@ public class VehicleController {
 
     @Operation(summary = "Update an existing vehicle listing")
     @RequestMapping(value = "/{id}", method = {RequestMethod.PUT, RequestMethod.PATCH})
+    @PreAuthorize("isAuthenticated()")
     public ResponseEntity<Map<String, Object>> updateVehicle(
             @PathVariable String id,
             @RequestBody VehicleDTO.UpdateVehicleRequest req,
@@ -125,6 +128,7 @@ public class VehicleController {
 
     @Operation(summary = "Archive/delete a vehicle listing")
     @DeleteMapping("/{id}")
+    @PreAuthorize("isAuthenticated()")
     public ResponseEntity<Map<String, Object>> deleteVehicle(
             @PathVariable String id,
             @AuthenticationPrincipal UserEntity actor
@@ -142,6 +146,7 @@ public class VehicleController {
 
     @Operation(summary = "Run AI evaluation and generate bilingual Vehicle History Report")
     @PostMapping("/{id}/report")
+    @PreAuthorize("isAuthenticated()")
     public ResponseEntity<Map<String, Object>> generateVehicleReport(
             @PathVariable String id,
             @AuthenticationPrincipal UserEntity user

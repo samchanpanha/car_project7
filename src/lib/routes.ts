@@ -81,6 +81,17 @@ export function viewToPath(view: View): string {
       return tab ? `/guide?tab=${encodeURIComponent(tab)}` : "/guide";
     }
 
+    case "trust":
+      return "/trust";
+
+    case "financing": {
+      const price = view.price && view.price > 0 ? view.price : undefined;
+      return price ? `/financing?price=${price}` : "/financing";
+    }
+
+    case "ev":
+      return "/ev";
+
     default:
       return "/";
   }
@@ -163,6 +174,15 @@ export function pathToView(pathname: string, search: string | URLSearchParams = 
         : undefined,
     };
   }
+
+  if (path === "/trust") return { name: "trust" };
+
+  if (path === "/financing") {
+    const p = Number(pick("price"));
+    return { name: "financing", price: Number.isFinite(p) && p > 0 ? p : undefined };
+  }
+
+  if (path === "/ev") return { name: "ev" };
 
   return { name: "home" };
 }

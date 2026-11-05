@@ -126,6 +126,13 @@ public class VehicleEntity {
     @Column(name = "import_origin", length = 32)
     private String importOrigin;
 
+    @Column(name = "video_url", length = 600)
+    private String videoUrl;
+
+    @Column(name = "certified")
+    @Builder.Default
+    private Boolean certified = false;
+
     @Column(name = "listing_category", nullable = false, length = 32)
     @Builder.Default
     private String listingCategory = "CAR";

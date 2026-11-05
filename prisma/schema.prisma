@@ -406,12 +406,14 @@ model Vehicle {
   descriptionKm   String? @map("description_km")
   status          String @default("PUBLISHED") // DRAFT | PENDING_REVIEW | PUBLISHED | REJECTED | SOLD | ARCHIVED
   featured        Boolean @default(false)
+  certified       Boolean @default(false) // certified pre-owned (verified sellers only)
   views           Int @default(0)
   vinLast6        String? @map("vin_last6") // only last 6 chars stored for privacy
   plateNo         String? @map("plate_no")
   ownershipCount  Int? @map("ownership_count")
   accidentDeclared String @default("UNKNOWN") @map("accident_declared") // NONE_DECLARED | MINOR_DECLARED | MAJOR_DECLARED | UNKNOWN
   importOrigin    String? @map("import_origin") // USA | KOREA | JAPAN | THAILAND | DUBAI | LOCAL
+  videoUrl        String? @map("video_url") // optional walkaround/tour video (YouTube / Cloudflare Stream etc.)
   listingCategory String @default("CAR") @map("listing_category") // CAR | MOTOR | SPARE_PART
   partCategory    String? @map("part_category") // TIRES_WHEELS | BRAKES_SUSPENSION | BATTERY_ELECTRICAL | ENGINE_TRANSMISSION | LIGHTS_BULBS | BODY_MIRRORS | OILS_LUBRICANTS | ACCESSORIES
   partTarget      String? @map("part_target") // CAR | MOTOR | UNIVERSAL

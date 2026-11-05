@@ -36,18 +36,16 @@ import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { errorText } from "@/components/marketplace/dashboard/bits";
 import { CategoryFilterTabs, type FilterState } from "@/components/marketplace/category-filter-tabs";
-
-const BODY_TYPES = ["SUV", "SEDAN", "PICKUP", "VAN", "HATCHBACK", "COUPE"];
-const MOTOR_BODY_TYPES = ["SCOOTER", "CUB", "SPORT", "CRUISER", "DIRT", "ELECTRIC", "OTHER"];
-const PART_TARGETS = ["CAR", "MOTOR", "UNIVERSAL"];
-const PART_CATEGORIES = [
-  "ENGINE", "TRANSMISSION", "BRAKES", "SUSPENSION", "TIRES_WHEELS",
-  "ELECTRICAL", "BODY_LIGHTS", "INTERIOR", "ACCESSORIES", "OILS_FLUIDS", "EXHAUST", "OTHER"
-];
-const FUELS = ["PETROL", "DIESEL", "HYBRID", "ELECTRIC"];
-const TRANSMISSIONS = ["AUTOMATIC", "MANUAL"];
-const DRIVETRAINS = ["FWD", "RWD", "AWD"];
-const CONDITIONS = ["LIKE_NEW", "USED"];
+import {
+  BODY_TYPES,
+  MOTOR_BODY_TYPES,
+  PART_TARGETS,
+  PART_CATEGORIES,
+  FUELS,
+  TRANSMISSIONS,
+  DRIVETRAINS,
+  CONDITIONS,
+} from "@/lib/filters";
 
 export interface BrowseFilters {
   category: "ALL" | "CAR" | "MOTOR" | "SPARE_PART";
@@ -671,6 +669,7 @@ export function BrowseView({
   const [advSheetOpen, setAdvSheetOpen] = useState(false); // mobile bottom sheet
   const [saveOpen, setSaveOpen] = useState(false);
   const [saveName, setSaveName] = useState("");
+  const [saveAlerts, setSaveAlerts] = useState(true);
   const [savingSearch, setSavingSearch] = useState(false);
 
   const query = useMemo(() => {
@@ -795,10 +794,11 @@ export function BrowseView({
     if (!saveName.trim()) return;
     setSavingSearch(true);
     try {
-      await apiSend("/api/account/saved-searches", "POST", { name: saveName.trim(), query: saveQuery });
+      await apiSend("/api/account/saved-searches", "POST", { name: saveName.trim(), query: saveQuery, alertsEnabled: saveAlerts });
       toast.success(t("toastSearchSaved"));
       setSaveOpen(false);
       setSaveName("");
+      setSaveAlerts(true);
     } catch (e) {
       toast.error(errorText(e));
     } finally {
@@ -1109,6 +1109,18 @@ export function BrowseView({
           <div>
             <Label htmlFor="ss-name" className="text-xs text-slate-500">{t("saveSearchNameLabel")}</Label>
             <Input id="ss-name" value={saveName} onChange={(e) => setSaveName(e.target.value)} className="mt-1.5 h-9" autoFocus />
+          </div>
+          <div className="flex items-start justify-between gap-3 rounded-lg border border-slate-200 bg-slate-50/70 p-3">
+            <div>
+              <p className="text-xs font-semibold text-slate-700">{t("saveSearchAlertsLabel")}</p>
+              <p className="mt-0.5 text-[11px] text-slate-500">{t("saveSearchAlertsHint")}</p>
+            </div>
+            <Switch
+              id="ss-alerts"
+              checked={saveAlerts}
+              onCheckedChange={setSaveAlerts}
+              aria-label={t("saveSearchAlertsLabel")}
+            />
           </div>
           <DialogFooter>
             <Button variant="outline" size="sm" onClick={() => setSaveOpen(false)}>{t("cancel")}</Button>

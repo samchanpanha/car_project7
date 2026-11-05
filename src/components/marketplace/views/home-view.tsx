@@ -32,13 +32,7 @@ import {
 import { useState, useMemo } from "react";
 import { cn } from "@/lib/utils";
 import { partCategoryLabels, motorBodyTypeLabels } from "@/lib/i18n";
-
-const BODY_TYPES = ["SUV", "SEDAN", "PICKUP", "VAN", "HATCHBACK", "COUPE"] as const;
-const MOTOR_BODY_TYPES = ["SCOOTER", "CUB", "SPORT", "CRUISER", "DIRT", "ELECTRIC"] as const;
-const PART_CATEGORIES = [
-  "ENGINE", "TRANSMISSION", "BRAKES", "SUSPENSION", "TIRES_WHEELS",
-  "ELECTRICAL", "BODY_LIGHTS", "OILS_FLUIDS", "ACCESSORIES"
-] as const;
+import { BODY_TYPES, MOTOR_BODY_TYPES, PART_CATEGORIES } from "@/lib/filters";
 
 const PRICE_RANGES = [
   { id: "all", labelEn: "All Prices", labelKm: "គ្រប់តម្លៃ", min: undefined, max: undefined },
@@ -74,7 +68,7 @@ export function HomeView() {
   const [pageSize, setPageSize] = useState(24);
 
   // Fetch metadata
-  const { data: meta } = useFetch<MetaDTO>("/api/meta");
+  const { data: meta, loading: metaLoading } = useFetch<MetaDTO>("/api/meta");
 
   // Derive price min/max from selected price range
   const activePriceRange = useMemo(
@@ -169,7 +163,10 @@ export function HomeView() {
   const total = data?.total ?? 0;
   const pageCount = data?.pageCount ?? 1;
   const featuredList = featuredData?.items ?? [];
-  const sampleReportId = "veh_prado_2018";
+  // Sample AI report CTA targets a real listing that has a report (falling back
+  // to any first listing) instead of a hardcoded seed that may not exist in the
+  // environment.
+  const sampleReportVehicle = items.find((v) => v.trust?.reportAvailable) ?? items[0];
 
   // Sellers and Dealers lists from metadata
   const sellersList = meta?.sellers ?? [];
@@ -554,26 +551,20 @@ export function HomeView() {
             })}
           </div>
 
-          {/* Stats Badges */}
-          <dl className="mt-8 grid grid-cols-3 gap-3 max-w-xl">
+          {/* Stats Badges — real numbers only; no fabricated fallbacks */}
+          <dl className="mt-8 grid grid-cols-2 gap-3 max-w-xl">
             {[
               {
                 label: t("statsListings"),
-                value: total > 0 ? `${total}+` : (loading ? "…" : "30+"),
+                value: loading ? "…" : total > 0 ? `${total}+` : "–",
                 icon: CarFront,
                 color: "text-amber-400",
               },
               {
                 label: t("statsDealers"),
-                value: dealersList.length > 0 ? `${dealersList.length}` : "2",
+                value: metaLoading ? "…" : dealersList.length > 0 ? `${dealersList.length}` : "–",
                 icon: Building2,
                 color: "text-emerald-400",
-              },
-              {
-                label: t("statsReports"),
-                value: "10+",
-                icon: FileSearch,
-                color: "text-sky-400",
               },
             ].map((s) => (
               <div
@@ -1388,15 +1379,17 @@ export function HomeView() {
           </div>
 
           <div className="mt-8 pt-6 border-t border-white/10 flex flex-wrap items-center justify-between gap-4">
-            <Button
-              variant="outline"
-              onClick={() => navigate({ name: "report", vehicleId: sampleReportId })}
-              className="border-teal-400/40 text-teal-300 bg-teal-950/40 hover:bg-teal-900/60 hover:text-white"
-            >
-              <FileSearch className="h-4 w-4 mr-2 text-teal-400" aria-hidden />
-              {t("trySampleReport")}
-              <ArrowRight className="h-4 w-4 ml-2" aria-hidden />
-            </Button>
+            {sampleReportVehicle && (
+              <Button
+                variant="outline"
+                onClick={() => navigate({ name: "report", vehicleId: sampleReportVehicle.id })}
+                className="border-teal-400/40 text-teal-300 bg-teal-950/40 hover:bg-teal-900/60 hover:text-white"
+              >
+                <FileSearch className="h-4 w-4 mr-2 text-teal-400" aria-hidden />
+                {t("trySampleReport")}
+                <ArrowRight className="h-4 w-4 ml-2" aria-hidden />
+              </Button>
+            )}
 
             <Button
               variant="ghost"

@@ -606,9 +606,6 @@ public class PaymentService {
 
             String previewUrl = minioStorageService.uploadPublicMedia(bytes, mimeType);
             String enteredRef = req.getEnteredRef();
-            if (req.getImage() != null && req.getImage().contains("087ae6df-df20-41a7-b041-2b6ab6e74c9b")) {
-                enteredRef = "FT26299CZ9C9";
-            }
 
             return receiptSlipParser.processReceipt(
                     bytes,

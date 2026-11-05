@@ -489,7 +489,7 @@ class SecurityHardeningRegressionTest {
                 @Test
                 @DisplayName("SecurityConfig isCronAuthorized: rejects null or invalid header, requires Bearer matching cronSecret")
                 void securityConfigCronValidation() {
-                        com.khlan.config.SecurityConfig config = new com.khlan.config.SecurityConfig(null, null);
+                        com.khlan.config.SecurityConfig config = new com.khlan.config.SecurityConfig(null, null, null);
                         ReflectionTestUtils.setField(config, "cronSecret", "my-cron-secret");
 
                         assertFalse(config.isCronAuthorized(null), "Null auth header must be rejected");

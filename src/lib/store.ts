@@ -28,7 +28,10 @@ export type View =
   | { name: "compare" }
   | { name: "auth"; tab?: "login" | "signup" }
   | { name: "dashboard"; tab?: string }
-  | { name: "guide"; tab?: "buyer" | "seller" | "dealer" | "payments" | "faq" };
+  | { name: "guide"; tab?: "buyer" | "seller" | "dealer" | "payments" | "faq" }
+  | { name: "trust" }
+  | { name: "financing"; price?: number }
+  | { name: "ev" };
 
 /** A genuine visitor: no real login and no demo persona — browsing is public,
  *  but contacting dealers / favorites / selling require registration. */
@@ -41,6 +44,10 @@ interface AppState {
   setLocale: (l: Locale) => void;
   view: View;
   navigate: (v: View) => void;
+  /** The most recent browse URL. "Back to results" from a detail page restores
+   *  the user's filters instead of dropping them on a bare /browse. */
+  lastBrowsePath: string | null;
+  setLastBrowsePath: (p: string | null) => void;
   /** global search text typed in the header (browse reads it) */
   compare: string[];
   toggleCompare: (id: string) => void;
@@ -48,9 +55,23 @@ interface AppState {
   favorites: string[];
   setFavorites: (ids: string[]) => void;
   toggleFavoriteLocal: (id: string) => void;
+  /** In-session notification center (fed by realtime SSE events). */
+  notifications: NotifItem[];
+  unread: number;
+  pushNotification: (n: Pick<NotifItem, "type"> & Partial<Omit<NotifItem, "type" | "id" | "at">>) => void;
+  markNotificationsRead: () => void;
+  clearNotifications: () => void;
   /** current demo session (persona) — null until /api/session resolves */
   me: SessionDTO | null;
   setMe: (s: SessionDTO | null) => void;
+}
+
+export interface NotifItem {
+  id: string;
+  type: string;
+  title?: string;
+  message?: string;
+  at: number; // epoch ms
 }
 
 export const useAppStore = create<AppState>((set, get) => ({
@@ -67,6 +88,8 @@ export const useAppStore = create<AppState>((set, get) => ({
     }
   },
   view: { name: "home" },
+  lastBrowsePath: null,
+  setLastBrowsePath: (p) => set({ lastBrowsePath: p }),
   navigate: (view) => {
     set({ view });
     if (typeof window !== "undefined") {
@@ -96,6 +119,22 @@ export const useAppStore = create<AppState>((set, get) => ({
     const cur = get().favorites;
     set({ favorites: cur.includes(id) ? cur.filter((f) => f !== id) : [...cur, id] });
   },
+  notifications: [],
+  unread: 0,
+  pushNotification: (n) => {
+    if (n.type === "CONNECTED" || n.type === "PING") return;
+    const item: NotifItem = {
+      id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      type: n.type,
+      title: n.title,
+      message: n.message,
+      at: Date.now(),
+    };
+    const cur = get().notifications;
+    set({ notifications: [item, ...cur].slice(0, 50), unread: get().unread + 1 });
+  },
+  markNotificationsRead: () => set({ unread: 0 }),
+  clearNotifications: () => set({ notifications: [], unread: 0 }),
   me: null,
   setMe: (me) => set({ me }),
 }));

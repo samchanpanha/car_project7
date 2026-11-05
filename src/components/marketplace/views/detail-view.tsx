@@ -1,6 +1,7 @@
 "use client";
 
 import { useAppStore, isGuest } from "@/lib/store";
+import { routeTo } from "@/lib/router-bridge";
 import { useT } from "@/hooks/use-t";
 import { useFetch, apiSend } from "@/lib/client-hooks";
 import type { VehicleCardDTO, VehicleDetailDTO } from "@/lib/types";
@@ -17,10 +18,11 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { ReportStatusBadge } from "@/components/marketplace/status-badge";
 import { SellerTelegramButtons } from "@/components/marketplace/seller-telegram-buttons";
+import { ShareListingMenu } from "@/components/marketplace/share-listing-menu";
 import { PromotionalPricingBanner } from "@/components/marketplace/promotional-pricing-banner";
 import {
-  ArrowLeft, BadgeCheck, Bike, CalendarClock, CarFront, ChevronLeft, ChevronRight, Eye, FileCheck2, FileText, FileX2,
-  Flag, Gauge, Handshake, Heart, Loader2, MapPin, MessageSquare, Phone, PhoneCall, RefreshCw, Send, ShieldCheck,
+  ArrowLeft, BadgeCheck, Bike, CalendarClock, Calculator, CarFront, ChevronLeft, ChevronRight, Eye, FileCheck2, FileText, FileX2,
+  Flag, Gauge, Handshake, Heart, Loader2, MapPin, MessageSquare, Phone, PhoneCall, Play, RefreshCw, Send, ShieldCheck,
   ShieldAlert, Star, Timer, TriangleAlert, Users, Wrench,
 } from "lucide-react";
 import { useEffect, useState } from "react";
@@ -41,6 +43,42 @@ import { cn } from "@/lib/utils";
 
 const ABUSE_REASONS = ["SCAM", "WRONG_INFO", "DUPLICATE", "OFFENSIVE", "SOLD", "OTHER"] as const;
 
+/** Extract a YouTube video id from common share/embed URL shapes. */
+function youtubeId(url: string): string | null {
+  const m = url.match(/(?:youtube\.com\/(?:watch\?v=|embed\/|shorts\/)|youtu\.be\/)([\w-]{11})/);
+  return m ? m[1] : null;
+}
+
+/** Video block for a listing: YouTube embeds play inline; other links open
+ *  externally. Used when a seller attached a walkaround/tour video. */
+function VideoEmbed({ url }: { url: string }) {
+  const t = useT();
+  const id = youtubeId(url);
+  return (
+    <div className="overflow-hidden rounded-xl border border-slate-200 bg-slate-100">
+      {id ? (
+        <iframe
+          className="aspect-video w-full"
+          src={`https://www.youtube.com/embed/${id}`}
+          title={t("viewVideo")}
+          allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+          allowFullScreen
+        />
+      ) : (
+        <a
+          href={url}
+          target="_blank"
+          rel="noreferrer"
+          className="flex items-center justify-center gap-2 p-4 text-sm font-semibold text-sky-700 hover:text-sky-900"
+        >
+          <Play className="h-4 w-4" aria-hidden />
+          {t("viewVideo")}
+        </a>
+      )}
+    </div>
+  );
+}
+
 /** Local "YYYY-MM-DDTHH:mm" for datetime-local min attribute. */
 function localInputValue(d: Date): string {
   const pad = (n: number) => String(n).padStart(2, "0");
@@ -58,6 +96,7 @@ export function DetailView({
   const t = useT();
   const locale = useAppStore((s) => s.locale);
   const navigate = useAppStore((s) => s.navigate);
+  const lastBrowsePath = useAppStore((s) => s.lastBrowsePath);
   const me = useAppStore((s) => s.me);
   const favorites = useAppStore((s) => s.favorites);
   const toggleFavoriteLocal = useAppStore((s) => s.toggleFavoriteLocal);
@@ -316,17 +355,25 @@ export function DetailView({
     <div className="mx-auto max-w-7xl px-4 py-5 pb-28 md:pb-10">
       {/* Breadcrumb / back */}
       <div className="flex items-center justify-between gap-2">
-        <Button variant="ghost" size="sm" onClick={() => navigate({ name: "browse" })} className="-ml-2 text-slate-500 hover:text-slate-800">
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={() => (lastBrowsePath ? routeTo(lastBrowsePath) : navigate({ name: "browse" }))}
+          className="-ml-2 text-slate-500 hover:text-slate-800"
+        >
           <ArrowLeft className="h-4 w-4 mr-1.5" aria-hidden />
           {t("backToResults")}
         </Button>
-        <button
-          onClick={() => setReportOpen(true)}
-          className="flex items-center gap-1 text-xs text-slate-400 hover:text-rose-600 transition-colors cursor-pointer"
-        >
-          <Flag className="h-3.5 w-3.5" aria-hidden />
-          {t("reportListing")}
-        </button>
+        <div className="flex items-center gap-2">
+          <ShareListingMenu title={title} />
+          <button
+            onClick={() => setReportOpen(true)}
+            className="flex items-center gap-1 text-xs text-slate-400 hover:text-rose-600 transition-colors cursor-pointer"
+          >
+            <Flag className="h-3.5 w-3.5" aria-hidden />
+            {t("reportListing")}
+          </button>
+        </div>
       </div>
 
       <div className="mt-3 grid gap-8 lg:grid-cols-[1.35fr_1fr]">
@@ -383,6 +430,12 @@ export function DetailView({
                   <SafeImage src={url} alt="" category={v.listingCategory} className="h-full w-full object-cover" />
                 </button>
               ))}
+            </div>
+          )}
+
+          {v.videoUrl && (
+            <div className="mt-4">
+              <VideoEmbed url={v.videoUrl} />
             </div>
           )}
 
@@ -473,6 +526,12 @@ export function DetailView({
               </div>
             )}
             <h1 className="text-lg sm:text-xl font-bold leading-snug text-slate-900">{title}</h1>
+            {v.certified && (
+              <span className="mt-1 inline-flex items-center gap-1 rounded-full bg-emerald-100 text-emerald-800 border border-emerald-200 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide">
+                <BadgeCheck className="h-3 w-3" aria-hidden />
+                {t("certifiedBadge")}
+              </span>
+            )}
             {v.priceMasked ? (
               <div className="mt-3 p-4 rounded-xl border border-amber-300 bg-gradient-to-r from-amber-50 via-orange-50 to-amber-50/50">
                 <div className="flex items-center gap-2.5">
@@ -531,6 +590,21 @@ export function DetailView({
                 floorEnforced={v.floorEnforced}
               />
             )}
+            <div className="mt-2">
+              <button
+                type="button"
+                onClick={() =>
+                  navigate({
+                    name: "financing",
+                    price: v.priceMasked ? undefined : v.effectivePriceUsd || v.priceUsd,
+                  })
+                }
+                className="inline-flex items-center gap-1.5 text-[11px] font-semibold text-slate-500 hover:text-amber-700 transition-colors cursor-pointer"
+              >
+                <Calculator className="h-3.5 w-3.5" aria-hidden />
+                {t("finCtaDetail")}
+              </button>
+            </div>
             <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-slate-500">
               <span className="flex items-center gap-1">
                 <MapPin className="h-3.5 w-3.5" aria-hidden />
@@ -969,6 +1043,7 @@ export function DetailView({
           <Button onClick={toggleFavorite} variant="outline" size="icon" className="h-11 w-11" aria-label={t("navFavorites")}>
             <Heart className={cn("h-5 w-5", isFav && "fill-rose-500 text-rose-500")} aria-hidden />
           </Button>
+          <ShareListingMenu title={title} compact />
           {v.report && (
             <Button
               onClick={() => navigate({ name: "report", vehicleId: v.id })}

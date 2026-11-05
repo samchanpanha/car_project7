@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { ProfileDialog } from "@/components/marketplace/profile-dialog";
+import { NotificationBell } from "@/components/marketplace/notification-center";
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel,
   DropdownMenuSeparator, DropdownMenuTrigger,
@@ -138,6 +139,7 @@ function AccountMenu() {
   if (me.authed) {
     return (
       <>
+        <NotificationBell />
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <button

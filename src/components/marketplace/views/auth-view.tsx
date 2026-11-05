@@ -495,6 +495,8 @@ function RegistrationSubscriptionStep({
   const manual = paymentConfig.data?.manual;
   const khrRate = manual?.khrExchangeRate || 4100;
   const priceKhr = Math.round((priceUsd * khrRate) / 100) * 100;
+  const amountText = currency === "USD" ? `$${priceUsd}.00 USD` : `៛${(priceKhr ?? 0).toLocaleString()} KHR`;
+  const periodText = t(billingCycle === "YEARLY" ? "period1Year" : "period1Month");
 
   const qrSrcUsd =
     (billingCycle === "YEARLY" ? manual?.khqrImageYearly : manual?.khqrImageMonthly) ??
@@ -518,7 +520,7 @@ function RegistrationSubscriptionStep({
       const dataUrl = await fileToDataUrl(file, 1280, 0.85);
       setEvidenceImage(dataUrl);
     } catch {
-      toast.error("Could not process the selected screenshot");
+      toast.error(t("couldNotProcessImageToast"));
     } finally {
       setReadingImage(false);
       if (fileInput.current) fileInput.current.value = "";
@@ -527,7 +529,7 @@ function RegistrationSubscriptionStep({
 
   const submitPayment = async () => {
     if (!manualRef.trim() && !evidenceImage) {
-      setError("Please enter your bank Trx ID reference or attach a payment screenshot");
+      setError(t("enterRefOrScreenshot"));
       return;
     }
     setError(null);
@@ -548,7 +550,7 @@ function RegistrationSubscriptionStep({
 
       if (res.payment.status === "VERIFIED") {
         setVerified(true);
-        toast.success("🎉 Payment verified! Your subscription is active.");
+        toast.success(t("paymentVerifiedToast"));
         const s = await fetchVerifiedSession(user.id);
         if (s) await applySessionInPlace(s);
         setTimeout(() => {
@@ -556,10 +558,10 @@ function RegistrationSubscriptionStep({
         }, 1200);
       } else {
         setSubmittedPayment(res.payment);
-        toast.info("Payment submitted! Checking ABA automated verification...");
+        toast.info(t("paymentSubmittedToast"));
       }
     } catch (err) {
-      const msg = err instanceof Error ? err.message : "Failed to submit payment";
+      const msg = err instanceof Error ? err.message : t("failedSubmitPayment");
       setError(msg);
     } finally {
       setSubmitting(false);
@@ -578,17 +580,17 @@ function RegistrationSubscriptionStep({
       const matched = payments.find((p) => p.status === "VERIFIED");
       if (matched) {
         setVerified(true);
-        toast.success("🎉 Payment verified! Your subscription is active.");
+        toast.success(t("paymentVerifiedToast"));
         const s = await fetchVerifiedSession(user.id);
         if (s) await applySessionInPlace(s);
         setTimeout(() => {
           onComplete();
         }, 1000);
       } else {
-        toast.info("Still awaiting bank confirmation. If you just sent money, please wait a few seconds and check again.");
+        toast.info(t("stillAwaitingToast"));
       }
     } catch {
-      toast.error("Could not verify status at this moment");
+      toast.error(t("couldNotVerifyStatus"));
     } finally {
       setChecking(false);
     }
@@ -603,30 +605,29 @@ function RegistrationSubscriptionStep({
             <span className="flex h-6 w-6 items-center justify-center rounded-full bg-emerald-600 text-xs font-bold text-white">
               ✓
             </span>
-            <span className="text-xs font-semibold text-slate-700">Account Created</span>
+            <span className="text-xs font-semibold text-slate-700">{t("authStepAccountCreated")}</span>
             <span className="text-slate-300">→</span>
             <span className="flex h-6 w-6 items-center justify-center rounded-full bg-amber-500 text-xs font-bold text-slate-950">
               2
             </span>
-            <span className="text-xs font-bold text-amber-950">Choose Plan & Pay KHQR</span>
+            <span className="text-xs font-bold text-amber-950">{t("authStepChoosePlan")}</span>
             <span className="text-slate-300">→</span>
             <span className="flex h-6 w-6 items-center justify-center rounded-full bg-slate-200 text-xs font-bold text-slate-500">
               3
             </span>
-            <span className="text-xs font-medium text-slate-400">Dashboard</span>
+            <span className="text-xs font-medium text-slate-400">{t("authStepDashboard")}</span>
           </div>
           <Badge variant="outline" className="border-amber-300 bg-amber-100 text-amber-900 font-semibold text-[11px]">
-            {user.role === "DEALER" ? "Dealer Account" : "Seller Account"}
+            {user.role === "DEALER" ? t("authBadgeDealerAccount") : t("authBadgeSellerAccount")}
           </Badge>
         </div>
 
         <div className="mt-3">
           <h2 className="text-sm font-bold text-slate-900">
-            Welcome, {user.name}! Activate your {user.role === "DEALER" ? "Dealership" : "Seller"} dashboard
+            {t("authWelcomeActivate", { name: user.name, role: t(user.role === "DEALER" ? "authRoleDealership" : "authRoleSeller") })}
           </h2>
           <p className="mt-1 text-xs text-slate-600 leading-relaxed">
-            Free trial days are currently <span className="font-semibold text-rose-700">inactive</span> for new sellers & dealers.
-            Choose a subscription plan below and complete payment via KHQR to activate your selling tools.
+            {t("authFreeTrialInactive")} {t("authChoosePlanDesc")}
           </p>
         </div>
       </div>
@@ -636,10 +637,10 @@ function RegistrationSubscriptionStep({
         <Alert className="border-emerald-300 bg-emerald-50 text-emerald-950">
           <CheckCircle2 className="h-5 w-5 text-emerald-600" />
           <AlertTitle className="text-sm font-bold text-emerald-900">
-            Subscription Activated Successfully!
+            {t("authSubActivatedTitle")}
           </AlertTitle>
           <AlertDescription className="text-xs text-emerald-800">
-            Your payment was verified via ABA PayWay. Redirecting you to your dashboard now...
+            {t("authSubActivatedDesc")}
           </AlertDescription>
         </Alert>
       )}
@@ -651,18 +652,18 @@ function RegistrationSubscriptionStep({
             <Clock className="h-5 w-5 text-sky-600 shrink-0 mt-0.5" />
             <div>
               <p className="text-sm font-bold text-sky-950">
-                Payment Submitted — Awaiting Bank Verification
+                {t("authPaymentSubmittedTitle")}
               </p>
               <p className="mt-1 text-xs text-sky-800 leading-relaxed">
                 Reference: <code className="bg-sky-100 px-1.5 py-0.5 rounded font-mono font-bold text-sky-900">{submittedPayment.reference}</code>
                 {manualRef && (
                   <span className="ml-1.5">
-                    · Trx ID: <code className="bg-sky-100 px-1.5 py-0.5 rounded font-mono font-bold text-sky-900">{manualRef}</code>
+                    · {t("authTrxId")} <code className="bg-sky-100 px-1.5 py-0.5 rounded font-mono font-bold text-sky-900">{manualRef}</code>
                   </span>
                 )}
               </p>
               <p className="mt-1 text-xs text-sky-700">
-                Our Telegram banking integration is listening for the ABA payment alert. You can check status below or proceed directly to your dashboard.
+                {t("authTelegramListening")}
               </p>
             </div>
           </div>
@@ -676,7 +677,7 @@ function RegistrationSubscriptionStep({
             >
               {checking && <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" />}
               <RefreshCw className={cn("h-3.5 w-3.5 mr-1.5", checking && "hidden")} />
-              Re-check Instant Verification
+              {t("authRecheckInstant")}
             </Button>
             <Button
               size="sm"
@@ -684,7 +685,7 @@ function RegistrationSubscriptionStep({
               onClick={onComplete}
               className="border-sky-300 text-sky-900 hover:bg-sky-100 text-xs h-9"
             >
-              Continue to Dashboard (Pending)
+              {t("authContinuePending")}
             </Button>
           </div>
         </div>
@@ -693,7 +694,7 @@ function RegistrationSubscriptionStep({
       {/* Billing Cycle & Currency Switchers */}
       <div className="flex flex-wrap items-center justify-between gap-3 bg-white p-3 rounded-xl border border-amber-200">
         <div className="flex items-center gap-2">
-          <span className="text-xs font-bold text-slate-700">Billing Cycle:</span>
+          <span className="text-xs font-bold text-slate-700">{t("billingCycle")}</span>
           <div className="inline-flex rounded-lg border border-slate-200 bg-slate-100 p-0.5 text-xs font-semibold">
             <button
               type="button"
@@ -705,7 +706,7 @@ function RegistrationSubscriptionStep({
                   : "text-slate-600 hover:text-slate-900",
               )}
             >
-              Monthly
+              {t("monthly")}
             </button>
             <button
               type="button"
@@ -717,9 +718,9 @@ function RegistrationSubscriptionStep({
                   : "text-slate-600 hover:text-slate-900",
               )}
             >
-              <span>Yearly</span>
+              <span>{t("yearly")}</span>
               <span className="rounded-full bg-amber-500 px-1.5 py-0.2 text-[9px] font-bold text-slate-950">
-                Save 2 Mo
+                {t("save2Mo")}
               </span>
             </button>
           </div>
@@ -727,7 +728,7 @@ function RegistrationSubscriptionStep({
 
         {/* Currency Switcher */}
         <div className="flex items-center gap-2">
-          <span className="text-xs font-bold text-slate-700">Currency:</span>
+          <span className="text-xs font-bold text-slate-700">{t("currencyLabel")}</span>
           <div className="inline-flex rounded-lg border border-slate-200 bg-slate-100 p-0.5 text-xs font-bold">
             <button
               type="button"
@@ -776,7 +777,7 @@ function RegistrationSubscriptionStep({
             >
               {p.popular && (
                 <span className="absolute -top-2.5 right-3 rounded-full bg-amber-500 px-2 py-0.5 text-[9px] font-extrabold uppercase tracking-wide text-slate-950 shadow-xs">
-                  Most Popular
+                  {t("mostPopular")}
                 </span>
               )}
 
@@ -803,7 +804,7 @@ function RegistrationSubscriptionStep({
                     {currency === "USD" ? `$${pPriceUsd}` : `៛${(pPriceKhr ?? 0).toLocaleString()}`}
                   </span>
                   <span className="text-xs text-slate-400">
-                    /{billingCycle === "YEARLY" ? "year" : "month"}
+                    {t(billingCycle === "YEARLY" ? "perYear" : "perMonth")}
                   </span>
                 </div>
 
@@ -829,7 +830,7 @@ function RegistrationSubscriptionStep({
                       : "border-slate-200 text-slate-700",
                   )}
                 >
-                  {isSelected ? "Selected" : "Select Plan"}
+                  {isSelected ? t("selected") : t("selectPlan")}
                 </Button>
               </div>
             </div>
@@ -843,11 +844,11 @@ function RegistrationSubscriptionStep({
           <div className="flex items-center gap-2">
             <QrCode className="h-5 w-5 text-amber-600" />
             <h3 className="text-sm font-bold text-slate-900">
-              PayWay by ABA KHQR · Standard Bakong
+              {t("paywayTitle")}
             </h3>
           </div>
           <Badge className="bg-amber-100 text-amber-900 border-amber-300 text-[10px] font-bold">
-            {billingCycle === "YEARLY" ? "1 Year Plan (12 Mo)" : "1 Month Plan"} · {currency}
+            {t(billingCycle === "YEARLY" ? "plan1Year" : "plan1Month")} · {currency}
           </Badge>
         </div>
 
@@ -856,27 +857,27 @@ function RegistrationSubscriptionStep({
           <div
             onClick={() => setZoomQrOpen(true)}
             className="group relative flex flex-col items-center justify-center rounded-xl border border-slate-200 bg-white p-3 text-center shadow-xs cursor-pointer hover:border-amber-400 hover:shadow-md transition-all"
-            title="Click to view full size QR code"
+            title={t("qrZoomTitle")}
           >
             <div className="relative">
               <img
                 src={qrSrc}
-                alt="ABA KHQR Payment"
+                alt={t("qrAlt")}
                 className="h-48 w-48 rounded-lg object-contain transition-transform group-hover:scale-105"
               />
               <div className="absolute inset-0 flex items-center justify-center rounded-lg bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity">
                 <span className="flex items-center gap-1.5 rounded-full bg-white/95 px-3 py-1.5 text-xs font-bold text-slate-900 shadow-md">
                   <Maximize2 className="h-3.5 w-3.5 text-amber-600" />
-                  Click to Zoom / Scan
+                  {t("clickToZoomScan")}
                 </span>
               </div>
             </div>
             <div className="mt-2 text-center">
               <span className="text-[11px] font-medium text-slate-500">
-                Payee: <strong className="text-slate-800">{manual?.accountName || "SAM CHAN PANHA"}</strong>
+                {t("payeeLabel")} <strong className="text-slate-800">{manual?.accountName || "SAM CHAN PANHA"}</strong>
               </span>
               <p className="text-[10px] text-amber-600 font-semibold mt-0.5 flex items-center justify-center gap-1">
-                <Maximize2 className="h-3 w-3" /> Click to enlarge QR
+                <Maximize2 className="h-3 w-3" /> {t("clickEnlargeQr")}
               </p>
             </div>
           </div>
@@ -885,33 +886,31 @@ function RegistrationSubscriptionStep({
           <div className="space-y-3">
             <div className="rounded-xl border border-emerald-200 bg-emerald-50/70 p-3">
               <p className="text-[11px] font-semibold text-emerald-800 uppercase tracking-wide">
-                Amount to Transfer ({currency})
+                {t("amountToTransfer", { currency })}
               </p>
               <div className="mt-1 flex items-baseline gap-2">
                 <span className="text-2xl font-black text-slate-900">
-                  {currency === "USD" ? `$${priceUsd}.00 USD` : `៛${(priceKhr ?? 0).toLocaleString()} KHR`}
+                  {amountText}
                 </span>
                 <span className="text-xs font-semibold text-slate-500">
                   ({currency === "USD" ? `៛${(priceKhr ?? 0).toLocaleString()} KHR` : `$${priceUsd}.00 USD`})
                 </span>
               </div>
               <p className="mt-1 text-[11px] text-emerald-900/80">
-                For {currentPlan.title} ({billingCycle === "YEARLY" ? "1 Year" : "1 Month"})
+                {t("forPlan", { plan: currentPlan.title, period: periodText })}
               </p>
             </div>
 
             <p className="text-xs text-slate-600 leading-relaxed">
-              1. Click the QR code to enlarge and scan with <strong>ABA Mobile</strong> or any banking app.<br />
-              2. Transfer exact amount: <strong>{currency === "USD" ? `$${priceUsd}.00 USD` : `៛${(priceKhr ?? 0).toLocaleString()} KHR`}</strong>.<br />
-              3. Enter the bank transaction reference (Trx ID / APV) below.<br />
-              4. Click <strong>Verify & Complete Payment</strong> to activate your dashboard.
+              {t("paySteps1", { app: "ABA Mobile" })}<br />
+              {t("paySteps2", { amount: amountText })}<br />
+              {t("paySteps3")}<br />
+              {t("paySteps4", { btn: t("verifyCompleteBtn") })}
             </p>
 
             <div className="flex items-center gap-1.5 text-[11px] text-sky-800 bg-sky-50 border border-sky-200 rounded-lg p-2">
               <Zap className="h-4 w-4 text-sky-600 shrink-0" />
-              <span>
-                <strong>Instant Auto-Approval:</strong> Enter the ABA Trx ID or APV from your receipt to auto-activate in real-time.
-              </span>
+              <span>{t("instantAutoApproval")}</span>
             </div>
           </div>
         </div>
@@ -921,7 +920,7 @@ function RegistrationSubscriptionStep({
           <div className="space-y-1.5">
             <div className="flex flex-wrap items-center justify-between gap-1">
               <Label htmlFor="reg-pay-ref" className="text-xs font-semibold text-slate-700">
-                Bank Transaction Reference / Trx ID <span className="text-rose-600">*</span>
+                {t("bankRefLabel")} <span className="text-rose-600">*</span>
               </Label>
               <button
                 type="button"
@@ -929,7 +928,7 @@ function RegistrationSubscriptionStep({
                 className="flex items-center gap-1 text-[11px] font-bold text-amber-700 hover:text-amber-800 hover:underline cursor-pointer"
               >
                 <HelpCircle className="h-3.5 w-3.5 text-amber-600" />
-                <span>Where to find Trx ID? (Sample Receipt)</span>
+                <span>{t("whereFindTrx")}</span>
               </button>
             </div>
             <Input
@@ -940,14 +939,14 @@ function RegistrationSubscriptionStep({
               className="h-10 font-mono text-sm bg-white"
             />
             <p className="text-[11px] text-slate-500">
-              Found on your payment confirmation screen or SMS / bank notification receipt.
+              {t("bankRefFoundOn")}
             </p>
           </div>
 
           {/* Screenshot upload (optional) */}
           <div className="space-y-1.5">
             <Label className="text-xs font-semibold text-slate-700">
-              Payment Screenshot / Proof (Optional)
+              {t("screenshotProofLabel")}
             </Label>
             {evidenceImage ? (
               <div className="flex items-center gap-3 rounded-lg border border-slate-200 bg-white p-2">
@@ -958,7 +957,7 @@ function RegistrationSubscriptionStep({
                 />
                 <div className="flex-1 min-w-0">
                   <p className="text-xs font-semibold text-emerald-700 flex items-center gap-1">
-                    <Check className="h-3.5 w-3.5" /> Receipt Attached
+                    <Check className="h-3.5 w-3.5" /> {t("receiptAttached")}
                   </p>
                   <Button
                     type="button"
@@ -967,7 +966,7 @@ function RegistrationSubscriptionStep({
                     onClick={() => setEvidenceImage(null)}
                     className="h-6 px-1.5 text-xs text-rose-600 hover:text-rose-700 hover:bg-rose-50"
                   >
-                    Remove image
+                    {t("removeImage")}
                   </Button>
                 </div>
               </div>
@@ -983,7 +982,7 @@ function RegistrationSubscriptionStep({
                 ) : (
                   <Camera className="h-4 w-4 text-slate-400" />
                 )}
-                Upload confirmation screenshot
+                {t("uploadScreenshot")}
               </button>
             )}
             <input
@@ -997,7 +996,7 @@ function RegistrationSubscriptionStep({
 
           <div className="space-y-1.5">
             <Label htmlFor="reg-pay-note" className="text-xs text-slate-600">
-              Note (Optional)
+              {t("noteOptional")}
             </Label>
             <Input
               id="reg-pay-note"
@@ -1019,7 +1018,7 @@ function RegistrationSubscriptionStep({
               className="flex-1 h-11 bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-sm shadow-sm"
             >
               {submitting && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
-              Verify & Complete Payment
+              {t("verifyCompleteBtn")}
             </Button>
             <Button
               type="button"
@@ -1027,7 +1026,7 @@ function RegistrationSubscriptionStep({
               onClick={onCancel}
               className="h-11 border-slate-200 text-slate-600 hover:text-slate-900 text-xs"
             >
-              Cancel / Back to Sign In
+              {t("cancelBackSignin")}
             </Button>
           </div>
         </div>
@@ -1040,7 +1039,7 @@ function RegistrationSubscriptionStep({
         qrSrcUsd={qrSrcUsd}
         qrSrcKhr={qrSrcKhr}
         accountName={manual?.accountName || "SAM CHAN PANHA"}
-        amountText={currency === "USD" ? `$${priceUsd}.00 USD` : `៛${(priceKhr ?? 0).toLocaleString()} KHR`}
+        amountText={amountText}
         amountTextUsd={`$${priceUsd}.00 USD`}
         amountTextKhr={`៛${(priceKhr ?? 0).toLocaleString()} KHR`}
         planTitle={currentPlan.title}
@@ -1146,7 +1145,7 @@ function SignupForm({ onStepChange }: { onStepChange?: (isPaymentStep: boolean) 
         setStep("PAYMENT");
         onStepChange?.(true);
         setBusy(false);
-        toast.info("Account created! Please select your subscription plan to activate dashboard access.");
+        toast.info(t("authAccountCreatedToast"));
         return;
       }
 
@@ -1418,7 +1417,7 @@ export function AuthView({ initialTab }: { initialTab?: "login" | "signup" }) {
             ឡាន <span className="text-amber-600">KhLan</span>
           </h1>
           <p className="max-w-xs text-xs leading-relaxed text-slate-500">
-            {isPaymentStep ? "Complete subscription payment to activate your dashboard" : t("authSubtitle")}
+            {isPaymentStep ? t("authCompletePaymentTitle") : t("authSubtitle")}
           </p>
         </div>
 

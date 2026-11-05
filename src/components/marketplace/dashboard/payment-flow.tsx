@@ -202,10 +202,10 @@ export function RequestSubscriptionDialog({
           if (match.status === "VERIFIED") {
             setVerifiedPayment(match);
             sessionStorage.setItem("subscription_verified_alert", plan?.plan || match.plan || "PRO");
-            toast.success(`🎉 Processing Completed! Your ${match.plan} subscription is now ACTIVE.`);
+            toast.success(t("payProcessingActiveToast", { plan: match.plan }));
             onDone();
           } else if (match.status === "REJECTED") {
-            setRejectionReason(match.rejectionReason || "Payment was rejected by administrator.");
+            setRejectionReason(match.rejectionReason || t("payRejectedByAdmin"));
           }
         }
       } catch {}
@@ -241,15 +241,15 @@ export function RequestSubscriptionDialog({
       if (match?.status === "VERIFIED") {
         setVerifiedPayment(match);
         sessionStorage.setItem("subscription_verified_alert", plan?.plan || match.plan || "PRO");
-        toast.success(`🎉 Processing Completed! Your ${match.plan} subscription is now ACTIVE.`);
+        toast.success(t("payProcessingActiveToast", { plan: match.plan }));
         onDone();
       } else if (match?.status === "REJECTED") {
-        setRejectionReason(match.rejectionReason || "Payment was rejected by administrator.");
+        setRejectionReason(match.rejectionReason || t("payRejectedByAdmin"));
       } else {
-        toast.info("Still awaiting bank/admin approval. Checking continuously in background...");
+        toast.info(t("payAwaitingAdminToast"));
       }
     } catch {
-      toast.error("Could not check payment status");
+      toast.error(t("payCouldNotCheckStatus"));
     } finally {
       setCheckingStatus(false);
     }
@@ -314,14 +314,14 @@ export function RequestSubscriptionDialog({
 
         if (shouldBlockWrongMerchant) {
           setManualRef("");
-          toast.error(`⛔ Payment Blocked! This slip was paid to "${ocrRes.verification?.detectedPayee || ocrRes.data?.payee || "a foreign merchant"}" instead of our KHQR. Security alert dispatched.`);
+          toast.error(t("payBlockedMerchantToast", { payee: ocrRes.verification?.detectedPayee || ocrRes.data?.payee || "a foreign merchant" }));
         } else if (ocrRes.success) {
           let detectedRef = ocrRes.data.trxId || ocrRes.data.externalRef || ocrRes.data.apv;
           if (detectedRef) {
             setManualRef(detectedRef);
-            toast.success(`✨ Trx ID auto-extracted from receipt: ${detectedRef}`);
+            toast.success(t("payAutoExtractedToast", { ref: detectedRef }));
           } else if (!manualRef.trim()) {
-            toast.info("No new Trx ID auto-detected. You can manually enter your bank reference number.");
+            toast.info(t("payNoTrxDetected"));
           }
 
           if (ocrRes.data.currency === "USD" || ocrRes.data.currency === "KHR") {
@@ -364,7 +364,7 @@ export function RequestSubscriptionDialog({
           detectedPayee: ocrRes.verification?.detectedPayee || ocrRes.data.payee || undefined,
         });
       } catch {
-        toast.error("Could not scan receipt slip automatically");
+        toast.error(t("payCouldNotScanSlip"));
       }
     } catch {
       toast.error(t("payScreenshotRequired"));
@@ -428,27 +428,27 @@ export function RequestSubscriptionDialog({
   const submitManual = async (forReview?: boolean | unknown) => {
     const isReview = typeof forReview === "boolean" ? forReview : isNeedsAdminReview;
     if (!evidenceImage) {
-      toast.error("Payment receipt image is required to verify the transaction.");
+      toast.error(t("payReceiptRequired"));
       return;
     }
     if (!manualRef.trim()) {
-      toast.error("Could not detect a valid Transaction ID on your receipt. Please upload a clear receipt slip.");
+      toast.error(t("payNoValidTrxOnReceipt"));
       return;
     }
     if (isTrxMismatch && ocrData?.trxId) {
-      toast.error(`Transaction ID Mismatch! Detected "${manualRef}" differs from receipt "${ocrData.trxId}".`);
+      toast.error(t("payTrxMismatchToast", { entered: manualRef, detected: ocrData.trxId }));
       return;
     }
     if (refCheck?.duplicate) {
-      toast.error(refCheck.message || "Duplicate transaction cannot be submitted.");
+      toast.error(refCheck.message || t("payDuplicateTx"));
       return;
     }
     if (isBlockedByRef && !isReview && !refCheck?.isNotCurrentDate) {
-      toast.error(refCheck?.message || "Transaction reference is blocked.");
+      toast.error(refCheck?.message || t("payRefBlocked"));
       return;
     }
     if (isBlockedByOcr && !isReview && !isNeedsAdminReview) {
-      toast.error(ocrData?.refMismatchDetails || "Cannot submit payment: The receipt failed security verification.");
+      toast.error(ocrData?.refMismatchDetails || t("paySecurityFail"));
       return;
     }
 
@@ -471,13 +471,13 @@ export function RequestSubscriptionDialog({
       if (payment?.status === "VERIFIED") {
         setVerifiedPayment(payment);
         sessionStorage.setItem("subscription_verified_alert", plan?.plan || "PRO");
-        toast.success("🎉 Payment auto-approved via ABA PayWay! Subscription active.");
+        toast.success(t("payAutoApprovedToast"));
         onDone();
         return;
       }
       setSubmittedPaymentId(payment?.id || null);
       setSubmittedRef(manualRef.trim() || payment?.reference || null);
-      toast.info("Payment submitted! Telegram notification sent to admin for verification.");
+      toast.info(t("paySubmittedTelegramToast"));
     } catch (e) {
       toast.error(e instanceof Error ? e.message : t("errorGeneric"));
     } finally {
@@ -715,14 +715,14 @@ export function RequestSubscriptionDialog({
                   variant="ghost"
                   size="sm"
                   onClick={async () => {
-                    if (!confirm("Are you sure you want to cancel this payment request? You can submit a fresh payment immediately.")) return;
+                    if (!confirm(t("payConfirmCancel"))) return;
                     try {
                       await apiSend(`/api/tenant/payments/${submittedPaymentId}`, "DELETE");
-                      toast.success("Payment request cancelled.");
+                      toast.success(t("payCancelledToast"));
                       setSubmittedRef(null);
                       setSubmittedPaymentId(null);
                     } catch (e) {
-                      toast.error("Could not cancel payment");
+                      toast.error(t("payCouldNotCancel"));
                     }
                   }}
                   className="text-xs text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/40 cursor-pointer h-7"
@@ -851,7 +851,7 @@ export function RequestSubscriptionDialog({
                   onClick={() => setZoomQrOpen(true)}
                   onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") setZoomQrOpen(true); }}
                   className="group relative inline-block cursor-pointer rounded-2xl border-2 border-slate-200 dark:border-slate-700 bg-white p-3 shadow-inner transition hover:border-amber-400 hover:shadow-md"
-                  title="Click to open Full-Screen Zoom View"
+                  title={t("payClickZoomView")}
                 >
                   <img
                     src={qrSrc}
@@ -1119,7 +1119,7 @@ export function RequestSubscriptionDialog({
                       ? "border-emerald-300 text-emerald-800 bg-emerald-50 dark:bg-emerald-950/40 dark:text-emerald-300"
                       : "border-rose-300 text-rose-800 bg-rose-50 dark:bg-rose-950/40 dark:text-rose-300"
                   )}>
-                    {ocrData.status === "PASS" && !isTrxMismatch ? "All Verified Safe" : "Action Required"}
+                    {ocrData.status === "PASS" && !isTrxMismatch ? t("payAllVerifiedSafe") : t("payActionRequired")}
                   </Badge>
                 </div>
 
@@ -1135,7 +1135,7 @@ export function RequestSubscriptionDialog({
                       <span className="font-bold block text-slate-800 dark:text-slate-200">Trx ID Verification:</span>
                       {!isTrxMismatch ? (
                         <span className="text-emerald-700 dark:text-emerald-400 font-medium truncate block">
-                          {ocrData.trxId ? `Matches Slip (${ocrData.trxId})` : "Matches entered reference"}
+                          {ocrData.trxId ? t("payMatchesSlip", { trxId: ocrData.trxId }) : t("payMatchesEntered")}
                         </span>
                       ) : (
                         <span className="text-rose-600 dark:text-rose-400 font-bold block truncate">
@@ -1156,7 +1156,7 @@ export function RequestSubscriptionDialog({
                       <span className="font-bold block text-slate-800 dark:text-slate-200">Amount &amp; Currency:</span>
                       {!ocrData.isUnderpaid ? (
                         <span className="text-emerald-700 dark:text-emerald-400 font-medium truncate block">
-                          {ocrData.amount != null ? `${ocrData.currency || currency} ${(ocrData.amount ?? 0).toLocaleString()} (Paid in Full)` : "Matches plan requirement"}
+                          {ocrData.amount != null ? t("payPaidInFull", { currency: ocrData.currency || currency, amount: (ocrData.amount ?? 0).toLocaleString() }) : t("payMatchesRequirement")}
                         </span>
                       ) : (
                         <span className="text-rose-600 dark:text-rose-400 font-bold block truncate">
@@ -1181,7 +1181,7 @@ export function RequestSubscriptionDialog({
                         </span>
                       ) : (
                         <span className="text-rose-600 dark:text-rose-400 font-bold block truncate">
-                          Past Date ({ocrData.paidAt || "Not today"})
+                          {t("payPastDate", { date: ocrData.paidAt || t("payNotToday") })}
                         </span>
                       )}
                     </div>
@@ -1335,7 +1335,7 @@ export function RequestSubscriptionDialog({
                       <div className="font-extrabold text-sm text-rose-900 dark:text-rose-100 flex items-center gap-2">
                         <span>
                           {refCheck?.isNotCurrentDate || ocrData?.riskFlags?.includes("NOT_CURRENT_DATE") || ocrData?.riskFlags?.includes("OLD_TRANSACTION_DATE")
-                            ? "Transaction Found, But Date is Not Today"
+                            ? t("payTxnFoundNotToday")
                             : "Partial / Discrepant Amount Detected"}
                         </span>
                         <Badge variant="destructive" className="text-[10px] uppercase font-black px-1.5 py-0">
@@ -1405,7 +1405,7 @@ export function RequestSubscriptionDialog({
                   <div>
                     <div className="font-bold text-rose-900 dark:text-rose-200">Duplicate Transaction Detected</div>
                     <div className="text-[11px] text-rose-700 dark:text-rose-300 mt-0.5">
-                      {refCheck.message || "This Trx ID has already been submitted or verified. Please provide a new payment receipt."}
+                      {refCheck.message || t("payAlreadySubmittedRef")}
                     </div>
                   </div>
                 </div>
@@ -1416,7 +1416,7 @@ export function RequestSubscriptionDialog({
                   <div>
                     <div className="font-bold text-amber-900 dark:text-amber-200">Old Transaction Reference</div>
                     <div className="text-[11px] text-amber-800 dark:text-amber-300 mt-0.5">
-                      {refCheck.message || "This transaction is older than the allowed limit. Please pay now and submit a fresh receipt."}
+                      {refCheck.message || t("payTooOldRef")}
                     </div>
                   </div>
                 </div>
@@ -1432,7 +1432,7 @@ export function RequestSubscriptionDialog({
                     <div className="text-[11px] text-sky-700 dark:text-sky-300 mt-0.5">
                       {refCheck.matchedAba
                         ? `Correlated to ABA PayWay Trx ID: ${refCheck.abaTrxId || refCheck.trxId}`
-                        : "Valid reference from external bank. Attach payment slip for fastest verification."}
+                        : t("payValidExternalRef")}
                     </div>
                   </div>
                 </div>
@@ -1443,7 +1443,7 @@ export function RequestSubscriptionDialog({
                   <div>
                     <div className="font-bold text-emerald-900 dark:text-emerald-200">Matched Bank Transaction!</div>
                     <div className="text-[11px] text-emerald-700 dark:text-emerald-300 mt-0.5">
-                      {refCheck.message || "Payment verified against incoming ABA transaction. Ready for instant auto-approval!"}
+                      {refCheck.message || t("payReadyInstantApproval")}
                     </div>
                   </div>
                 </div>
@@ -1491,7 +1491,7 @@ export function RequestSubscriptionDialog({
                   id="pay-note"
                   value={note}
                   onChange={(e) => setNote(e.target.value)}
-                  placeholder="Optional message..."
+                  placeholder={t("payOptionalMessage")}
                   className="mt-1 h-8 text-xs"
                   maxLength={300}
                 />
@@ -1524,13 +1524,13 @@ export function RequestSubscriptionDialog({
             {isBlockedByRef && !isNeedsAdminReview && (
               <span className="text-rose-600 dark:text-rose-400 font-bold flex items-center gap-1.5">
                 <ShieldAlert className="h-4 w-4 shrink-0 text-rose-600" />
-                <span className="truncate">{refCheck?.message || "Invalid or blocked transaction reference."}</span>
+                <span className="truncate">{refCheck?.message || t("payInvalidBlockedRef")}</span>
               </span>
             )}
             {!isBlockedByRef && isBlockedByOcr && !isNeedsAdminReview && (
               <span className="text-rose-600 dark:text-rose-400 font-bold flex items-center gap-1.5">
                 <ShieldAlert className="h-4 w-4 shrink-0 text-rose-600" />
-                <span className="truncate">{ocrData?.refMismatchDetails || "Receipt failed anti-fraud verification."}</span>
+                <span className="truncate">{ocrData?.refMismatchDetails || t("payFraudFail")}</span>
               </span>
             )}
             {isNeedsAdminReview && canSubmit && (
@@ -1569,9 +1569,9 @@ export function RequestSubscriptionDialog({
             >
               {creating && <Loader2 className="h-4 w-4 mr-1.5 animate-spin" aria-hidden />}
               {!evidenceImage
-                ? "Upload Receipt to Submit"
+                ? t("payUploadReceiptSubmit")
                 : isNeedsAdminReview
-                ? "Submit for Telegram Review"
+                ? t("paySubmitTelegramReview")
                 : t("paySubmitManual")}
             </Button>
           </div>
@@ -1661,7 +1661,7 @@ export function PendingPaymentBanner() {
     await refetch();
     setTimeout(() => {
       setChecking(false);
-      toast.info("Status refreshed with live Telegram sync.");
+      toast.info(t("payStatusRefreshed"));
     }, 600);
   };
 
@@ -1672,10 +1672,10 @@ export function PendingPaymentBanner() {
     setCancelling(true);
     try {
       await apiSend(`/api/tenant/payments/${id}`, "DELETE");
-      toast.success("Payment request cancelled. You can now select a plan or re-submit.");
+      toast.success(t("payCancelledResubmit"));
       await refetch();
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Failed to cancel payment request");
+      toast.error(e instanceof Error ? e.message : t("payFailedCancel"));
     } finally {
       setCancelling(false);
     }
@@ -1722,7 +1722,7 @@ export function PendingPaymentBanner() {
                     {t("payPendingBanner")}
                   </h3>
                   <Badge className="bg-amber-100 text-amber-900 border-amber-300 dark:bg-amber-950 dark:text-amber-200 text-[10px] font-extrabold uppercase px-2 py-0.5">
-                    {isOvertime ? `Under Review (${elapsedMinutes}m)` : "Awaiting Verification"}
+                    {isOvertime ? t("payUnderReviewElapsed", { minutes: elapsedMinutes }) : t("payAwaitingVerification")}
                   </Badge>
                   <span className="flex items-center gap-1.5 rounded-full bg-emerald-50 dark:bg-emerald-950/60 border border-emerald-200 dark:border-emerald-800 px-2 py-0.5 text-[10px] font-bold text-emerald-700 dark:text-emerald-400">
                     <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />
@@ -1783,7 +1783,7 @@ export function PendingPaymentBanner() {
                   type="button"
                   onClick={copyRefText}
                   className="inline-flex items-center gap-1 rounded-md bg-white dark:bg-slate-900 px-2 py-0.5 font-mono text-[11px] font-bold text-amber-950 dark:text-amber-200 border border-amber-300 dark:border-amber-700 hover:bg-amber-100/60 transition cursor-pointer"
-                  title="Click to copy payment reference"
+                  title={t("payClickCopyRef")}
                 >
                   <span>{p.reference}</span>
                   {copiedRef ? <Check className="h-3 w-3 text-emerald-600" /> : <Copy className="h-3 w-3 text-slate-400" />}
@@ -1801,7 +1801,7 @@ export function PendingPaymentBanner() {
                       type="button"
                       onClick={() => copyTrxText(p.manualRef!)}
                       className="inline-flex items-center gap-1 rounded bg-white dark:bg-slate-900 px-2 py-0.5 font-mono text-[11px] font-bold text-slate-900 dark:text-slate-100 border border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer"
-                      title="Click to copy Trx ID"
+                      title={t("payClickCopyTrx")}
                     >
                       <span>{p.manualRef}</span>
                       {copiedTrx ? <Check className="h-3 w-3 text-emerald-600" /> : <Copy className="h-3 w-3 text-slate-400" />}
@@ -1859,7 +1859,7 @@ export function PendingPaymentBanner() {
                 onClick={() => cancelPayment(p.id, p.reference)}
                 disabled={cancelling}
                 className="h-7 px-2.5 text-xs font-semibold text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/40 cursor-pointer"
-                title="Cancel this payment request to submit a new one"
+                title={t("payCancelHint")}
               >
                 {cancelling ? <Loader2 className="h-3 w-3 mr-1 animate-spin" /> : <ShieldOff className="h-3 w-3 mr-1" />}
                 Cancel Request &amp; Try Again
@@ -1896,7 +1896,7 @@ export function PendingPaymentBanner() {
               <div className="rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-950 p-2">
                 <img
                   src={p.evidenceImage}
-                  alt="Payment Receipt Slip"
+                  alt={t("payReceiptAlt")}
                   className="mx-auto max-h-[60vh] w-auto rounded-lg object-contain shadow-xs"
                 />
               </div>
@@ -2029,6 +2029,7 @@ export function SubscriptionPaywallCard({
   role: "SELLER" | "DEALER";
   onActivated?: () => void;
 }) {
+  const t = useT();
   const config = useFetch<PaymentConfigDTO>("/api/tenant/payments/config");
   const platformSettings = useFetch<{
     freeTrialEnabled: boolean;
@@ -2333,14 +2334,14 @@ export function SubscriptionPaywallCard({
 
         if (shouldBlockWrongMerchant) {
           setManualRef("");
-          toast.error(`⛔ Payment Blocked! This slip was paid to "${ocrRes.verification?.detectedPayee || ocrRes.data?.payee || "a foreign merchant"}" instead of our KHQR. Security alert dispatched.`);
+          toast.error(t("payBlockedMerchantToast", { payee: ocrRes.verification?.detectedPayee || ocrRes.data?.payee || "a foreign merchant" }));
         } else if (ocrRes.success) {
           const detectedRef = ocrRes.data.trxId || ocrRes.data.apv;
           if (detectedRef) {
             setManualRef(detectedRef);
-            toast.success(`✨ Trx ID auto-extracted from receipt: ${detectedRef}`);
+            toast.success(t("payAutoExtractedToast", { ref: detectedRef }));
           } else if (!manualRef.trim()) {
-            toast.info("No new Trx ID auto-detected. You can manually enter your bank reference number.");
+            toast.info(t("payNoTrxDetected"));
           }
 
           if (ocrRes.data.paidAt) {
@@ -2376,10 +2377,10 @@ export function SubscriptionPaywallCard({
           riskFlags: ocrRes.verification.riskFlags,
         });
       } catch (e) {
-        toast.error(e instanceof Error ? e.message : "Could not scan receipt slip automatically");
+        toast.error(e instanceof Error ? e.message : t("payCouldNotScanSlip"));
       }
     } catch {
-      toast.error("Could not read screenshot file");
+      toast.error(t("payCouldNotReadFile"));
     } finally {
       setReadingImage(false);
       if (fileInput.current) fileInput.current.value = "";
@@ -2389,19 +2390,19 @@ export function SubscriptionPaywallCard({
   const submitPayment = async (forReview?: boolean | unknown) => {
     const isReview = typeof forReview === "boolean" ? forReview : isNeedsAdminReview;
     if (!evidenceImage) {
-      setError("Please attach your payment receipt screenshot to verify the transaction.");
+      setError(t("payAttachReceipt"));
       return;
     }
     if (!manualRef.trim()) {
-      setError("Could not detect a valid Transaction ID on your receipt. Please upload a clear receipt slip.");
+      setError(t("payNoValidTrxOnReceipt"));
       return;
     }
     if (refCheck?.duplicate) {
-      setError(refCheck.message || "Duplicate transaction cannot be submitted.");
+      setError(refCheck.message || t("payDuplicateTx"));
       return;
     }
     if (isBlockedByRef && !isReview && !refCheck?.isNotCurrentDate) {
-      setError(refCheck?.message || "Invalid or duplicate transaction reference");
+      setError(refCheck?.message || t("payInvalidDupRef"));
       return;
     }
     setError(null);
@@ -2433,10 +2434,10 @@ export function SubscriptionPaywallCard({
       } else {
         setSubmittedPayment(payment);
         await paymentsQuery.refetch();
-        toast.info("Payment submitted! Telegram notification sent to admin for verification.");
+        toast.info(t("paySubmittedTelegramToast"));
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to submit payment");
+      setError(err instanceof Error ? err.message : t("failedSubmitPayment"));
     } finally {
       setSubmitting(false);
     }
@@ -2459,13 +2460,13 @@ export function SubscriptionPaywallCard({
         const rejected = payments.find((p) => p.status === "REJECTED" && (activePending ? p.id === activePending.id : true));
         if (rejected) {
           setSubmittedPayment(null);
-          toast.error(`Payment request was rejected: ${rejected.rejectionReason || "Please verify your receipt and re-submit."}`);
+          toast.error(t("payRejectedWithReason", { reason: rejected.rejectionReason || t("payReceiptUnverified") }));
         } else {
-          toast.info("Still awaiting bank confirmation or Telegram admin review. Status checked!");
+          toast.info(t("payStillAwaitingChecked"));
         }
       }
     } catch {
-      toast.error("Could not check payment status");
+      toast.error(t("payCouldNotCheckStatus"));
     } finally {
       setChecking(false);
     }
@@ -2479,10 +2480,10 @@ export function SubscriptionPaywallCard({
     try {
       await apiSend(`/api/tenant/payments/${id}`, "DELETE");
       setSubmittedPayment(null);
-      toast.success("Payment request cancelled. You can now submit a fresh payment receipt.");
+      toast.success(t("payCancelledFresh"));
       await paymentsQuery.refetch();
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Failed to cancel payment request");
+      toast.error(e instanceof Error ? e.message : t("payFailedCancel"));
     } finally {
       setCancelling(false);
     }
@@ -2544,8 +2545,8 @@ export function SubscriptionPaywallCard({
                 </p>
                 <p className="text-[11px] text-sky-700 mt-1">
                   {activePending.telegramSentAt
-                    ? "Notification sent to administrator Telegram group with 1-tap approval."
-                    : "Awaiting bank transaction confirmation or administrator review."}
+                    ? t("paySentAdminGroup")
+                    : t("payAwaitingAdminReview")}
                 </p>
               </div>
             </div>
@@ -2582,7 +2583,7 @@ export function SubscriptionPaywallCard({
             <span className="text-xs font-mono font-normal text-rose-700">Ref: #{latestRejected.reference}</span>
           </AlertTitle>
           <AlertDescription className="text-xs text-rose-800 mt-1">
-            <p className="font-semibold">Reason: {latestRejected.rejectionReason || "Receipt could not be verified."}</p>
+            <p className="font-semibold">{t("payReasonPrefix", { reason: latestRejected.rejectionReason || t("payReceiptUnverified") })}</p>
             <p className="mt-1 text-slate-600">Please review your transfer details, choose a plan, and upload a valid receipt below.</p>
           </AlertDescription>
         </Alert>
@@ -2713,7 +2714,7 @@ export function SubscriptionPaywallCard({
             onClick={() => setZoomQrOpen(true)}
             onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") setZoomQrOpen(true); }}
             className="group relative flex flex-col items-center justify-center rounded-xl border border-slate-200 bg-slate-50 p-3 text-center cursor-pointer transition hover:border-amber-400 hover:bg-amber-50/40"
-            title="Click to zoom / enlarge KHQR"
+            title={t("payClickZoomQr")}
           >
             <div className="relative">
               <img src={qrSrc} alt="ABA KHQR" className="h-44 w-44 rounded-lg object-contain transition group-hover:scale-105" />
@@ -2769,7 +2770,7 @@ export function SubscriptionPaywallCard({
             <div className="flex items-center gap-3 min-w-0">
               <img
                 src={evidenceImage}
-                alt="Payment Slip"
+                alt={t("paySlipAlt")}
                 className="h-14 w-14 rounded-lg border border-emerald-300 object-cover shrink-0 shadow-xs"
               />
               <div className="min-w-0">
@@ -2778,7 +2779,7 @@ export function SubscriptionPaywallCard({
                   Receipt Slip Attached
                 </span>
                 <span className="text-[11px] text-emerald-700 block mt-0.5 truncate font-mono">
-                  {manualRef ? `Trx ID: ${manualRef}` : "Analyzing slip..."}
+                  {manualRef ? t("payTrxLabel", { value: manualRef }) : t("payAnalyzingSlip")}
                 </span>
               </div>
             </div>
@@ -2969,7 +2970,7 @@ export function SubscriptionPaywallCard({
                 </Label>
                 <Badge variant="outline" className="text-[10px] font-semibold text-slate-600 bg-slate-100 border-slate-300 flex items-center gap-1">
                   <Calendar className="h-2.5 w-2.5 text-slate-500" />
-                  {paymentDate ? "Chosen Date" : "Today"}
+                  {paymentDate ? t("payChosenDate") : t("payToday")}
                 </Badge>
               </div>
               <Input
@@ -3046,7 +3047,7 @@ export function SubscriptionPaywallCard({
                     <div className="font-extrabold text-sm text-rose-900 flex items-center gap-2">
                       <span>
                         {refCheck?.isNotCurrentDate || ocrData?.riskFlags?.includes("NOT_CURRENT_DATE") || ocrData?.riskFlags?.includes("OLD_TRANSACTION_DATE")
-                          ? "Transaction Found, But Date is Not Today"
+                          ? t("payTxnFoundNotToday")
                           : "Partial / Discrepant Amount Detected"}
                       </span>
                       <Badge variant="destructive" className="text-[10px] uppercase font-black px-1.5 py-0">
@@ -3116,7 +3117,7 @@ export function SubscriptionPaywallCard({
                 <div>
                   <div className="font-bold text-rose-900">Duplicate Transaction Detected</div>
                   <div className="text-[11px] text-rose-700 mt-0.5">
-                    {refCheck.message || "This Trx ID has already been submitted or verified. Please provide a new payment receipt."}
+                    {refCheck.message || t("payAlreadySubmittedRef")}
                   </div>
                 </div>
               </div>
@@ -3127,7 +3128,7 @@ export function SubscriptionPaywallCard({
                 <div>
                   <div className="font-bold text-amber-900">Old Transaction Reference</div>
                   <div className="text-[11px] text-amber-800 mt-0.5">
-                    {refCheck.message || "This transaction is older than the allowed limit. Please pay now and submit a fresh receipt."}
+                    {refCheck.message || t("payTooOldRef")}
                   </div>
                 </div>
               </div>
@@ -3143,7 +3144,7 @@ export function SubscriptionPaywallCard({
                   <div className="text-[11px] text-sky-700 mt-0.5">
                     {refCheck.matchedAba
                       ? `Correlated to ABA PayWay Trx ID: ${refCheck.abaTrxId || refCheck.trxId}`
-                      : "Valid reference from external bank. Attach payment slip for fastest verification."}
+                      : t("payValidExternalRef")}
                   </div>
                 </div>
               </div>
@@ -3154,7 +3155,7 @@ export function SubscriptionPaywallCard({
                 <div>
                   <div className="font-bold text-emerald-900">Matched Bank Transaction!</div>
                   <div className="text-[11px] text-emerald-700 mt-0.5">
-                    {refCheck.message || "Payment verified against incoming ABA transaction. Ready for instant auto-approval!"}
+                    {refCheck.message || t("payReadyInstantApproval")}
                   </div>
                 </div>
               </div>
@@ -3186,12 +3187,12 @@ export function SubscriptionPaywallCard({
           >
             {submitting && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
             {activePending
-              ? "Payment Awaiting Verification (See Status Above)"
+              ? t("payAwaitingSeeStatus")
               : !evidenceImage
-              ? "Upload Payment Receipt to Verify"
+              ? t("payUploadReceiptVerify")
               : isNeedsAdminReview
-              ? "Submit for Telegram Admin Review"
-              : "Verify Payment & Unlock Dashboard"}
+              ? t("paySubmitAdminReview")
+              : t("payVerifyUnlock")}
           </Button>
         </div>
       </div>

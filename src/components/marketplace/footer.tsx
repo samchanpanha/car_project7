@@ -54,6 +54,15 @@ export function Footer() {
               <Link className="text-left hover:text-amber-300 text-amber-400 font-medium" href="/guide">
                 {t("navGuide")}
               </Link>
+              <Link className="text-left hover:text-white" href="/trust">
+                {t("trustBadge")}
+              </Link>
+              <Link className="text-left hover:text-white" href="/financing">
+                {t("finBadge")}
+              </Link>
+              <Link className="text-left hover:text-white" href="/ev">
+                {t("evBadge")}
+              </Link>
             </nav>
           </div>
         </div>

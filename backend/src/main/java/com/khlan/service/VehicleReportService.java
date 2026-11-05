@@ -19,6 +19,7 @@ import org.springframework.web.server.ResponseStatusException;
 import java.time.OffsetDateTime;
 import java.time.Year;
 import java.util.*;
+import java.util.stream.Collectors;
 
 @Slf4j
 @Service
@@ -70,20 +71,61 @@ public class VehicleReportService {
                 .confidence(Math.round(odoScore * 100.0) / 100.0)
                 .build());
 
-        // 2. Market Price Check
-        boolean pricePassed = vehicle.getPriceUsd() >= 2000 && vehicle.getPriceUsd() <= 300000;
-        double priceScore = pricePassed ? 0.95 : 0.6;
-        scoreSum += priceScore;
-        checks.add(ReportDTO.ReportCheckDTO.builder()
+        // 2. Market Price Check — benchmarked against internal comparables
+        // (same make/model, ±2 years, published listings). A fixed sanity band
+        // was the old placeholder; this now reports honest evidence about the
+        // listing's position within the platform's own market data.
+        double currentPrice = vehicle.getPriceUsd() != null ? vehicle.getPriceUsd() : 0;
+        double priceScore;
+        ReportDTO.ReportCheckDTO.ReportCheckDTOBuilder priceCheck = ReportDTO.ReportCheckDTO.builder()
                 .area("price")
                 .title("Price vs market")
-                .titleKm("តម្លៃធៀបទីផ្សារ")
-                .status(pricePassed ? "EVIDENCE_FOUND" : "INCONSISTENCY_FLAGGED")
-                .detail(String.format("Listed price of $%,.0f aligns within fair Cambodian marketplace benchmarks for %s %s.", vehicle.getPriceUsd(), vehicle.getMake(), vehicle.getModel()))
-                .detailKm(String.format("តម្លៃដាក់លក់ $%,.0f សមស្របតាមកម្រិតទីផ្សារកម្ពុជាសម្រាប់ %s %s។", vehicle.getPriceUsd(), vehicle.getMake(), vehicle.getModel()))
-                .source("Market comparables")
-                .confidence(priceScore)
-                .build());
+                .titleKm("តម្លៃប្រៀបធៀបជាមួយទីផ្សារ")
+                .source("Internal marketplace comparables");
+
+        if (currentPrice <= 0) {
+            priceScore = 0.5;
+            priceCheck.status("NO_DATA")
+                    .detail("No listing price provided to benchmark.")
+                    .detailKm("មិនមានតម្លៃដាក់លក់ដើម្បីប្រៀបធៀបទេ។")
+                    .confidence(priceScore);
+        } else {
+            int yearLo = Math.max(1980, vehicle.getYear() - 2);
+            int yearHi = vehicle.getYear() + 2;
+            List<VehicleEntity> comps = vehicleRepository.findByStatusAndMakeIgnoreCaseAndModelIgnoreCaseAndYearBetween(
+                    "PUBLISHED", vehicle.getMake(), vehicle.getModel(), yearLo, yearHi);
+            List<Double> prices = comps.stream()
+                    .map(VehicleEntity::getPriceUsd)
+                    .filter(p -> p != null && p > 0)
+                    .sorted()
+                    .collect(Collectors.toList());
+
+            if (prices.size() < 3) {
+                priceScore = 0.5;
+                priceCheck.status("NOT_VERIFIED")
+                        .detail(String.format("Only %d comparable %s %s (%d–%d) listings on the platform — not enough to benchmark price confidently. Listed at $%,.0f.",
+                                prices.size(), vehicle.getMake(), vehicle.getModel(), yearLo, yearHi, currentPrice))
+                        .detailKm(String.format("មានតែ %d ការផ្សាយ %s %s (%d–%d) ប៉ុណ្ណោះ — មិនគ្រប់គ្រាន់ដើម្បីប្រៀបធៀបតម្លៃទេ។ តម្លៃដាក់លក់ $%,.0f។",
+                                prices.size(), vehicle.getMake(), vehicle.getModel(), yearLo, yearHi, currentPrice))
+                        .confidence(priceScore);
+            } else {
+                double median = prices.get(prices.size() / 2);
+                double low = prices.get(0);
+                double high = prices.get(prices.size() - 1);
+                double lowBand = median * 0.75;
+                double highBand = median * 1.25;
+                boolean within = currentPrice >= lowBand && currentPrice <= highBand;
+                priceScore = within ? 0.95 : 0.7;
+                priceCheck.status(within ? "EVIDENCE_FOUND" : "INCONSISTENCY_FLAGGED")
+                        .detail(String.format("Compared with %d comparable %s %s (%d–%d) listings: median $%,.0f, range $%,.0f–$%,.0f. Listed at $%,.0f (%s ±25%% of median).",
+                                prices.size(), vehicle.getMake(), vehicle.getModel(), yearLo, yearHi, median, low, high, currentPrice, within ? "within" : "outside"))
+                        .detailKm(String.format("ប្រៀបធៀបជាមួយការផ្សាយ %d គ្រឿង %s %s (%d–%d): មធ្យម $%,.0f ជួរតម្លៃ $%,.0f–$%,.0f។ តម្លៃដាក់លក់ $%,.0f (%s ±25%% នៃមធ្យម)។",
+                                prices.size(), vehicle.getMake(), vehicle.getModel(), yearLo, yearHi, median, low, high, currentPrice, within ? "ក្នុង" : "ក្រៅ"))
+                        .confidence(priceScore);
+            }
+        }
+        scoreSum += priceScore;
+        checks.add(priceCheck.build());
 
         // 3. Document Completeness Check
         long verifiedDocs = docs.stream().filter(d -> "VERIFIED".equals(d.getStatus()) || "PROVIDED".equals(d.getStatus())).count();
@@ -131,6 +173,38 @@ public class VehicleReportService {
                 .source("Listing data")
                 .confidence(plateScore)
                 .build());
+
+        // 6. Import Origin Consistency Check
+        String importOrigin = vehicle.getImportOrigin();
+        boolean hasImportDoc = docs.stream().anyMatch(d -> "IMPORT_DECLARATION".equals(d.getType()));
+        double importScore;
+        ReportDTO.ReportCheckDTO.ReportCheckDTOBuilder importCheck = ReportDTO.ReportCheckDTO.builder()
+                .area("import")
+                .title("Import origin")
+                .titleKm("ប្រភពនាំចូល")
+                .source("Listing & document evidence");
+
+        if (importOrigin == null || importOrigin.isBlank()) {
+            importScore = 0.5;
+            importCheck.status("NO_DATA")
+                    .detail("No import origin declared. If this is an imported vehicle, ask the seller for import documents.")
+                    .detailKm("មិនបានប្រកាសប្រភពនាំចូលទេ។ ប្រសិនបើនេះជាយានយន្តនាំចូល សូមស្នើសុំឯកសារនាំចូលពីអ្នកលក់។")
+                    .confidence(importScore);
+        } else if (hasImportDoc) {
+            importScore = 1.0;
+            importCheck.status("VERIFIED")
+                    .detail(String.format("Imported from %s — an import declaration is attached to this listing.", importOrigin))
+                    .detailKm(String.format("នាំចូលពី %s — មានភ្ជាប់សេចក្តីប្រកាសនាំចូលជាមួយការផ្សាយនេះ។", importOrigin))
+                    .confidence(importScore);
+        } else {
+            importScore = 0.6;
+            importCheck.status("NOT_VERIFIED")
+                    .detail(String.format("Declared origin: %s — but no import declaration document is attached yet.", importOrigin))
+                    .detailKm(String.format("ប្រភពដែលបានប្រកាស៖ %s — ប៉ុន្តែមិនទាន់មានឯកសារប្រកាសនាំចូលត្រូវបានភ្ជាប់ទេ។", importOrigin))
+                    .confidence(importScore);
+        }
+        scoreSum += importScore;
+        checks.add(importCheck.build());
 
         double overallConfidence = Math.round((scoreSum / checks.size()) * 100.0) / 100.0;
 

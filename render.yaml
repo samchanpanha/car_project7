@@ -1,8 +1,16 @@
 services:
   # -------------------------------------------------------------
-  # Next.js All-in-One Web Service on Render
-  # Runs Next.js standalone web server, embedded SQLite DB,
-  # and optional Telegram sync daemon in a single Docker container.
+  # NOTE: This blueprint predates the split into Next.js + Spring Boot
+  # (PostgreSQL) and is NOT the canonical deployment today. The canonical
+  # stack is docker-compose.yml (postgres + redis + minio + backend + web +
+  # nginx + monitoring). Before using this file on Render:
+  #   * DATABASE_URL must point to a real PostgreSQL instance (the Prisma
+  #     schema is `postgresql`, not SQLite — the file:... value below will
+  #     fail the build),
+  #   * add the Spring Boot `backend` service and point the Next.js /api/*
+  #     rewrite at it (the frontend expects `backend:8080`),
+  #   * NEXTAUTH_* and ENABLE_TELEGRAM_DAEMON are unused by the current code
+  #     and have been removed.
   # -------------------------------------------------------------
   - type: web
     name: khlan-marketplace
@@ -14,12 +22,9 @@ services:
       # Application & Database Configuration
       - key: NODE_ENV
         value: production
+      # TODO: point at a managed PostgreSQL instance (Prisma expects postgresql).
       - key: DATABASE_URL
-        value: file:/app/db/custom.db
-      - key: NEXTAUTH_SECRET
-        generateValue: true
-      - key: NEXTAUTH_URL
-        value: https://khlan-marketplace.onrender.com
+        value: postgresql://khlan:khlan_secret_2026@localhost:5432/khlandb
       # Canonical site origin for metadataBase, sitemap.xml and OG URLs.
       # Read at request time — change it here when the domain changes.
       - key: SITE_URL
@@ -38,8 +43,6 @@ services:
         sync: false
 
       # Telegram Integration (Optional)
-      - key: ENABLE_TELEGRAM_DAEMON
-        value: "true"
       - key: TELEGRAM_BOT_TOKEN
         sync: false
       - key: TELEGRAM_GROUP_CHAT_ID

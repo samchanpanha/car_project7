@@ -36,6 +36,10 @@ import { CompareView } from "@/components/marketplace/views/compare-view";
 import { AuthView } from "@/components/marketplace/views/auth-view";
 import { DashboardView } from "@/components/marketplace/dashboard/dashboard-view";
 import { GuideView } from "@/components/marketplace/views/guide-view";
+import { TrustView } from "@/components/marketplace/views/trust-view";
+import { FinancingView } from "@/components/marketplace/views/financing-view";
+import { EvView } from "@/components/marketplace/views/ev-view";
+import { RealtimeNotifications } from "@/components/marketplace/notification-center";
 
 /** Boots favorites into the global store on first load. */
 function FavoritesBoot() {
@@ -217,6 +221,12 @@ function CurrentView({
       return <DashboardView />;
     case "guide":
       return <GuideView key={view.tab ?? "default"} initialTab={view.tab} />;
+    case "trust":
+      return <TrustView />;
+    case "financing":
+      return <FinancingView price={view.price} />;
+    case "ev":
+      return <EvView />;
     default:
       return <HomeView />;
   }
@@ -282,9 +292,15 @@ function AppChromeInner({ initialView, initialVehicle }: AppChromeProps) {
   // tree in every Next.js version.
   useEffect(() => {
     const apply = () => {
-      useAppStore.setState({
-        view: pathToView(window.location.pathname, window.location.search),
-      });
+      const v = pathToView(window.location.pathname, window.location.search);
+      useAppStore.setState({ view: v });
+      // Remember the browse location so "Back to results" on a detail page can
+      // restore the user's filters (not just a bare /browse).
+      if (v.name === "browse") {
+        useAppStore.getState().setLastBrowsePath(
+          window.location.pathname + window.location.search
+        );
+      }
     };
     apply();
     setMounted(true);
@@ -320,6 +336,7 @@ function AppChromeInner({ initialView, initialVehicle }: AppChromeProps) {
           <FavoritesBoot />
           <SessionBoot />
           <TelegramBoot />
+          <RealtimeNotifications />
           <CurrentView view={view} initialVehicle={initialVehicle} />
         </div>
       </main>

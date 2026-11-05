@@ -112,6 +112,7 @@ export interface VehicleCardDTO {
   condition: string; // LIKE_NEW | USED
   status: VehicleStatus;
   featured: boolean;
+  certified?: boolean; // certified pre-owned (verified sellers only)
   views: number;
   createdAt: string; // ISO
   seller: SellerSummaryDTO;
@@ -142,6 +143,7 @@ export interface VehicleDetailDTO extends VehicleCardDTO {
   ownershipCount?: number | null;
   accidentDeclared: string; // NONE_DECLARED | MINOR_DECLARED | MAJOR_DECLARED | UNKNOWN
   importOrigin?: string | null;
+  videoUrl?: string | null;
   description?: string | null;
   descriptionKm?: string | null;
   branchAddress?: string | null;

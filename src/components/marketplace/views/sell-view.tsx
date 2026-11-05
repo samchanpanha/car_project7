@@ -20,7 +20,7 @@ import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { CarFront, Check, ChevronDown, ChevronUp, Eye, Loader2, Pencil, PhoneCall, Plus, Sparkles, TriangleAlert, Flame, ShieldCheck, Calendar, DollarSign, Tag, AlertCircle } from "lucide-react";
-import { useState, useMemo } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { formatUsd, formatKhr } from "@/lib/format";
@@ -55,25 +55,18 @@ const SAMPLE_PHOTOS = [
   "https://pub-d32806cd92a44955a3772e3e6c2369a5.r2.dev/seed/vehicles/cx5/cx5_1.jpg",
 ];
 
-const BODY_TYPES = ["SUV", "SEDAN", "PICKUP", "VAN", "HATCHBACK", "COUPE"];
-const MOTOR_BODY_TYPES = ["SCOOTER", "CUB", "SPORT", "CRUISER", "DIRT", "ELECTRIC", "OTHER"];
-const PART_CATEGORIES = [
-  "TIRES_WHEELS",
-  "BRAKES_SUSPENSION",
-  "BATTERY_ELECTRICAL",
-  "ENGINE_TRANSMISSION",
-  "LIGHTS_BULBS",
-  "BODY_MIRRORS",
-  "OILS_LUBRICANTS",
-  "ACCESSORIES",
-];
-const PART_CONDITIONS = ["BRAND_NEW", "USED_GENUINE", "AFTERMARKET"];
-const PART_TARGETS = ["CAR", "MOTOR", "UNIVERSAL"];
-const FUELS = ["PETROL", "DIESEL", "HYBRID", "ELECTRIC"];
-const TRANSMISSIONS = ["AUTOMATIC", "MANUAL"];
-const DRIVETRAINS = ["FWD", "RWD", "AWD", "4WD"];
-const IMPORTS = ["USA", "KOREA", "JAPAN", "THAILAND", "DUBAI", "LOCAL"];
-const ACCIDENTS = ["NONE_DECLARED", "MINOR_DECLARED", "MAJOR_DECLARED", "UNKNOWN"];
+import {
+  BODY_TYPES,
+  MOTOR_BODY_TYPES,
+  PART_CATEGORIES,
+  PART_CONDITIONS,
+  PART_TARGETS,
+  FUELS,
+  TRANSMISSIONS,
+  DRIVETRAINS,
+  IMPORTS,
+  ACCIDENTS,
+} from "@/lib/filters";
 
 interface SellForm {
   branchId?: string;
@@ -101,6 +94,8 @@ interface SellForm {
   vinLast6: string;
   plateNo: string;
   importOrigin: string;
+  videoUrl: string;
+  certified: boolean;
   priceUsd: string;
   priceMasked: boolean;
   floorPriceUsd: string;
@@ -128,7 +123,7 @@ const EMPTY: SellForm = {
   partNumber: "",
   make: "", model: "", variant: "", year: "", mileageKm: "", bodyType: "SEDAN", fuel: "PETROL", transmission: "AUTOMATIC",
   engineCc: "", drivetrain: "", images: [], documents: [], condition: "USED", accidentDeclared: "UNKNOWN",
-  ownershipCount: "", vinLast6: "", plateNo: "", importOrigin: "", priceUsd: "", priceMasked: false,
+  ownershipCount: "", vinLast6: "", plateNo: "", importOrigin: "", videoUrl: "", certified: false, priceUsd: "", priceMasked: false,
   floorPriceUsd: "", launchPromo: false, promoPriceTypeId: "", promoValue: "", promoStartDate: "", promoEndDate: "",
   seats: "", interiorColor: "", fuelEconomy: "", city: "Phnom Penh",
   district: "", description: "", descriptionKm: "",
@@ -156,6 +151,66 @@ export function SellView() {
 
   const set = (patch: Partial<SellForm>) => setForm((f) => ({ ...f, ...patch }));
 
+  // ---- Draft autosave ------------------------------------------------
+  // Persist the form locally so an accidental navigation/refresh never wipes a
+  // multi-step listing. Keyed per user so one seller's draft never leaks into
+  // another account on a shared device.
+  const DRAFT_KEY = `khlan_sell_draft_${me?.user.id ?? "guest"}`;
+  const isDirty = useMemo(() => JSON.stringify(form) !== JSON.stringify(EMPTY), [form]);
+
+  useEffect(() => {
+    if (!isDirty) return;
+    const id = window.setTimeout(() => {
+      try {
+        localStorage.setItem(DRAFT_KEY, JSON.stringify(form));
+      } catch {
+        /* storage full/unavailable — skip saving this draft */
+      }
+    }, 800);
+    return () => window.clearTimeout(id);
+  }, [form, DRAFT_KEY, isDirty]);
+
+  const restoredForKey = useRef<string | null>(null);
+  useEffect(() => {
+    const key = DRAFT_KEY;
+    if (restoredForKey.current === key) return;
+    restoredForKey.current = key;
+    try {
+      const raw = localStorage.getItem(key);
+      if (!raw) return;
+      const saved = JSON.parse(raw) as Partial<SellForm>;
+      if (!saved || typeof saved !== "object") return;
+      setForm((f) => ({ ...f, ...saved }));
+      toast.message(t("draftRestored"), {
+        action: {
+          label: t("draftDiscard"),
+          onClick: () => {
+            setForm(EMPTY);
+            try {
+              localStorage.removeItem(key);
+            } catch {
+              /* ignore */
+            }
+          },
+        },
+      });
+    } catch {
+      /* corrupt draft — ignore */
+    }
+  }, [DRAFT_KEY, t]);
+
+  // Warn before leaving with unsaved changes (autosave still protects the data,
+  // but this prevents accidental losses mid-typing).
+  useEffect(() => {
+    if (!isDirty) return;
+    const onBeforeUnload = (e: BeforeUnloadEvent) => {
+      e.preventDefault();
+      e.returnValue = "";
+    };
+    window.addEventListener("beforeunload", onBeforeUnload);
+    return () => window.removeEventListener("beforeunload", onBeforeUnload);
+  }, [isDirty]);
+
   // Sample photos are a convenience quick-pick — toggle in/out of the listing.
   const toggleImage = (url: string) => {
     setForm((f) => ({
@@ -168,6 +223,9 @@ export function SellView() {
 
   const isStaff = Boolean(me && (me.user.role === "ADMIN" || me.user.role === "SUPER_ADMIN"));
   const canSellParts = isStaff || Boolean(me?.subscription?.status === "ACTIVE" && (me?.subscription?.plan === "PRO" || me?.subscription?.plan === "ENTERPRISE"));
+  // Certified pre-owned badge is gated to verified sellers server-side; the UI
+  // toggle is only surfaced to staff for now (backend enforces for others).
+  const canCertify = isStaff;
 
   const selectedPromoType = useMemo(
     () => availablePriceTypes.find((t) => t.id === form.promoPriceTypeId),
@@ -247,18 +305,18 @@ export function SellView() {
       if (form.floorPriceUsd) {
         const fp = Number(form.floorPriceUsd);
         const p = Number(form.priceUsd);
-        if (fp < 0) return "Floor price cannot be negative";
-        if (p > 0 && fp > p) return "Floor price cannot exceed the base listing price";
+        if (fp < 0) return t("floorPriceNegative");
+        if (p > 0 && fp > p) return t("floorExceedsBaseToast");
       }
       if (form.launchPromo) {
-        if (!form.promoPriceTypeId) return "Please select a promotional tier";
+        if (!form.promoPriceTypeId) return t("selectPromoTierToast");
         const pv = Number(form.promoValue);
-        if (!pv || pv <= 0) return "Please enter a valid promotional discount value";
+        if (!pv || pv <= 0) return t("promoValueInvalidToast");
         if (selectedPromoType?.mode === "PERCENT" && pv >= 100) {
-          return "Discount percentage must be less than 100%";
+          return t("promoPercentMaxToast");
         }
         if (selectedPromoType?.mode === "FIXED" && pv >= Number(form.priceUsd)) {
-          return "Promotional fixed price must be lower than the base price";
+          return t("promoFixedBelowBaseToast");
         }
       }
     }
@@ -320,6 +378,8 @@ export function SellView() {
         plateNo: !isPart && form.plateNo.trim() ? form.plateNo.trim() : undefined,
         ownershipCount: !isPart && form.ownershipCount ? Number(form.ownershipCount) : undefined,
         importOrigin: !isPart && form.importOrigin ? form.importOrigin : undefined,
+        videoUrl: !isPart && form.videoUrl.trim() ? form.videoUrl.trim() : undefined,
+        certified: !isPart && form.certified ? true : undefined,
         branchId: form.branchId || undefined,
         images: form.images,
         ...(form.documents.length > 0
@@ -363,6 +423,12 @@ export function SellView() {
       }
 
       toast.success(t("sellSuccess"));
+      // Published — clear the saved draft.
+      try {
+        localStorage.removeItem(DRAFT_KEY);
+      } catch {
+        /* ignore */
+      }
       navigate({ name: "detail", vehicleId: res.vehicle.id });
     } catch (e) {
       toast.error(e instanceof Error ? e.message : t("errorGeneric"));
@@ -513,7 +579,7 @@ export function SellView() {
                       <Button
                         type="button"
                         size="sm"
-                        onClick={() => navigate({ name: "plans" } as any)}
+                        onClick={() => navigate({ name: "dashboard", tab: "subscription" })}
                         className="bg-slate-950 text-white hover:bg-slate-800 text-xs font-semibold h-8"
                       >
                         <Sparkles className="h-3.5 w-3.5 mr-1.5 text-amber-400" />
@@ -978,8 +1044,8 @@ export function SellView() {
                     <DollarSign className="h-4 w-4" />
                   </div>
                   <div>
-                    <h3 className="text-sm font-bold text-slate-900">Pricing & Floor Safeguards</h3>
-                    <p className="text-[11px] text-slate-500">Base asking price, currency conversion & floor price protection</p>
+                    <h3 className="text-sm font-bold text-slate-900">{t("pricingTitle")}</h3>
+                    <p className="text-[11px] text-slate-500">{t("pricingSubtitle")}</p>
                   </div>
                 </div>
 
@@ -1000,7 +1066,7 @@ export function SellView() {
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <Field
                   label={form.priceMasked ? `${t("formPrice")} (${t("flowOptional")})` : `${t("formPrice")} (USD $)`}
-                  hint={form.priceMasked ? t("flowMaskedPriceHint") : (Number(form.priceUsd) > 0 ? `≈ ${formatKhr(Number(form.priceUsd) || 0)}` : "Standard asking price")}
+                  hint={form.priceMasked ? t("flowMaskedPriceHint") : (Number(form.priceUsd) > 0 ? `≈ ${formatKhr(Number(form.priceUsd) || 0)}` : t("standardAskingPrice"))}
                 >
                   <div className="relative">
                     <span className="absolute left-3 top-2.5 text-sm font-semibold text-slate-400">$</span>
@@ -1016,8 +1082,8 @@ export function SellView() {
                 </Field>
 
                 <Field
-                  label="Floor Price Protection (USD $)"
-                  hint="Minimum acceptable sale price. Promotional campaigns cannot discount below this."
+                  label={t("floorPriceLabel")}
+                  hint={t("floorPriceHint")}
                 >
                   <div className="space-y-1.5">
                     <div className="relative">
@@ -1035,7 +1101,7 @@ export function SellView() {
                     {/* Quick Floor Presets */}
                     {Number(form.priceUsd) > 0 && (
                       <div className="flex flex-wrap items-center gap-1.5 pt-0.5">
-                        <span className="text-[10px] font-semibold text-slate-400">Quick Protect:</span>
+                        <span className="text-[10px] font-semibold text-slate-400">{t("quickProtect")}</span>
                         {[
                           { label: "90%", ratio: 0.90 },
                           { label: "85%", ratio: 0.85 },
@@ -1065,7 +1131,7 @@ export function SellView() {
                             onClick={() => set({ floorPriceUsd: "" })}
                             className="text-[10px] text-slate-400 hover:text-slate-600 underline ml-1 cursor-pointer"
                           >
-                            Clear
+                            {t("clearAction")}
                           </button>
                         )}
                       </div>
@@ -1076,17 +1142,17 @@ export function SellView() {
                       Number(form.floorPriceUsd) > Number(form.priceUsd) ? (
                         <div className="flex items-center gap-1.5 text-[11px] font-medium text-rose-600">
                           <AlertCircle className="h-3 w-3 shrink-0" />
-                          <span>Floor price exceeds base price ({formatUsd(Number(form.priceUsd))})</span>
+                          <span>{t("floorExceedsBase", { price: formatUsd(Number(form.priceUsd)) })}</span>
                         </div>
                       ) : Number(form.floorPriceUsd) === Number(form.priceUsd) ? (
                         <div className="flex items-center gap-1.5 text-[11px] font-medium text-amber-600">
                           <TriangleAlert className="h-3 w-3 shrink-0" />
-                          <span>Floor equals base price. No promotional discounts will take effect.</span>
+                          <span>{t("floorEqualsBase")}</span>
                         </div>
                       ) : (
                         <div className="flex items-center gap-1.5 text-[11px] font-medium text-emerald-700">
                           <ShieldCheck className="h-3 w-3 shrink-0 text-emerald-600" />
-                          <span>Protected floor: minimum sale guaranteed at {formatUsd(Number(form.floorPriceUsd))} (≈ {formatKhr(Number(form.floorPriceUsd))})</span>
+                          <span>{t("floorProtected", { price: formatUsd(Number(form.floorPriceUsd)), khr: formatKhr(Number(form.floorPriceUsd)) })}</span>
                         </div>
                       )
                     )}
@@ -1125,7 +1191,7 @@ export function SellView() {
                 {form.launchPromo && (
                   <div className="space-y-3 pt-2 border-t border-amber-200/60 animate-in fade-in slide-in-from-top-1">
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                      <Field label="Promotional Tier">
+                      <Field label={t("promoTierLabel")}>
                         <SelectInput
                           value={form.promoPriceTypeId}
                           onChange={(v) => set({ promoPriceTypeId: v })}
@@ -1133,13 +1199,13 @@ export function SellView() {
                             value: pt.id,
                             label: `${pt.label} (${pt.mode === "PERCENT" ? "% off" : "Fixed $"})`,
                           }))}
-                          placeholder="Select promo tier"
+                          placeholder={t("selectPromoTier")}
                         />
                       </Field>
 
                       <Field
-                        label={selectedPromoType?.mode === "PERCENT" ? "Discount Percentage (%)" : "Promotional Price (USD $)"}
-                        hint={selectedPromoType?.mode === "PERCENT" ? "e.g. 10 for 10% off" : "Target discounted sale price"}
+                        label={selectedPromoType?.mode === "PERCENT" ? t("discountPercentLabel") : t("promoPriceLabel")}
+                        hint={selectedPromoType?.mode === "PERCENT" ? t("percentExampleHint") : t("targetSaleHint")}
                       >
                         <div className="space-y-1.5">
                           <div className="relative">
@@ -1162,7 +1228,7 @@ export function SellView() {
 
                           {selectedPromoType?.mode === "PERCENT" && (
                             <div className="flex flex-wrap items-center gap-1 pt-0.5">
-                              <span className="text-[10px] font-semibold text-slate-400">Presets:</span>
+                              <span className="text-[10px] font-semibold text-slate-400">{t("presetsColon")}</span>
                               {["5", "10", "15", "20", "25"].map((pct) => (
                                 <button
                                   key={pct}
@@ -1185,14 +1251,14 @@ export function SellView() {
                     </div>
 
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                      <Field label="Schedule Start Date (Optional)" hint="Leave blank to start immediately">
+                      <Field label={t("scheduleStartLabel")} hint={t("scheduleStartHint")}>
                         <Input
                           type="datetime-local"
                           value={form.promoStartDate}
                           onChange={(e) => set({ promoStartDate: e.target.value })}
                         />
                       </Field>
-                      <Field label="Schedule End Date (Optional)" hint="Leave blank for ongoing promo">
+                      <Field label={t("scheduleEndLabel")} hint={t("scheduleEndHint")}>
                         <Input
                           type="datetime-local"
                           value={form.promoEndDate}
@@ -1210,11 +1276,11 @@ export function SellView() {
                   <div className="flex items-center justify-between text-xs font-bold text-slate-600">
                     <span className="flex items-center gap-1.5">
                       <Sparkles className="h-3.5 w-3.5 text-amber-500" />
-                      Live Pricing Preview
+                      {t("livePricingPreview")}
                     </span>
                     {pricingPreview.isOnSale && (
                       <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-bold text-emerald-800">
-                        Save {formatUsd(pricingPreview.discountUsd)} ({pricingPreview.discountPercent}% OFF)
+                        {t("saveAmount", { amount: formatUsd(pricingPreview.discountUsd), pct: pricingPreview.discountPercent })}
                       </span>
                     )}
                   </div>
@@ -1268,6 +1334,31 @@ export function SellView() {
               </div>
               <Field label={t("formDescription")}>
                 <Textarea rows={3} value={form.description} onChange={(e) => set({ description: e.target.value })} />
+              </Field>
+              {canCertify && (
+                <Field label={t("formCertifiedLabel")} hint={t("formCertifiedHint")}>
+                  <div className="flex items-center gap-2 mt-1.5">
+                    <Switch
+                      id="sell-certified"
+                      checked={form.certified}
+                      onCheckedChange={(v) => set({ certified: v })}
+                    />
+                    <Label htmlFor="sell-certified" className="text-sm font-medium text-slate-700">
+                      {t("formCertifiedToggle")}
+                    </Label>
+                  </div>
+                </Field>
+              )}
+              <Field
+                label={t("formVideoLabel")}
+                hint={t("formVideoHint")}
+              >
+                <Input
+                  value={form.videoUrl}
+                  onChange={(e) => set({ videoUrl: e.target.value })}
+                  placeholder={t("formVideoPlaceholder")}
+                  className="mt-1.5 h-9"
+                />
               </Field>
               <Field label={t("formDescriptionKm")}>
                 <Textarea rows={3} value={form.descriptionKm} onChange={(e) => set({ descriptionKm: e.target.value })} className="font-khmer" />

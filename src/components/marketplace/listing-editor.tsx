@@ -44,26 +44,18 @@ import {
   getVehicleMakes,
   getVehicleModels,
 } from "@/lib/vehicle-catalog";
-
-const BODY_TYPES = ["SUV", "SEDAN", "PICKUP", "VAN", "HATCHBACK", "COUPE"];
-const MOTOR_BODY_TYPES = ["SCOOTER", "CUB", "SPORT", "CRUISER", "DIRT", "ELECTRIC", "OTHER"];
-const PART_CATEGORIES = [
-  "TIRES_WHEELS",
-  "BRAKES_SUSPENSION",
-  "BATTERY_ELECTRICAL",
-  "ENGINE_TRANSMISSION",
-  "LIGHTS_BULBS",
-  "BODY_MIRRORS",
-  "OILS_LUBRICANTS",
-  "ACCESSORIES",
-];
-const PART_CONDITIONS = ["BRAND_NEW", "USED_GENUINE", "AFTERMARKET"];
-const PART_TARGETS = ["CAR", "MOTOR", "UNIVERSAL"];
-const FUELS = ["PETROL", "DIESEL", "HYBRID", "ELECTRIC"];
-const TRANSMISSIONS = ["AUTOMATIC", "MANUAL"];
-const DRIVETRAINS = ["FWD", "RWD", "AWD", "4WD"];
-const IMPORTS = ["USA", "KOREA", "JAPAN", "THAILAND", "DUBAI", "LOCAL"];
-const ACCIDENTS = ["NONE_DECLARED", "MINOR_DECLARED", "MAJOR_DECLARED", "UNKNOWN"];
+import {
+  BODY_TYPES,
+  MOTOR_BODY_TYPES,
+  PART_CATEGORIES,
+  PART_CONDITIONS,
+  PART_TARGETS,
+  FUELS,
+  TRANSMISSIONS,
+  DRIVETRAINS,
+  IMPORTS,
+  ACCIDENTS,
+} from "@/lib/filters";
 const EDIT_STATUSES = ["PUBLISHED", "DRAFT", "SOLD", "ARCHIVED"];
 
 // ---------------- Documents editor (Task 17) ----------------

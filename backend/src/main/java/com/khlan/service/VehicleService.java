@@ -42,6 +42,16 @@ public class VehicleService {
         return normalized;
     }
 
+    /** Only admins and sellers whose profile (or tenant) is VERIFIED may mark a
+     *  listing as certified pre-owned — the badge must mean something. */
+    private boolean isCertifiedEligible(UserEntity seller) {
+        if (seller == null) return false;
+        String role = seller.getRole();
+        if ("ADMIN".equals(role) || "SUPER_ADMIN".equals(role)) return true;
+        SellerProfileEntity p = sellerProfileRepository.findByUserId(seller.getId()).orElse(null);
+        return p != null && "VERIFIED".equals(p.getVerification());
+    }
+
     private void validateListingCategory(String listingCategory, Integer year, String partCategory) {
         if (year == null) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "year is required");
@@ -277,6 +287,8 @@ public class VehicleService {
                 .ownershipCount(req.getOwnershipCount())
                 .accidentDeclared(req.getAccidentDeclared() != null ? req.getAccidentDeclared() : "UNKNOWN")
                 .importOrigin(req.getImportOrigin())
+                .videoUrl(req.getVideoUrl())
+                .certified(Boolean.TRUE.equals(req.getCertified()) && isCertifiedEligible(seller))
                 .listingCategory(listingCategory)
                 .partCategory(req.getPartCategory())
                 .partTarget(req.getPartTarget())
@@ -381,6 +393,8 @@ public class VehicleService {
         if (req.getOwnershipCount() != null) vehicle.setOwnershipCount(req.getOwnershipCount());
         if (req.getAccidentDeclared() != null) vehicle.setAccidentDeclared(req.getAccidentDeclared());
         if (req.getImportOrigin() != null) vehicle.setImportOrigin(req.getImportOrigin());
+        if (req.getVideoUrl() != null) vehicle.setVideoUrl(req.getVideoUrl());
+        if (req.getCertified() != null) vehicle.setCertified(req.getCertified() && isCertifiedEligible(actor));
         if (req.getStatus() != null) vehicle.setStatus(req.getStatus());
         if (req.getBranchId() != null) vehicle.setBranchId(req.getBranchId());
 
@@ -481,6 +495,7 @@ public class VehicleService {
                 .condition(v.getCondition())
                 .status(v.getStatus())
                 .featured(Boolean.TRUE.equals(v.getFeatured()))
+                .certified(Boolean.TRUE.equals(v.getCertified()))
                 .views(v.getViews())
                 .createdAt(v.getCreatedAt() != null ? v.getCreatedAt().toString() : OffsetDateTime.now().toString())
                 .seller(getSellerSummary(v.getSellerId()))
@@ -550,6 +565,8 @@ public class VehicleService {
                 .ownershipCount(v.getOwnershipCount())
                 .accidentDeclared(v.getAccidentDeclared())
                 .importOrigin(v.getImportOrigin())
+                .videoUrl(v.getVideoUrl())
+                .certified(Boolean.TRUE.equals(v.getCertified()))
                 .description(v.getDescription())
                 .descriptionKm(v.getDescriptionKm())
                 .branchAddress(branch != null ? branch.getAddress() : null)

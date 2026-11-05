@@ -19,15 +19,23 @@ import jakarta.servlet.http.Cookie;
 import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
+import javax.crypto.Mac;
+import javax.crypto.spec.SecretKeySpec;
 import java.net.URLDecoder;
 import java.nio.charset.StandardCharsets;
+import java.security.GeneralSecurityException;
+import java.security.MessageDigest;
 import java.time.OffsetDateTime;
+import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
@@ -48,6 +56,9 @@ public class AuthService {
     private final ObjectMapper objectMapper;
     private final SubscriptionRepository subscriptionRepository;
     private final PlanCatalogService planCatalogService;
+
+    @Value("${telegram.bot-token:}")
+    private String telegramBotToken;
 
     public static final String AUTH_COOKIE = "khlan_auth";
     public static final String PERSONA_COOKIE = "khlan_persona";
@@ -255,6 +266,16 @@ public class AuthService {
             }
         }
 
+        // Verify the Telegram WebApp initData signature before trusting any of
+        // its payload. Without this, anyone could forge the `user` field and
+        // impersonate any Telegram account (account takeover). The check
+        // requires the secret key derived from the bot token, so logins are
+        // refused when the bot is not configured.
+        String botToken = effectiveTelegramBotToken();
+        if (botToken == null || !verifyInitDataHash(params, botToken)) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Invalid Telegram initData signature");
+        }
+
         String userJson = params.get("user");
         if (userJson == null || userJson.isBlank()) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "user parameter missing in initData");
@@ -345,6 +366,57 @@ public class AuthService {
                 .build();
     }
 
+    private String effectiveTelegramBotToken() {
+        if (telegramBotToken != null && !telegramBotToken.isBlank()) return telegramBotToken;
+        String env = System.getenv("TELEGRAM_BOT_TOKEN");
+        return (env != null && !env.isBlank()) ? env : null;
+    }
+
+    /**
+     * Validates a Telegram WebApp initData signature (HMAC-SHA256). The
+     * data-check-string is all fields except `hash`, sorted by key and joined
+     * with '\n' as key=value; the secret key is HMAC-SHA256(bot_token,
+     * "WebAppData"). Comparison is constant-time.
+     */
+    private static boolean verifyInitDataHash(Map<String, String> params, String botToken) {
+        String provided = params.get("hash");
+        if (provided == null || provided.isBlank()) return false;
+
+        List<String> fields = new ArrayList<>();
+        for (Map.Entry<String, String> e : params.entrySet()) {
+            if ("hash".equals(e.getKey())) continue;
+            fields.add(e.getKey() + "=" + e.getValue());
+        }
+        Collections.sort(fields);
+        String dataCheckString = String.join("\n", fields);
+
+        byte[] secretKey = hmacSha256(
+                botToken.getBytes(StandardCharsets.UTF_8),
+                "WebAppData".getBytes(StandardCharsets.UTF_8));
+        byte[] expected = hmacSha256(secretKey, dataCheckString.getBytes(StandardCharsets.UTF_8));
+        return MessageDigest.isEqual(expected, hexToBytes(provided));
+    }
+
+    private static byte[] hmacSha256(byte[] key, byte[] data) {
+        try {
+            Mac mac = Mac.getInstance("HmacSHA256");
+            mac.init(new SecretKeySpec(key, "HmacSHA256"));
+            return mac.doFinal(data);
+        } catch (GeneralSecurityException e) {
+            throw new IllegalStateException("HMAC-SHA256 unavailable", e);
+        }
+    }
+
+    private static byte[] hexToBytes(String hex) {
+        int len = hex.length();
+        byte[] out = new byte[len / 2];
+        for (int i = 0; i < len; i += 2) {
+            out[i / 2] = (byte) ((Character.digit(hex.charAt(i), 16) << 4)
+                    | Character.digit(hex.charAt(i + 1), 16));
+        }
+        return out;
+    }
+
     public static String normalizeKhmerPhone(String raw) {
         if (raw == null) return null;
         String d = raw.replaceAll("[\\s\\-().]", "");
@@ -370,7 +442,11 @@ public class AuthService {
         Cookie cookie = new Cookie(name, value);
         cookie.setPath("/");
         cookie.setMaxAge(maxAgeSeconds);
-        cookie.setHttpOnly(false); // Accessible by client fallback scripts
+        // HttpOnly prevents XSS from exfiltrating the session token; the
+        // frontend reads the session via /api/session (same-origin cookie), not
+        // via document.cookie.
+        cookie.setHttpOnly(true);
+        cookie.setAttribute("SameSite", "Lax");
         response.addCookie(cookie);
     }
 

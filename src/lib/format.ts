@@ -1,6 +1,6 @@
 import type { Locale } from "./i18n";
 
-const KHR_PER_USD = 4100; // indicative demo rate (see PLAN.md §2 — validate at launch)
+export const KHR_PER_USD = 4100; // indicative demo rate (see PLAN.md §2 — validate at launch)
 
 export function formatUsd(value: number | null | undefined): string {
   const v = typeof value === "number" && !Number.isNaN(value) ? value : 0;

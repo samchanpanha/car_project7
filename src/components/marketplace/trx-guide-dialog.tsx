@@ -15,6 +15,7 @@ import { Check, Copy, ExternalLink, HelpCircle, Info, QrCode, Search, Sparkles, 
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { getAllSupportedBanks } from "@/lib/payments/bank-directory";
+import { useT } from "@/hooks/use-t";
 
 /**
  * KhqrZoomDialog — Pop up dialog that enlarges the KHQR image
@@ -47,6 +48,7 @@ export function KhqrZoomDialog({
   currency?: "USD" | "KHR";
   onCurrencyChange?: (c: "USD" | "KHR") => void;
 }) {
+  const t = useT();
   const [internalCurrency, setInternalCurrency] = useState<"USD" | "KHR">(initialCurrency);
   const activeCurrency = onCurrencyChange ? initialCurrency : internalCurrency;
 
@@ -71,7 +73,7 @@ export function KhqrZoomDialog({
   const copyPayee = () => {
     navigator.clipboard?.writeText(accountName);
     setCopiedPayee(true);
-    toast.success(`Copied Payee: ${accountName}`);
+    toast.success(t("copiedPayeeToast", { name: accountName }));
     setTimeout(() => setCopiedPayee(false), 2000);
   };
 
@@ -80,7 +82,7 @@ export function KhqrZoomDialog({
     const cleanNum = displayAmount.replace(/[^0-9.]/g, "");
     navigator.clipboard?.writeText(cleanNum || displayAmount);
     setCopiedAmount(true);
-    toast.success(`Copied Amount: ${cleanNum || displayAmount}`);
+    toast.success(t("copiedAmountToast", { value: cleanNum || displayAmount }));
     setTimeout(() => setCopiedAmount(false), 2000);
   };
 
@@ -91,7 +93,7 @@ export function KhqrZoomDialog({
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
-    toast.success(`KHQR (${activeCurrency}) image downloaded to your device!`);
+    toast.success(t("downloadedQrToast", { currency: activeCurrency }));
   };
 
   return (
@@ -103,11 +105,11 @@ export function KhqrZoomDialog({
               KHQR
             </div>
             <DialogTitle className="text-lg font-bold text-slate-900 dark:text-white">
-              PayWay by ABA KHQR · Full Scan View
+              {t("qrZoomTitleFull")}
             </DialogTitle>
           </div>
           <DialogDescription className="text-xs text-slate-500">
-            Enlarged high-resolution QR code for quick scanning with ABA Mobile or any Bakong banking app
+            {t("qrZoomDesc")}
           </DialogDescription>
 
           {/* Currency Switcher in Zoom Dialog */}
@@ -143,17 +145,17 @@ export function KhqrZoomDialog({
           <div className="w-full flex items-center justify-between border-b border-slate-100 pb-2 mb-3 px-2">
             <span className="font-extrabold text-xs tracking-wider text-red-600 flex items-center gap-1.5">
               <span className="inline-block h-2.5 w-2.5 rounded-full bg-red-600 animate-pulse" />
-              OFFICIAL BAKONG KHQR · {activeCurrency === "KHR" ? "KHMER RIEL (៛)" : "US DOLLAR ($)"}
+              {t("officialBakong")} · {t(activeCurrency === "KHR" ? "khmelRiel" : "usDollar")}
             </span>
             <span className="text-[11px] font-semibold text-slate-500">
-              {planTitle ?? "Subscription"}
+              {planTitle ?? t("subscriptionTitle")}
             </span>
           </div>
 
           <div className="relative p-2 bg-white rounded-2xl border border-slate-200/80 shadow-inner">
             <img
               src={displayQr}
-              alt={`Enlarged KHQR Code (${activeCurrency})`}
+              alt={t("enlargedQrAlt", { currency: activeCurrency })}
               className="h-72 w-72 sm:h-96 sm:w-96 md:h-[420px] md:w-[420px] object-contain rounded-xl transition-all"
             />
           </div>
@@ -161,7 +163,7 @@ export function KhqrZoomDialog({
           <div className="mt-4 w-full text-center space-y-2">
             <div className="flex flex-wrap items-center justify-center gap-2">
               <span className="text-sm font-bold text-slate-800">
-                Payee: <span className="text-red-700 font-extrabold">{accountName}</span>
+                {t("payeeLabel")} <span className="text-red-700 font-extrabold">{accountName}</span>
               </span>
               <Button
                 type="button"
@@ -171,7 +173,7 @@ export function KhqrZoomDialog({
                 className="h-6 px-2 text-[11px] font-semibold text-slate-600 hover:text-slate-900 hover:bg-slate-100"
               >
                 {copiedPayee ? <Check className="h-3 w-3 mr-1 text-emerald-600" /> : <Copy className="h-3 w-3 mr-1" />}
-                {copiedPayee ? "Copied" : "Copy Payee"}
+                {copiedPayee ? t("copied") : t("copyPayee")}
               </Button>
             </div>
 
@@ -188,7 +190,7 @@ export function KhqrZoomDialog({
                   className="h-7 px-2.5 text-xs font-semibold text-emerald-700 hover:bg-emerald-50 border-emerald-300"
                 >
                   {copiedAmount ? <Check className="h-3.5 w-3.5 mr-1 text-emerald-600" /> : <Copy className="h-3.5 w-3.5 mr-1" />}
-                  {copiedAmount ? "Copied" : "Copy Amount"}
+                  {copiedAmount ? t("copied") : t("copyAmount")}
                 </Button>
               </div>
             )}
@@ -203,12 +205,12 @@ export function KhqrZoomDialog({
             onClick={downloadQr}
             className="text-xs font-semibold border-slate-300 text-slate-700 hover:bg-slate-50"
           >
-            📥 Download {activeCurrency} QR Image to Device
+            {t("downloadQrImage", { currency: activeCurrency })}
           </Button>
         </div>
 
         <p className="text-[11px] text-slate-500 leading-relaxed mt-2">
-          💡 Tip: Point your phone camera at this enlarged QR code, or save the image to your gallery and scan with ABA Mobile &gt; QR &gt; Photos.
+          {t("qrTip")}
         </p>
 
         <DialogFooter className="sm:justify-center mt-2">
@@ -217,7 +219,7 @@ export function KhqrZoomDialog({
             onClick={() => onOpenChange(false)}
             className="w-full sm:w-auto px-8 bg-slate-900 text-white hover:bg-slate-800 text-xs font-semibold h-9"
           >
-            Close Full Size View
+            {t("closeFullSize")}
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -238,6 +240,7 @@ export function TrxIdGuideDialog({
   onOpenChange: (open: boolean) => void;
   onUseSample?: (trxId: string) => void;
 }) {
+  const t = useT();
   const [copied, setCopied] = useState(false);
   const [bankTab, setBankTab] = useState<"ABA" | "ACLEDA" | "WING" | "UCB" | "ALL">("ABA");
   const [searchQuery, setSearchQuery] = useState("");
@@ -261,7 +264,7 @@ export function TrxIdGuideDialog({
   const copySample = (text: string) => {
     navigator.clipboard?.writeText(text);
     setCopied(true);
-    toast.success(`Copied Reference: ${text}`);
+    toast.success(t("copiedRefToast", { text }));
     setTimeout(() => setCopied(false), 2000);
   };
 
@@ -274,17 +277,17 @@ export function TrxIdGuideDialog({
               <HelpCircle className="h-4 w-4" />
             </div>
             <DialogTitle className="text-base font-bold text-slate-900">
-              How to Find Your Bank Reference (Multi-Bank Guide)
+              {t("trxGuideTitle")}
             </DialogTitle>
           </div>
           <DialogDescription className="text-xs text-slate-500">
-            KhLan supports payments from ABA, ACLEDA, Wing, Canadia, and all 20+ Cambodian Bakong member banks.
+            {t("trxGuideDesc")}
           </DialogDescription>
 
           <div className="mt-2 p-2.5 rounded-lg border border-amber-300 bg-amber-50 text-amber-900 text-xs flex items-center gap-2">
             <Lock className="h-4 w-4 text-amber-700 shrink-0" />
             <span>
-              <strong>Auto-Extracted from Receipt:</strong> Direct manual typing is disabled to prevent mistakes and financial risk. Simply upload your confirmation receipt slip and our AI scanner extracts and verifies the Trx ID automatically!
+              <strong>{t("autoExtractedTitle")}</strong> {t("autoExtractedBody")}
             </span>
           </div>
 
@@ -359,15 +362,15 @@ export function TrxIdGuideDialog({
           <div className="my-3 space-y-3">
             <div className="rounded-xl border border-slate-200 bg-slate-50 overflow-hidden shadow-xs">
               <div className="bg-slate-900 text-white px-3 py-2 flex items-center justify-between text-xs font-semibold">
-                <span>Sample ABA Mobile Receipt</span>
+                <span>{t("sampleAbaReceipt")}</span>
                 <Badge className="bg-amber-500 text-slate-950 font-bold text-[10px]">
-                  Look for Trx. ID
+                  {t("lookForTrx")}
                 </Badge>
               </div>
               <div className="p-2 sm:p-3 flex justify-center bg-white">
                 <img
                   src="/aba-receipt-sample.svg"
-                  alt="ABA Transaction ID Sample Guide"
+                  alt={t("abaSampleAlt")}
                   className="max-h-[340px] w-auto rounded-lg object-contain shadow-xs border border-slate-100"
                 />
               </div>
@@ -376,12 +379,12 @@ export function TrxIdGuideDialog({
             <div className="rounded-xl border-2 border-amber-400 bg-amber-50/80 p-3 space-y-2">
               <span className="text-xs font-bold text-amber-950 flex items-center gap-1.5">
                 <Sparkles className="h-4 w-4 text-amber-600" />
-                Valid References from ABA Receipt:
+                {t("validRefs")}
               </span>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
                 <div className="flex items-center justify-between rounded-lg bg-white border border-amber-200 p-2">
                   <div>
-                    <span className="text-[10px] text-slate-400 block font-semibold uppercase">15-Digit Trx ID</span>
+                    <span className="text-[10px] text-slate-400 block font-semibold uppercase">{t("trx15Digit")}</span>
                     <code className="font-mono font-bold text-slate-900 text-xs">{sampleTrxId}</code>
                   </div>
                   <Button
@@ -392,12 +395,12 @@ export function TrxIdGuideDialog({
                     className="h-7 px-2 text-[11px] text-amber-700 hover:bg-amber-50 cursor-pointer"
                   >
                     {copied ? <Check className="h-3 w-3 mr-1 text-emerald-600" /> : <Copy className="h-3 w-3 mr-1" />}
-                    Copy
+                    {t("copy")}
                   </Button>
                 </div>
                 <div className="flex items-center justify-between rounded-lg bg-white border border-amber-200 p-2">
                   <div>
-                    <span className="text-[10px] text-slate-400 block font-semibold uppercase">6-Digit APV Code</span>
+                    <span className="text-[10px] text-slate-400 block font-semibold uppercase">{t("apv6Digit")}</span>
                     <code className="font-mono font-bold text-slate-900 text-xs">{sampleApv}</code>
                   </div>
                   <Button
@@ -408,7 +411,7 @@ export function TrxIdGuideDialog({
                     className="h-7 px-2 text-[11px] text-amber-700 hover:bg-amber-50 cursor-pointer"
                   >
                     {copied ? <Check className="h-3 w-3 mr-1 text-emerald-600" /> : <Copy className="h-3 w-3 mr-1" />}
-                    Copy
+                    {t("copy")}
                   </Button>
                 </div>
               </div>
@@ -425,9 +428,9 @@ export function TrxIdGuideDialog({
                   អេស៊ី
                 </div>
                 <div>
-                  <h4 className="font-bold text-blue-950">Paying via ACLEDA Mobile to ABA KHQR</h4>
+                  <h4 className="font-bold text-blue-950">{t("acledaPaying")}</h4>
                   <p className="text-[11px] text-blue-800">
-                    On your ACLEDA transaction slip, locate either reference:
+                    {t("acledaLocate")}
                   </p>
                 </div>
               </div>
@@ -435,7 +438,7 @@ export function TrxIdGuideDialog({
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1">
                 <div className="flex items-center justify-between rounded-lg bg-white border border-blue-200 p-2.5">
                   <div>
-                    <span className="text-[10px] text-slate-400 block font-semibold uppercase">Reference No. (11 Digits)</span>
+                    <span className="text-[10px] text-slate-400 block font-semibold uppercase">{t("refNo11")}</span>
                     <code className="font-mono font-bold text-slate-900 text-xs">{sampleAcledaRef}</code>
                   </div>
                   <Button
@@ -446,13 +449,13 @@ export function TrxIdGuideDialog({
                     className="h-7 px-2 text-[11px] text-blue-700 hover:bg-blue-50 cursor-pointer"
                   >
                     {copied ? <Check className="h-3 w-3 mr-1 text-emerald-600" /> : <Copy className="h-3 w-3 mr-1" />}
-                    Copy
+                    {t("copy")}
                   </Button>
                 </div>
 
                 <div className="flex items-center justify-between rounded-lg bg-white border border-blue-200 p-2.5">
                   <div>
-                    <span className="text-[10px] text-slate-400 block font-semibold uppercase">External Txn Ref (8 Chars)</span>
+                    <span className="text-[10px] text-slate-400 block font-semibold uppercase">{t("extTxn8")}</span>
                     <code className="font-mono font-bold text-slate-900 text-xs">{sampleAcledaExt}</code>
                   </div>
                   <Button
@@ -463,15 +466,15 @@ export function TrxIdGuideDialog({
                     className="h-7 px-2 text-[11px] text-blue-700 hover:bg-blue-50 cursor-pointer"
                   >
                     {copied ? <Check className="h-3 w-3 mr-1 text-emerald-600" /> : <Copy className="h-3 w-3 mr-1" />}
-                    Copy
+                    {t("copy")}
                   </Button>
                 </div>
               </div>
 
               <div className="rounded-lg bg-white/80 p-2.5 border border-blue-200/80 text-[11px] text-slate-700 space-y-1">
-                <p className="font-semibold text-blue-950">⚡ How KhLan Verifies ACLEDA Payments:</p>
+                <p className="font-semibold text-blue-950">{t("acledaVerifyTitle")}</p>
                 <p>
-                  KhLan cross-correlates your ACLEDA Reference with the incoming ABA PayWay Telegram alert (code: <code>ACLBKHPPXXX</code>) using account mask and amount matching.
+                  {t("acledaVerifyBody")}
                 </p>
               </div>
             </div>
@@ -487,17 +490,17 @@ export function TrxIdGuideDialog({
                   វីង
                 </div>
                 <div>
-                  <h4 className="font-bold text-emerald-950">Paying via Wing Bank or Bakong App</h4>
+                  <h4 className="font-bold text-emerald-950">{t("wingPaying")}</h4>
                   <p className="text-[11px] text-emerald-800">
-                    Locate the <strong>Transaction ID</strong> or <strong>Hash</strong> on your payment confirmation screen.
+                    {t("wingLocate")}
                   </p>
                 </div>
               </div>
 
               <div className="rounded-lg bg-white p-2.5 border border-emerald-200 text-[11px] text-slate-700 space-y-1">
-                <p className="font-semibold text-emerald-950">💡 Tip for Fastest Approval:</p>
+                <p className="font-semibold text-emerald-950">{t("tipFastest")}</p>
                 <p>
-                  Use the <strong>AI Receipt Scanner</strong> button to upload your Wing or Bakong slip photo directly. Our OCR scanner extracts all reference codes automatically!
+                  {t("tipScanner")}
                 </p>
               </div>
             </div>
@@ -513,9 +516,9 @@ export function TrxIdGuideDialog({
                   UCB
                 </div>
                 <div>
-                  <h4 className="font-bold text-sky-950">Union Commercial Bank (UCB / ធនាគារ សហពាណិជ្ជ ភ.អ)</h4>
+                  <h4 className="font-bold text-sky-950">{t("ucbTitle")}</h4>
                   <p className="text-[11px] text-sky-800">
-                    UCB payment confirmation slips display <strong>Reference No.</strong> (e.g. <code>FT262967KHCC</code>) and <strong>External Txn Ref</strong>.
+                    {t("ucbDesc")}
                   </p>
                 </div>
               </div>
@@ -523,7 +526,7 @@ export function TrxIdGuideDialog({
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
                 <div className="flex items-center justify-between rounded-lg bg-white border border-sky-200 p-2">
                   <div>
-                    <span className="text-[10px] text-slate-400 block font-semibold uppercase">Reference No. (FT...KHCC)</span>
+                    <span className="text-[10px] text-slate-400 block font-semibold uppercase">{t("refNoFt")}</span>
                     <code className="font-mono font-bold text-slate-900 text-xs">FT262967KHCC</code>
                   </div>
                   <Button
@@ -534,12 +537,12 @@ export function TrxIdGuideDialog({
                     className="h-7 px-2 text-[11px] text-sky-700 hover:bg-sky-50 cursor-pointer"
                   >
                     {copied ? <Check className="h-3 w-3 mr-1 text-emerald-600" /> : <Copy className="h-3 w-3 mr-1" />}
-                    Copy
+                    {t("copy")}
                   </Button>
                 </div>
                 <div className="flex items-center justify-between rounded-lg bg-white border border-sky-200 p-2">
                   <div>
-                    <span className="text-[10px] text-slate-400 block font-semibold uppercase">External Txn Ref (8-Hex)</span>
+                    <span className="text-[10px] text-slate-400 block font-semibold uppercase">{t("extTxn8Hex")}</span>
                     <code className="font-mono font-bold text-slate-900 text-xs">ffa673fe</code>
                   </div>
                   <Button
@@ -550,15 +553,15 @@ export function TrxIdGuideDialog({
                     className="h-7 px-2 text-[11px] text-sky-700 hover:bg-sky-50 cursor-pointer"
                   >
                     {copied ? <Check className="h-3 w-3 mr-1 text-emerald-600" /> : <Copy className="h-3 w-3 mr-1" />}
-                    Copy
+                    {t("copy")}
                   </Button>
                 </div>
               </div>
 
               <div className="rounded-lg bg-white p-2.5 border border-sky-200 text-[11px] text-slate-700 space-y-1">
-                <p className="font-semibold text-sky-950">💡 Automatic Extraction:</p>
+                <p className="font-semibold text-sky-950">{t("automaticExtraction")}</p>
                 <p>
-                  Upload your UCB transfer slip image and our scanner will automatically recognize <strong>Union Commercial Bank (UCB)</strong>, the 100 KHR / USD amount, and correlate it directly to the recipient merchant account!
+                  {t("ucbAutoBody")}
                 </p>
               </div>
             </div>
@@ -573,14 +576,14 @@ export function TrxIdGuideDialog({
                 <div>
                   <h4 className="font-bold text-amber-950 flex items-center gap-1.5">
                     <Sparkles className="h-4 w-4 text-amber-600" />
-                    Bakong KHQR Interbank Directory (All 20+ Banks)
+                    {t("interbankTitle")}
                   </h4>
                   <p className="text-[11px] text-amber-800">
-                    KhLan verifies payments from every National Bank of Cambodia (NBC) Bakong member institution.
+                    {t("interbankDesc")}
                   </p>
                 </div>
                 <Badge className="bg-amber-200 text-amber-900 border-amber-300 font-extrabold text-[10px]">
-                  {filteredBanks.length} Banks Verified
+                  {t("banksVerified", { n: filteredBanks.length })}
                 </Badge>
               </div>
 
@@ -591,7 +594,7 @@ export function TrxIdGuideDialog({
                   type="text"
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
-                  placeholder="Search bank name (e.g. Prince, Sathapana, Canadia, Chip Mong, FTB)..."
+                  placeholder={t("searchBankPlaceholder")}
                   className="w-full h-8 pl-8 pr-3 text-xs rounded-lg border border-slate-200 bg-white placeholder:text-slate-400 focus:outline-none focus:ring-1 focus:ring-amber-500"
                 />
               </div>
@@ -621,7 +624,7 @@ export function TrxIdGuideDialog({
 
                     <div className="mt-2 pt-1.5 border-t border-slate-100 flex items-center justify-between text-[10px]">
                       <span className="text-slate-500">
-                        Look for: <strong className="text-slate-800">{bank.refLabel}</strong>
+                        {t("lookForLabel")} <strong className="text-slate-800">{bank.refLabel}</strong>
                       </span>
                       <code className="text-[9px] text-slate-400 font-mono">
                         {bank.swiftPrefix}
@@ -633,11 +636,10 @@ export function TrxIdGuideDialog({
 
               <div className="rounded-lg bg-white/90 p-2 border border-amber-200 text-[11px] text-slate-700 space-y-1">
                 <p className="font-semibold text-amber-950 flex items-center gap-1">
-                  <span>⚡ Instant Auto-Approval for Any Bank:</span>
+                  <span>{t("instantAnyBank")}</span>
                 </p>
                 <p className="text-[10px] text-slate-600">
-                  When you pay from any banking app to our ABA KHQR, upload your slip via the <strong>AI Receipt Scanner</strong>.
-                  Our OCR matches the National Bank Bakong settlement reference automatically!
+                  {t("instantAnyBankBody")}
                 </p>
               </div>
             </div>
@@ -646,17 +648,11 @@ export function TrxIdGuideDialog({
 
         {/* Step by step guide */}
         <div className="space-y-1.5 text-xs text-slate-600 bg-slate-50 rounded-xl p-3 border border-slate-200">
-          <p className="font-bold text-slate-800">3 Easy Steps to Activate Your Plan:</p>
+          <p className="font-bold text-slate-800">{t("threeStepsTitle")}</p>
           <ol className="list-decimal pl-4 space-y-1 text-[11px] text-slate-600">
-            <li>
-              Scan and complete payment on <strong>ABA Mobile, ACLEDA, Wing, or any Bakong bank app</strong>.
-            </li>
-            <li>
-              Enter your reference number or upload your payment slip photo to the <strong>AI Receipt Scanner</strong>.
-            </li>
-            <li>
-              Our system verifies your transaction in real-time and activates your subscription immediately!
-            </li>
+            <li>{t("step1")}</li>
+            <li>{t("step2")}</li>
+            <li>{t("step3")}</li>
           </ol>
         </div>
 
@@ -667,7 +663,7 @@ export function TrxIdGuideDialog({
             onClick={() => onOpenChange(false)}
             className="flex-1 text-xs h-9"
           >
-            Close Guide
+            {t("closeGuide")}
           </Button>
           {onUseSample && (
             <Button
@@ -678,7 +674,7 @@ export function TrxIdGuideDialog({
               }}
               className="flex-1 bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs h-9 shadow-xs"
             >
-              Fill Sample Trx ID
+              {t("fillSampleTrx")}
             </Button>
           )}
         </DialogFooter>

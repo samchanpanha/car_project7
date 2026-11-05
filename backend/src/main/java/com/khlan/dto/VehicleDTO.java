@@ -111,6 +111,7 @@ public class VehicleDTO {
         private String condition;
         private String status;
         private boolean featured;
+        private boolean certified;
         private int views;
         private String createdAt;
         private SellerSummaryDTO seller;
@@ -168,6 +169,8 @@ public class VehicleDTO {
         private Integer ownershipCount;
         private String accidentDeclared;
         private String importOrigin;
+        private String videoUrl;
+        private Boolean certified;
         private String description;
         private String descriptionKm;
         private String branchAddress;
@@ -227,6 +230,8 @@ public class VehicleDTO {
         @Builder.Default
         private String accidentDeclared = "UNKNOWN";
         private String importOrigin;
+        private String videoUrl;
+        private Boolean certified;
         private String branchId;
         private List<String> images;
         private List<DocumentDTO> documents;
@@ -268,6 +273,8 @@ public class VehicleDTO {
         private Integer ownershipCount;
         private String accidentDeclared;
         private String importOrigin;
+        private String videoUrl;
+        private Boolean certified;
         private String status;
         private String branchId;
         private List<String> images;

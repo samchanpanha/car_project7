@@ -127,6 +127,12 @@ export function VehicleCard({ vehicle, showCompare = true }: { vehicle: VehicleC
               {locale === "km" ? "ពិសេស" : "Featured"}
             </Badge>
           )}
+          {vehicle.certified && (
+            <Badge className="bg-emerald-600 text-white hover:bg-emerald-600 gap-1 shadow-xs">
+              <BadgeCheck className="h-3 w-3" aria-hidden />
+              {t("certifiedBadge")}
+            </Badge>
+          )}
           {vehicle.status === "SOLD" && (
             <Badge className="bg-slate-800 text-white hover:bg-slate-800">{t("soldBadge")}</Badge>
           )}

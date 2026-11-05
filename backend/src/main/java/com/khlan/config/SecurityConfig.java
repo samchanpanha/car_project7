@@ -30,6 +30,7 @@ import java.util.List;
 public class SecurityConfig {
 
     private final DualAuthFilter dualAuthFilter;
+    private final RateLimitFilter rateLimitFilter;
     private final com.khlan.service.PasswordService passwordService;
 
     @Value("${cron.secret:}")
@@ -90,7 +91,8 @@ public class SecurityConfig {
                         // Require authentication for all remaining requests
                         .anyRequest().authenticated()
                 )
-                .addFilterBefore(dualAuthFilter, UsernamePasswordAuthenticationFilter.class);
+                .addFilterBefore(dualAuthFilter, UsernamePasswordAuthenticationFilter.class)
+                .addFilterBefore(rateLimitFilter, DualAuthFilter.class);
 
         return http.build();
     }
