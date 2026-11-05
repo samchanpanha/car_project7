@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState, useCallback } from "react";
 import { toast } from "sonner";
 import { useAppStore, isGuest } from "@/lib/store";
+import { localizeRealtimeNotification } from "@/lib/i18n";
 
 export interface RealtimeEvent {
   type:
@@ -32,6 +33,7 @@ export function useRealtime() {
   const eventSourceRef = useRef<EventSource | null>(null);
   const reconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const retryCountRef = useRef(0);
+  const connectRef = useRef<() => void>(() => {});
 
   const connect = useCallback(() => {
     if (typeof window === "undefined") return;
@@ -62,41 +64,23 @@ export function useRealtime() {
         // Broadcast to custom window event so any tab/subcomponent can react
         window.dispatchEvent(new CustomEvent("khlan:realtime", { detail: data }));
 
+        const localized = localizeRealtimeNotification(useAppStore.getState().locale, data);
+        if (!localized) return;
+
         if (data.type === "SUBSCRIPTION_ACTIVATED") {
-          toast.success(data.title || "🎉 Subscription Activated!", {
-            description: data.message || "Your subscription has been verified and all features are now active.",
-            duration: 8000,
-          });
+          toast.success(localized.title, { description: localized.message, duration: 8000 });
         } else if (data.type === "PAYMENT_REJECTED") {
-          toast.error(data.title || "Subscription Payment Rejected", {
-            description: data.message || "Please review your payment slip and try again.",
-            duration: 8000,
-          });
+          toast.error(localized.title, { description: localized.message, duration: 8000 });
         } else if (data.type === "TELEGRAM_LINKED") {
-          toast.success(data.title || "🎉 Telegram Connected!", {
-            description: data.message || "Your Telegram account is now linked to receive real-time notifications.",
-            duration: 7000,
-          });
+          toast.success(localized.title, { description: localized.message, duration: 7000 });
         } else if (data.type === "APPOINTMENT_CREATED") {
-          toast.info(data.title || "🚗 New Test-Drive Appointment", {
-            description: data.message,
-            duration: 6000,
-          });
+          toast.info(localized.title, { description: localized.message, duration: 6000 });
         } else if (data.type === "TEST_NOTIFICATION") {
-          toast.info(data.title || "🔔 Notification Test", {
-            description: data.message,
-            duration: 5000,
-          });
+          toast.info(localized.title, { description: localized.message, duration: 5000 });
         } else if (data.type === "SAVED_SEARCH_MATCH") {
-          toast.success(data.title || "🔔 New vehicle match", {
-            description: data.message,
-            duration: 8000,
-          });
+          toast.success(localized.title, { description: localized.message, duration: 8000 });
         } else if (data.type === "LEAD_FOLLOWUP") {
-          toast.info(data.title || "⏰ Lead follow-up", {
-            description: data.message,
-            duration: 8000,
-          });
+          toast.info(localized.title, { description: localized.message, duration: 8000 });
         }
       } catch (err) {
         console.warn("[Realtime] Failed to parse SSE event data:", err);
@@ -116,12 +100,13 @@ export function useRealtime() {
       const delay = Math.min(15000, 1000 * Math.pow(2, retryCountRef.current));
       retryCountRef.current += 1;
       reconnectTimeoutRef.current = setTimeout(() => {
-        connect();
+        connectRef.current();
       }, delay);
     };
   }, [me]);
 
   useEffect(() => {
+    connectRef.current = connect;
     connect();
 
     return () => {
@@ -143,7 +128,9 @@ export function useRealtimeEvent(
   handler: (event: RealtimeEvent) => void,
 ) {
   const handlerRef = useRef(handler);
-  handlerRef.current = handler;
+  useEffect(() => {
+    handlerRef.current = handler;
+  }, [handler]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;

@@ -144,6 +144,9 @@ public class AppointmentService {
                                 "appointmentId", appt.getId(),
                                 "vehicleId", vehicle.getId(),
                                 "buyerName", buyerName,
+                                "vehicleYear", vehicle.getYear() != null ? String.valueOf(vehicle.getYear()) : "",
+                                "vehicleMake", vehicle.getMake() != null ? vehicle.getMake() : "",
+                                "vehicleModel", vehicle.getModel() != null ? vehicle.getModel() : "",
                                 "scheduledAt", appt.getScheduledAt().toString()
                         ))
                         .build();

@@ -3,7 +3,7 @@
 import { create } from "zustand";
 import type { SortOption } from "./types";
 import type { SessionDTO } from "./dashboard-types";
-import type { Locale } from "./i18n";
+import { LOCALE_COOKIE, type Locale } from "./i18n";
 import { viewToPath } from "./routes";
 import { routeTo } from "./router-bridge";
 
@@ -71,6 +71,7 @@ export interface NotifItem {
   type: string;
   title?: string;
   message?: string;
+  payload?: Record<string, unknown>;
   at: number; // epoch ms
 }
 
@@ -78,13 +79,16 @@ export const useAppStore = create<AppState>((set, get) => ({
   locale: "en",
   setLocale: (locale) => {
     set({ locale });
-    // Persist the visitor's language choice across reloads (guests and demo
-    // personas have no server-side locale; authed users' profile locale wins
-    // on boot via SessionBoot, which also funnels through here).
     try {
       window.localStorage.setItem("khlan_locale", locale);
     } catch {
-      /* localStorage unavailable — locale stays session-only */
+      /* localStorage unavailable — locale stays session-only. */
+    }
+    try {
+      const secure = window.location.protocol === "https:" ? "; Secure" : "";
+      document.cookie = `${LOCALE_COOKIE}=${locale}; Path=/; Max-Age=31536000; SameSite=Lax${secure}`;
+    } catch {
+      /* Cookie unavailable — server-rendered metadata uses English. */
     }
   },
   view: { name: "home" },
@@ -128,6 +132,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       type: n.type,
       title: n.title,
       message: n.message,
+      payload: n.payload,
       at: Date.now(),
     };
     const cur = get().notifications;

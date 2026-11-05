@@ -3,6 +3,7 @@
 import { useAppStore } from "@/lib/store";
 import { useRealtime, useRealtimeEvent, type RealtimeEvent } from "@/hooks/use-realtime";
 import { useT } from "@/hooks/use-t";
+import { localizeRealtimeNotification } from "@/lib/i18n";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -23,7 +24,7 @@ export function RealtimeNotifications() {
   useRealtime();
   const pushNotification = useAppStore((s) => s.pushNotification);
   useRealtimeEvent("*", (ev: RealtimeEvent) => {
-    pushNotification({ type: ev.type, title: ev.title, message: ev.message });
+    pushNotification({ type: ev.type, title: ev.title, message: ev.message, payload: ev.payload });
   });
   return null;
 }
@@ -76,17 +77,24 @@ export function NotificationBell() {
           </div>
         ) : (
           <div className="max-h-80 overflow-y-auto kl-scroll">
-            {notifications.map((n) => (
-              <div key={n.id} className={cn("border-b border-slate-100 px-4 py-2.5 last:border-0")}>
-                <p className="text-xs font-semibold text-slate-800">{n.title || n.type}</p>
-                {n.message && (
-                  <p className="mt-0.5 text-[11px] leading-relaxed text-slate-500 line-clamp-2">{n.message}</p>
-                )}
-                <p className="mt-1 text-[10px] text-slate-400">
-                  {timeAgo(new Date(n.at).toISOString(), locale)}
-                </p>
-              </div>
-            ))}
+            {notifications.map((n) => {
+              const localized = localizeRealtimeNotification(locale, n);
+              return (
+                <div key={n.id} className={cn("border-b border-slate-100 px-4 py-2.5 last:border-0")}>
+                  <p className="text-xs font-semibold text-slate-800">
+                    {localized?.title ?? t("notificationGenericTitle")}
+                  </p>
+                  {localized?.message && (
+                    <p className="mt-0.5 text-[11px] leading-relaxed text-slate-500 line-clamp-2">
+                      {localized.message}
+                    </p>
+                  )}
+                  <p className="mt-1 text-[10px] text-slate-400">
+                    {timeAgo(new Date(n.at).toISOString(), locale)}
+                  </p>
+                </div>
+              );
+            })}
           </div>
         )}
 

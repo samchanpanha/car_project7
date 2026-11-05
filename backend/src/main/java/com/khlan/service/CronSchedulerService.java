@@ -200,10 +200,11 @@ public class CronSchedulerService {
                                 .message(search.getName() + ": " + vehicle.getMake() + " " + vehicle.getModel() + " (" + vehicle.getYear() + ")")
                                 .payload(Map.of(
                                         "savedSearchId", search.getId(),
+                                        "searchName", search.getName() != null ? search.getName() : "",
                                         "vehicleId", vehicle.getId(),
                                         "make", vehicle.getMake() != null ? vehicle.getMake() : "",
                                         "model", vehicle.getModel() != null ? vehicle.getModel() : "",
-                                        "year", vehicle.getYear(),
+                                        "year", String.valueOf(vehicle.getYear()),
                                         "priceUsd", vehicle.getPriceUsd()
                                 ))
                                 .build());
@@ -240,7 +241,11 @@ public class CronSchedulerService {
                             .type("LEAD_FOLLOWUP")
                             .title("Pending purchase request needs follow-up")
                             .message("A buyer purchase request has been waiting over 24 hours.")
-                            .payload(Map.of("requestId", req.getId(), "vehicleId", req.getVehicleId()))
+                            .payload(Map.of(
+                                    "requestId", req.getId(),
+                                    "vehicleId", req.getVehicleId(),
+                                    "leadType", "PURCHASE_REQUEST"
+                            ))
                             .build());
                 }
             }
@@ -257,7 +262,11 @@ public class CronSchedulerService {
                             .type("LEAD_FOLLOWUP")
                             .title("Test-drive appointment needs confirmation")
                             .message("A buyer appointment request has been waiting over 24 hours.")
-                            .payload(Map.of("appointmentId", appt.getId(), "vehicleId", appt.getVehicleId()))
+                            .payload(Map.of(
+                                    "appointmentId", appt.getId(),
+                                    "vehicleId", appt.getVehicleId(),
+                                    "leadType", "APPOINTMENT"
+                            ))
                             .build());
                 }
             }

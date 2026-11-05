@@ -10,9 +10,15 @@ import {
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import { useAppStore } from "@/lib/store";
+import { useT } from "@/hooks/use-t";
+import { localizeRealtimeNotification } from "@/lib/i18n";
 
 export function LiveStatusPill({ className }: { className?: string }) {
   const { status, lastEvent } = useRealtime();
+  const locale = useAppStore((s) => s.locale);
+  const t = useT();
+  const localizedLastEvent = lastEvent ? localizeRealtimeNotification(locale, lastEvent) : null;
   const [open, setOpen] = useState(false);
   const [testing, setTesting] = useState(false);
 
@@ -113,7 +119,7 @@ export function LiveStatusPill({ className }: { className?: string }) {
               <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
                 <span className="font-semibold text-slate-700">Last Received Event:</span>
                 <p className="mt-1 font-mono text-[11px] text-slate-800 bg-white p-2 rounded border border-slate-200">
-                  {lastEvent.type} {lastEvent.title ? `· ${lastEvent.title}` : ""}
+                  {lastEvent.type} · {localizedLastEvent?.title ?? t("notificationGenericTitle")}
                 </p>
               </div>
             )}
@@ -140,4 +146,3 @@ export function LiveStatusPill({ className }: { className?: string }) {
     </>
   );
 }
-

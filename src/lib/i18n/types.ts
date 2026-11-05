@@ -1,6 +1,7 @@
 export type Locale = "en" | "km" | "zh" | "vi";
 
 export const LOCALES: readonly Locale[] = ["en", "km", "zh", "vi"];
+export const LOCALE_COOKIE = "khlan_locale";
 
 /** Runtime guard for untrusted locale strings (API payloads, localStorage). */
 export function isLocale(value: unknown): value is Locale {

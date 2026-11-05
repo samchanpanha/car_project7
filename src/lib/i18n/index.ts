@@ -6,6 +6,7 @@ import type { Locale } from "./types";
 
 export * from "./types";
 export * from "./labels";
+export * from "./realtime";
 export { en, km, zh, vi };
 
 export const dictionaries = { en, km, zh, vi };
