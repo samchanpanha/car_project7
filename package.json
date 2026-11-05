@@ -18,6 +18,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:e2e": "playwright test",
+    "test:audit:pdf": "tsx scripts/generate-qa-audit-pdf.ts",
     "storage:migrate": "tsx scripts/migrate-minio-to-r2.ts",
     "nacos:sync": "tsx scripts/nacos-sync.ts"
   },

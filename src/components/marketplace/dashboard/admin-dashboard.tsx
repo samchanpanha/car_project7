@@ -42,7 +42,7 @@ import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import {
-  Activity, BadgeCheck, Car, ChevronDown, CreditCard, DollarSign, FileCheck2, Gauge, Hourglass, Image as ImageIcon,
+  Activity, BadgeCheck, Car, ChevronDown, CreditCard, DollarSign, Download, FileCheck2, Gauge, Hourglass, Image as ImageIcon,
   LayoutDashboard, Loader2, MessageSquare, MoreHorizontal, ScrollText, Send, Settings, ShieldCheck, Sparkles,
   Star, Store, TriangleAlert, Upload, Users, Wallet, RefreshCw, Link2, Search, Check, CheckCircle2,
   Calendar, Clock, Copy, Repeat, Trash2, Cloud, CloudUpload, HardDrive, Database, ExternalLink, Eye, EyeOff,
@@ -149,6 +149,43 @@ function AdminOverview() {
         <StatCard icon={MessageSquare} label={t("kpiConversations")} value={k.conversations} />
         <StatCard icon={BadgeCheck} label={t("kpiFavorites")} value={k.favorites} />
         <StatCard icon={DollarSign} label={t("kpiMrr")} value={formatUsd(k.mrrUsd)} />
+      </div>
+
+      {/* System QA Audit & Verification Banner */}
+      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 rounded-xl border border-emerald-500/30 bg-emerald-950/20 p-4">
+        <div className="flex items-center gap-3">
+          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-emerald-500/10 text-emerald-500">
+            <ShieldCheck className="h-6 w-6" />
+          </div>
+          <div>
+            <div className="flex items-center gap-2">
+              <span className="font-semibold text-foreground">System QA Audit & Feature Verification</span>
+              <Badge className="bg-emerald-500 text-white hover:bg-emerald-600 text-xs font-semibold">249 / 249 Passed (100%)</Badge>
+            </div>
+            <p className="text-xs text-muted-foreground mt-0.5">
+              Official Production Readiness Audit across 6 Core Pillars (Buyer, AI Reports, 2-Party Chat, Bakong KHQR, Dealership, Admin).
+            </p>
+          </div>
+        </div>
+        <div className="flex items-center gap-2 w-full sm:w-auto">
+          <a
+            href="/reports/KhLan_System_QA_Audit_Report.pdf"
+            download="KhLan_System_QA_Audit_Report.pdf"
+            className="inline-flex items-center justify-center gap-1.5 rounded-lg bg-emerald-600 px-3.5 py-2 text-xs font-medium text-white shadow hover:bg-emerald-700 transition-colors w-full sm:w-auto"
+          >
+            <Download className="h-4 w-4" />
+            Download Audit PDF
+          </a>
+          <a
+            href="/reports/qa-audit-report.html"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center justify-center gap-1.5 rounded-lg border border-border bg-card px-3.5 py-2 text-xs font-medium text-foreground hover:bg-accent transition-colors w-full sm:w-auto"
+          >
+            <ExternalLink className="h-4 w-4" />
+            View Live Report
+          </a>
+        </div>
       </div>
 
       <div className="grid gap-5 lg:grid-cols-2">

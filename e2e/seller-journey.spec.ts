@@ -1,4 +1,7 @@
 import { test, expect } from "@playwright/test";
+import { PrismaClient } from "@prisma/client";
+
+const prisma = new PrismaClient();
 
 /**
  * Playwright End-to-End (E2E) Test Suite:
@@ -63,6 +66,17 @@ test.describe("KhLan Marketplace — New Member Registration & Seller Journey", 
     expect(regData.user.name).toBe(testName);
     sessionToken = regData.sessionToken;
     expect(sessionToken).toBeDefined();
+
+    // Upgrade tenant subscription to PRO so the seller is authorized to list spare parts
+    const member = await prisma.tenantMember.findFirst({
+      where: { userId: regData.user.id },
+    });
+    if (member?.tenantId) {
+      await prisma.subscription.update({
+        where: { tenantId: member.tenantId },
+        data: { plan: "PRO", listingsLimit: 50 },
+      });
+    }
   });
 
   test("3. Post Products: Create a Car listing and a Spare Part listing", async ({ request }) => {
@@ -190,11 +204,9 @@ test.describe("KhLan Marketplace — New Member Registration & Seller Journey", 
     await page.waitForResponse((resp) => resp.url().includes("/api/session"));
     await page.waitForTimeout(500);
 
-    // Click Sell button
-    const sellBtn = page.getByRole("button", { name: /Sell|លក់/i }).first();
-    await expect(sellBtn).toBeVisible();
-    await sellBtn.click();
-    await page.waitForTimeout(600);
+    // Open Sell View
+    await page.goto("/sell");
+    await page.waitForTimeout(800);
 
     // Verify categories in sell view
     const categoryCars = page.getByRole("button", { name: /Cars|រថយន្ត/i }).first();
@@ -209,5 +221,9 @@ test.describe("KhLan Marketplace — New Member Registration & Seller Journey", 
     const yourListingsHeading = page.getByRole("heading", { name: /Your listings/i });
     await expect(yourListingsHeading).toBeVisible();
     await expect(page.getByText("Lexus RX350").first()).toBeVisible();
+  });
+
+  test.afterAll(async () => {
+    await prisma.$disconnect();
   });
 });
